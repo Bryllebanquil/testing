@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import Hls from "hls.js";
 import apiClient, { StreamSource, Video } from "../services/api";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
@@ -64,9 +65,8 @@ export function VideoPlayer() {
     const video = videoRef.current;
     if (!video || !source) return;
     if (source.type === "hls") {
-      const HlsGlobal = (window as any).Hls;
-      if (HlsGlobal && HlsGlobal.isSupported()) {
-        const hls = new HlsGlobal();
+      if (Hls.isSupported()) {
+        const hls = new Hls();
         hls.loadSource(source.url);
         hls.attachMedia(video);
         setHlsInstance(hls);
