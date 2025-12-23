@@ -2191,7 +2191,6 @@ def index():
 @app.route("/dashboard")
 @require_auth
 def dashboard():
-    # Serve a fully inlined single-file UI so deployment is self-contained
     try:
         base_dir = os.path.dirname(__file__)
         candidate_builds = [
@@ -2207,47 +2206,18 @@ def dashboard():
         if index_path:
             with open(index_path, 'r', encoding='utf-8', errors='replace') as f:
                 index_html = f.read()
-            assets_dir = os.path.join(os.path.dirname(index_path), 'assets')
-            # Extract built asset filenames referenced by index.html
-            import re
-            css_files = re.findall(r'href=\"/assets/([^\"]+?\.css)\"', index_html)
-            js_files = re.findall(r'src=\"/assets/([^\"]+?\.js)\"', index_html)
-            css_inline = ""
-            js_inline = ""
-            for cf in css_files:
-                fp = os.path.join(assets_dir, cf)
-                if os.path.exists(fp):
-                    with open(fp, 'r', encoding='utf-8', errors='replace') as f:
-                        css_inline += f.read()
-            for jf in js_files:
-                fp = os.path.join(assets_dir, jf)
-                if os.path.exists(fp):
-                    with open(fp, 'r', encoding='utf-8', errors='replace') as f:
-                        js_inline += f.read()
-            # Runtime overrides to ensure same-origin backend
-            runtime_overrides = """
-            <script>
-            window.__SOCKET_URL__ = window.location.protocol + '//' + window.location.host;
-            window.__API_URL__ = window.__SOCKET_URL__;
-            </script>
-            """
-            html = f"""
-            <!DOCTYPE html>
-            <html lang=\"en\">
-              <head>
-                <meta charset=\"UTF-8\" />
-                <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />
-                <title>Agent Controller</title>
-                <style>{css_inline}</style>
-                {runtime_overrides}
-              </head>
-              <body>
-                <div id=\"root\"></div>
-                <script type=\"module\">{js_inline}</script>
-              </body>
-            </html>
-            """
-            return Response(html, mimetype='text/html')
+            runtime_overrides = (
+                "<script>"
+                "window.__SOCKET_URL__ = window.location.protocol + '//' + window.location.host;"
+                "window.__API_URL__ = window.__SOCKET_URL__;"
+                "</script>"
+            )
+            if "</head>" in index_html:
+                modified = index_html.replace("</head>", runtime_overrides + "</head>")
+            else:
+                # Fallback: prepend overrides at top
+                modified = runtime_overrides + index_html
+            return Response(modified, mimetype='text/html')
         else:
             # If index.html isn't found, try direct asset inlining as a secondary strategy
             def find_asset(glob_pattern_candidates):
