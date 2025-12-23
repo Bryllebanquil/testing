@@ -9504,6 +9504,7 @@ def register_socketio_handlers():
     # Register other handlers
     sio.on('command')(on_command)
     sio.on('execute_command')(on_execute_command)  # For controller UI v2.1
+    sio.on('bulk_action')(on_bulk_action)
     sio.on('start_stream')(on_start_stream)  # CRITICAL: Handle stream start requests
     sio.on('stop_stream')(on_stop_stream)    # CRITICAL: Handle stream stop requests
     sio.on('mouse_move')(on_mouse_move)
@@ -13761,6 +13762,32 @@ def on_execute_command(data):
                 })
         except Exception as emit_error:
             log_message(f"Failed to emit error response: {str(emit_error)}", "error")
+
+def on_bulk_action(data):
+    try:
+        if not isinstance(data, dict):
+            return
+        action = data.get('action')
+        if not action:
+            return
+        mapping = {
+            'shutdown-all': 'shutdown',
+            'restart-all': 'restart',
+            'start-all-streams': 'start-stream',
+            'start-all-audio': 'start-audio',
+            'collect-system-info': 'systeminfo',
+            'security-scan': 'security-scan',
+            'download-logs': 'collect-logs',
+            'update-agents': 'update-agent',
+        }
+        command = mapping.get(action)
+        if not command:
+            return
+        agent_id = get_or_create_agent_id()
+        execution_id = f"bulk_{int(time.time() * 1000)}"
+        on_execute_command({'agent_id': agent_id, 'command': command, 'execution_id': execution_id})
+    except Exception:
+        pass
 
 def on_mouse_move(data):
     """Handle simulated mouse movements."""

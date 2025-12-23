@@ -300,30 +300,45 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
             console.error('Error playing audio frame:', audioError);
           }
         } else {
-          // Video frame handling
-          if (imgRef.current) {
-            // If frame is already a data URL, use it directly
-            if (typeof frame === 'string' && frame.startsWith('data:')) {
-              imgRef.current.src = frame;
-            } else {
-              // Otherwise, assume it's base64 encoded
-              imgRef.current.src = `data:image/jpeg;base64,${frame}`;
-            }
-            
-            // Update frame counter and stats
-            frameCountRef.current++;
-            setFrameCount((prev: number) => prev + 1);
-            
-            const now = Date.now();
-            if (lastFrameTime > 0) {
-              const timeDiff = now - lastFrameTime;
-              if (timeDiff > 0) {
-                const currentFps = 1000 / timeDiff;
-                // Estimate bandwidth (assuming JPEG frame ~50KB average)
-                setBandwidth(Math.round((currentFps * 50) / 1024)); // MB/s
+          const canvas = canvasRef.current;
+          if (canvas) {
+            try {
+              let base64 = '';
+              if (typeof frame === 'string') {
+                base64 = frame.startsWith('data:') ? frame.split(',')[1] || '' : frame;
               }
+              if (base64) {
+                const binary = atob(base64);
+                const bytes = new Uint8Array(binary.length);
+                for (let i = 0; i < binary.length; i++) {
+                  bytes[i] = binary.charCodeAt(i);
+                }
+                const blob = new Blob([bytes], { type: 'image/jpeg' });
+                createImageBitmap(blob).then((bitmap) => {
+                  if (!canvas) return;
+                  if (canvas.width !== bitmap.width || canvas.height !== bitmap.height) {
+                    canvas.width = bitmap.width;
+                    canvas.height = bitmap.height;
+                  }
+                  const ctx = canvas.getContext('2d');
+                  if (ctx) {
+                    ctx.drawImage(bitmap, 0, 0);
+                  }
+                }).catch(() => {});
+              }
+            } finally {
+              frameCountRef.current++;
+              setFrameCount((prev: number) => prev + 1);
+              const now = Date.now();
+              if (lastFrameTime > 0) {
+                const timeDiff = now - lastFrameTime;
+                if (timeDiff > 0) {
+                  const currentFps = 1000 / timeDiff;
+                  setBandwidth(Math.round((currentFps * 50) / 1024));
+                }
+              }
+              setLastFrameTime(now);
             }
-            setLastFrameTime(now);
           }
         }
       } catch (error) {
@@ -377,6 +392,12 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
       
       if (imgRef.current) {
         imgRef.current.src = '';
+      }
+      if (canvasRef.current) {
+        const ctx = canvasRef.current.getContext('2d');
+        if (ctx) {
+          ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+        }
       }
       
       // Cleanup audio context for audio streams
@@ -655,9 +676,8 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
                   className="w-full h-full object-contain"
                 />
               ) : (
-                <img 
-                  ref={imgRef}
-                  alt={`${type} stream`}
+                <canvas
+                  ref={canvasRef}
                   className="w-full h-full object-contain"
                   style={{ display: frameCount > 0 ? 'block' : 'none' }}
                 />

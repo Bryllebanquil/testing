@@ -97,6 +97,7 @@ export function FileManager({ agentId }: FileManagerProps) {
   const [previewIndex, setPreviewIndex] = useState<number>(0);
   const [previewErrorCount, setPreviewErrorCount] = useState<number>(0);
   const currentPathRef = useRef<string>('/');
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
 
   const filteredFiles = files.filter(file => 
     file.name.toLowerCase().includes(searchTerm.toLowerCase())
@@ -459,7 +460,7 @@ export function FileManager({ agentId }: FileManagerProps) {
                   size="sm" 
                   variant="destructive"
                   disabled={selectedFiles.length === 0}
-                  onClick={handleDelete}
+                  onClick={() => setConfirmDeleteOpen(true)}
                 >
                   <Trash2 className="h-3 w-3" />
                 </Button>
@@ -513,6 +514,38 @@ export function FileManager({ agentId }: FileManagerProps) {
                   </div>
                 </DialogContent>
               </Dialog>
+              
+              <Dialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
+                <DialogContent className="sm:max-w-[440px]">
+                  <DialogHeader>
+                    <DialogTitle className="text-sm">Delete selected files?</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-2 text-sm text-muted-foreground">
+                    <div>{selectedFiles.length} item(s) will be deleted.</div>
+                    <div className="max-h-32 overflow-auto rounded bg-muted p-2">
+                      {selectedFiles.slice(0, 5).map((p, i) => (
+                        <div key={i} className="truncate">{p}</div>
+                      ))}
+                      {selectedFiles.length > 5 && (
+                        <div>and {selectedFiles.length - 5} more…</div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <Button size="sm" variant="outline" onClick={() => setConfirmDeleteOpen(false)}>Cancel</Button>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => {
+                        setConfirmDeleteOpen(false);
+                        handleDelete();
+                      }}
+                    >
+                      Delete
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
 
               {/* Upload/Download Progress */}
               {(uploadProgress !== null || downloadProgress !== null) && (
@@ -561,7 +594,21 @@ export function FileManager({ agentId }: FileManagerProps) {
                               if (file.type === 'directory') {
                                 handleNavigate(file.path);
                               } else {
-                                handleFileSelect(file.path);
+                                const ext2 = (file.extension || getExtension(file.name)).toLowerCase();
+                                const kind2 = getPreviewKind(ext2);
+                                if (kind2) {
+                                  setSelectedFiles([file.path]);
+                                  const idx = previewableItems.findIndex(f => f.path === file.path);
+                                  if (idx >= 0) {
+                                    setPreviewItems(previewableItems);
+                                    setPreviewIndex(idx);
+                                    setPreviewOpen(true);
+                                  } else {
+                                    handleFileSelect(file.path);
+                                  }
+                                } else {
+                                  handleFileSelect(file.path);
+                                }
                               }
                             }}
                           >
