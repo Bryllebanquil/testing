@@ -307,7 +307,8 @@ export function FileManager({ agentId }: FileManagerProps) {
     const kind = getPreviewKind(ext);
     setPreviewKind(kind);
     setPreviewErrorCount(0);
-    setPreviewUrl(makeStreamUrl(item.path));
+    const url = kind === 'video' ? makeStreamFastUrl(item.path) : makeStreamUrl(item.path);
+    setPreviewUrl(url);
   }, [previewOpen, previewIndex, previewItems, agentId]);
 
   useEffect(() => {
@@ -485,7 +486,7 @@ export function FileManager({ agentId }: FileManagerProps) {
                         <video className="w-full h-full" controls playsInline preload="metadata" onError={() => {
                           if (previewItems[previewIndex] && previewErrorCount === 0) {
                             setPreviewErrorCount(1);
-                            setPreviewUrl(makeStreamFastUrl(previewItems[previewIndex].path));
+                            setPreviewUrl(makeStreamUrl(previewItems[previewIndex].path));
                           }
                         }}>
                           <source src={previewUrl} type={previewSourceType} />
