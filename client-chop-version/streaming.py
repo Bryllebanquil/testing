@@ -8,7 +8,7 @@ import threading
 import time
 import base64
 from logging_utils import log_message
-from dependencies import MSS_AVAILABLE, NUMPY_AVAILABLE, CV2_AVAILABLE, PYAUDIO_AVAILABLE, PIL_AVAILABLE
+from dependencies import MSS_AVAILABLE, NUMPY_AVAILABLE, CV2_AVAILABLE, PYAUDIO_AVAILABLE, PIL_AVAILABLE, AIORTC_AVAILABLE
 from config import TARGET_FPS, CAPTURE_QUEUE_SIZE, ENCODE_QUEUE_SIZE, AUDIO_CAPTURE_QUEUE_SIZE, AUDIO_ENCODE_QUEUE_SIZE, TARGET_CAMERA_FPS, CHUNK, CHANNELS, RATE, FORMAT
 
 # Global state variables
@@ -26,6 +26,157 @@ CAMERA_STREAMING_ENABLED = False
 CAMERA_STREAM_THREADS = []
 camera_capture_queue = None
 camera_encode_queue = None
+
+# WebRTC global state
+WEBRTC_ACTIVE = False
+WEBRTC_PC = None
+WEBRTC_LOOP = None
+WEBRTC_THREAD = None
+WEBRTC_AGENT_ID = None
+WEBRTC_TRACKS = {}
+
+def _ensure_webrtc_loop():
+    global WEBRTC_LOOP
+    import asyncio
+    if WEBRTC_LOOP is None:
+        WEBRTC_LOOP = asyncio.new_event_loop()
+        t = threading.Thread(target=WEBRTC_LOOP.run_forever, daemon=True)
+        t.start()
+    return WEBRTC_LOOP
+
+def _shutdown_webrtc_loop():
+    global WEBRTC_LOOP
+    if WEBRTC_LOOP is not None:
+        try:
+            WEBRTC_LOOP.call_soon_threadsafe(WEBRTC_LOOP.stop)
+        except Exception:
+            pass
+        WEBRTC_LOOP = None
+
+def _create_screen_track(target_fps=30):
+    if not MSS_AVAILABLE or not NUMPY_AVAILABLE:
+        return None
+    try:
+        import numpy as np
+        import mss
+        from aiortc import VideoStreamTrack
+        from av import VideoFrame
+    except Exception:
+        return None
+
+    class ScreenTrack(VideoStreamTrack):
+        kind = "video"
+        def __init__(self, fps=30):
+            super().__init__()
+            self._fps = fps
+            self._frame_time = 1.0 / max(1, fps)
+            self._last = 0.0
+            self._sct = mss.mss()
+            self._monitor = self._sct.monitors[1]
+            self._width = self._monitor['width']
+            self._height = self._monitor['height']
+            if self._width > 1280:
+                scale = 1280 / self._width
+                self._width = int(self._width * scale)
+                self._height = int(self._height * scale)
+
+        async def recv(self):
+            now = time.time()
+            delay = self._frame_time - (now - self._last)
+            if delay > 0:
+                await self._sleep(delay)
+            self._last = time.time()
+            img = self._sct.grab(self._monitor)
+            arr = np.array(img)
+            if arr.shape[1] != self._width or arr.shape[0] != self._height:
+                try:
+                    import cv2
+                    arr = cv2.resize(arr, (self._width, self._height), interpolation=cv2.INTER_AREA)
+                except Exception:
+                    pass
+            if arr.shape[2] == 4:
+                arr = arr[:, :, :3]
+            frame = VideoFrame.from_ndarray(arr, format="bgr24")
+            pts, time_base = await self.next_timestamp()
+            frame.pts = pts
+            frame.time_base = time_base
+            return frame
+
+    return ScreenTrack(target_fps)
+
+def _create_camera_track(target_fps=30):
+    if not CV2_AVAILABLE:
+        return None
+    try:
+        import cv2
+        from aiortc import VideoStreamTrack
+        from av import VideoFrame
+    except Exception:
+        return None
+
+    class CameraTrack(VideoStreamTrack):
+        kind = "video"
+        def __init__(self, fps=30):
+            super().__init__()
+            self._fps = fps
+            self._frame_time = 1.0 / max(1, fps)
+            self._last = 0.0
+            self._cap = cv2.VideoCapture(0)
+            try:
+                self._cap.set(cv2.CAP_PROP_FPS, fps)
+                self._cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+                self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+            except Exception:
+                pass
+
+        async def recv(self):
+            now = time.time()
+            delay = self._frame_time - (now - self._last)
+            if delay > 0:
+                await self._sleep(delay)
+            self._last = time.time()
+            ret, frame = self._cap.read()
+            if not ret:
+                await self._sleep(0.01)
+                ret, frame = self._cap.read()
+            if not ret:
+                # produce a blank frame to keep pipeline alive
+                import numpy as np
+                frame = np.zeros((480, 640, 3), dtype=np.uint8)
+            vf = VideoFrame.from_ndarray(frame, format="bgr24")
+            pts, time_base = await self.next_timestamp()
+            vf.pts = pts
+            vf.time_base = time_base
+            return vf
+
+    return CameraTrack(target_fps)
+
+def _create_audio_track():
+    if not AIORTC_AVAILABLE:
+        return None
+    try:
+        from aiortc import MediaStreamTrack
+        import av
+        import numpy as np
+        import pyaudio
+    except Exception:
+        return None
+
+    class MicrophoneTrack(MediaStreamTrack):
+        kind = "audio"
+        def __init__(self):
+            super().__init__()
+            self._pa = pyaudio.PyAudio()
+            self._stream = self._pa.open(format=FORMAT, channels=CHANNELS, rate=RATE, input=True, frames_per_buffer=CHUNK)
+
+        async def recv(self):
+            data = self._stream.read(CHUNK, exception_on_overflow=False)
+            samples = np.frombuffer(data, dtype=np.int16)
+            frame = av.AudioFrame.from_ndarray(samples, format='s16', layout='mono' if CHANNELS == 1 else 'stereo')
+            frame.sample_rate = RATE
+            return frame
+
+    return MicrophoneTrack()
 
 def get_or_create_agent_id():
     """Get or create a unique agent ID."""
@@ -55,13 +206,23 @@ def stream_screen(agent_id):
     """Legacy screen streaming function - redirects to new implementation."""
     return stream_screen_h264_socketio(agent_id)
 
-def start_streaming(agent_id):
+def start_streaming(agent_id, mode='auto'):
     """Start screen streaming with modern pipeline."""
     global STREAMING_ENABLED, STREAM_THREADS, capture_queue, encode_queue
     
     if STREAMING_ENABLED:
         log_message("Screen streaming already active")
         return True
+    
+    if (mode == 'webrtc' or mode == 'auto') and AIORTC_AVAILABLE:
+        ok = start_webrtc_streaming(agent_id, kind='screen')
+        if ok:
+            log_message("Screen streaming started via WebRTC")
+            return True
+        if mode == 'auto':
+            log_message("WebRTC start failed, falling back to Socket.IO")
+        else:
+            return False
     
     if not MSS_AVAILABLE or not NUMPY_AVAILABLE or not CV2_AVAILABLE:
         log_message("Required modules not available for screen streaming", "error")
@@ -105,6 +266,7 @@ def stop_streaming():
     
     STREAM_THREADS.clear()
     log_message("Screen streaming stopped")
+    stop_webrtc_streaming()
 
 def screen_capture_worker(agent_id):
     """Worker thread for screen capture."""
@@ -225,18 +387,23 @@ def stream_screen_h264_socketio(agent_id):
     return start_streaming(agent_id)
 
 # Audio streaming functions
-def start_audio_streaming(agent_id):
+def start_audio_streaming(agent_id, mode='auto'):
     """Start audio streaming."""
     global AUDIO_STREAMING_ENABLED, AUDIO_STREAM_THREADS, audio_capture_queue, audio_encode_queue
     
     if AUDIO_STREAMING_ENABLED:
         log_message("Audio streaming already active")
         return True
-    
+    if (mode == 'webrtc' or mode == 'auto') and AIORTC_AVAILABLE:
+        ok = start_webrtc_streaming(agent_id, kind='audio')
+        if ok:
+            log_message("Audio streaming started via WebRTC")
+            return True
+        if mode != 'auto':
+            return False
     if not PYAUDIO_AVAILABLE:
         log_message("PyAudio not available for audio streaming", "error")
         return False
-    
     log_message("Starting audio streaming...")
     
     # Initialize queues
@@ -258,6 +425,119 @@ def start_audio_streaming(agent_id):
     
     log_message("Audio streaming started successfully")
     return True
+
+def start_webrtc_streaming(agent_id, kind='screen'):
+    """Start WebRTC streaming and add requested track."""
+    global WEBRTC_ACTIVE, WEBRTC_PC, WEBRTC_THREAD, WEBRTC_AGENT_ID, WEBRTC_TRACKS
+    if not AIORTC_AVAILABLE:
+        return False
+    try:
+        from aiortc import RTCPeerConnection, RTCSessionDescription
+        from socket_client import get_socket_client
+        sio = get_socket_client()
+        if sio is None:
+            return False
+        if kind == 'screen':
+            track = _create_screen_track(TARGET_FPS if isinstance(TARGET_FPS, int) else 30)
+        elif kind == 'camera':
+            track = _create_camera_track(TARGET_CAMERA_FPS if isinstance(TARGET_CAMERA_FPS, int) else 30)
+        elif kind == 'audio':
+            track = _create_audio_track()
+        else:
+            track = None
+        if track is None:
+            return False
+        loop = _ensure_webrtc_loop()
+        WEBRTC_AGENT_ID = agent_id
+        WEBRTC_ACTIVE = True
+        def _run():
+            async def _start():
+                global WEBRTC_PC
+                if WEBRTC_PC is None:
+                    WEBRTC_PC = RTCPeerConnection()
+                WEBRTC_TRACKS[kind] = track
+                WEBRTC_PC.addTrack(track)
+                @WEBRTC_PC.on("icecandidate")
+                def on_ice(cand):
+                    try:
+                        if cand:
+                            sio.emit('webrtc_ice_candidate', {
+                                'agent_id': agent_id,
+                                'candidate': cand
+                            })
+                    except Exception:
+                        pass
+                offer = await WEBRTC_PC.createOffer()
+                await WEBRTC_PC.setLocalDescription(offer)
+                try:
+                    sio.emit('webrtc_offer', {
+                        'agent_id': agent_id,
+                        'offer': offer.sdp
+                    })
+                except Exception:
+                    pass
+            import asyncio
+            asyncio.run_coroutine_threadsafe(_start(), loop).result()
+        WEBRTC_THREAD = threading.Thread(target=_run, daemon=True)
+        WEBRTC_THREAD.start()
+        return True
+    except Exception as e:
+        log_message(f"WebRTC start error: {e}", "error")
+        WEBRTC_ACTIVE = False
+        return False
+
+def handle_webrtc_answer(answer_sdp):
+    """Apply WebRTC answer from controller."""
+    global WEBRTC_PC
+    if not AIORTC_AVAILABLE or WEBRTC_PC is None:
+        return False
+    try:
+        from aiortc import RTCSessionDescription
+        loop = _ensure_webrtc_loop()
+        async def _apply():
+            await WEBRTC_PC.setRemoteDescription(RTCSessionDescription(sdp=answer_sdp, type='answer'))
+        import asyncio
+        asyncio.run_coroutine_threadsafe(_apply(), loop).result()
+        return True
+    except Exception as e:
+        log_message(f"Apply answer error: {e}", "error")
+        return False
+
+def add_remote_ice_candidate(candidate):
+    """Add ICE candidate from controller."""
+    global WEBRTC_PC
+    if not AIORTC_AVAILABLE or WEBRTC_PC is None:
+        return False
+    try:
+        loop = _ensure_webrtc_loop()
+        async def _add():
+            await WEBRTC_PC.addIceCandidate(candidate)
+        import asyncio
+        asyncio.run_coroutine_threadsafe(_add(), loop).result()
+        return True
+    except Exception as e:
+        log_message(f"Add ICE candidate error: {e}", "error")
+        return False
+
+def stop_webrtc_streaming():
+    """Stop WebRTC streaming."""
+    global WEBRTC_PC, WEBRTC_ACTIVE, WEBRTC_TRACK
+    if not AIORTC_AVAILABLE:
+        return
+    try:
+        loop = _ensure_webrtc_loop()
+        async def _stop():
+            try:
+                if WEBRTC_PC:
+                    await WEBRTC_PC.close()
+            finally:
+                return True
+        import asyncio
+        asyncio.run_coroutine_threadsafe(_stop(), loop).result()
+    except Exception:
+        pass
+    WEBRTC_PC = None
+    WEBRTC_ACTIVE = False
 
 def stop_audio_streaming():
     """Stop audio streaming."""
@@ -372,18 +652,23 @@ def audio_send_worker(agent_id):
             continue
 
 # Camera streaming functions
-def start_camera_streaming(agent_id):
+def start_camera_streaming(agent_id, mode='auto'):
     """Start camera streaming."""
     global CAMERA_STREAMING_ENABLED, CAMERA_STREAM_THREADS, camera_capture_queue, camera_encode_queue
     
     if CAMERA_STREAMING_ENABLED:
         log_message("Camera streaming already active")
         return True
-    
+    if (mode == 'webrtc' or mode == 'auto') and AIORTC_AVAILABLE:
+        ok = start_webrtc_streaming(agent_id, kind='camera')
+        if ok:
+            log_message("Camera streaming started via WebRTC")
+            return True
+        if mode != 'auto':
+            return False
     if not CV2_AVAILABLE:
         log_message("OpenCV not available for camera streaming", "error")
         return False
-    
     log_message("Starting camera streaming...")
     
     # Initialize queues

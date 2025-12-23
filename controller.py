@@ -467,19 +467,38 @@ def create_webrtc_peer_connection(agent_id):
         async def on_iceconnectionstatechange():
             print(f"ICE connection state for {agent_id}: {pc.iceConnectionState}")
         
+        @pc.on("icecandidate")
+        def on_agent_icecandidate(candidate):
+            try:
+                agent_sid = AGENTS_DATA.get(agent_id, {}).get('sid')
+                if agent_sid and candidate:
+                    emit('webrtc_ice_candidate', {
+                        'agent_id': agent_id,
+                        'candidate': candidate
+                    }, room=agent_sid)
+            except Exception as e:
+                print(f"Error emitting ICE candidate to agent {agent_id}: {e}")
+        
         @pc.on("track")
         async def on_track(track):
             print(f"Received {track.kind} track from {agent_id}")
             if agent_id not in WEBRTC_STREAMS:
                 WEBRTC_STREAMS[agent_id] = {}
-            WEBRTC_STREAMS[agent_id][track.kind] = track
+            if track.kind not in WEBRTC_STREAMS[agent_id]:
+                WEBRTC_STREAMS[agent_id][track.kind] = []
+            try:
+                WEBRTC_STREAMS[agent_id][track.kind].append(track)
+            except Exception:
+                WEBRTC_STREAMS[agent_id][track.kind] = [track]
             
             # Forward track to all viewers of this agent
             for viewer_id, viewer_data in WEBRTC_VIEWERS.items():
                 if viewer_data['agent_id'] == agent_id:
                     try:
                         sender = viewer_data['pc'].addTrack(track)
-                        viewer_data['streams'][track.kind] = sender
+                        if track.kind not in viewer_data['streams']:
+                            viewer_data['streams'][track.kind] = []
+                        viewer_data['streams'][track.kind].append(sender)
                     except Exception as e:
                         print(f"Error forwarding track to viewer {viewer_id}: {e}")
         
@@ -4191,7 +4210,7 @@ def handle_agent_telemetry(data):
 def handle_webrtc_offer(data):
     """Handle WebRTC offer from agent"""
     agent_id = data.get('agent_id')
-    offer_sdp = data.get('offer')
+    offer_sdp = data.get('offer') or data.get('offer_sdp')
     
     if not agent_id or not offer_sdp:
         emit('webrtc_error', {'message': 'Invalid offer data'}, room=request.sid)
@@ -4255,6 +4274,7 @@ def handle_answer_created(future, agent_id, sid):
         # Send answer back to agent
         socketio.emit('webrtc_answer', {
             'answer': answer.sdp,
+            'sdp': answer.sdp,
             'type': answer.type
         }, room=sid)
         
@@ -4270,6 +4290,7 @@ def handle_answer_created_sync(answer, agent_id, sid):
         # Send answer back to agent
         socketio.emit('webrtc_answer', {
             'answer': answer.sdp,
+            'sdp': answer.sdp,
             'type': answer.type
         }, room=sid)
         
@@ -4427,10 +4448,17 @@ def handle_webrtc_viewer_connect(data):
         
         # Add existing tracks from agent
         agent_streams = WEBRTC_STREAMS[agent_id]
-        for track_kind, track in agent_streams.items():
+        for track_kind, tracks in agent_streams.items():
             try:
-                sender = viewer_pc.addTrack(track)
-                WEBRTC_VIEWERS[viewer_id]['streams'][track_kind] = sender
+                if isinstance(tracks, list):
+                    for t in tracks:
+                        sender = viewer_pc.addTrack(t)
+                        if track_kind not in WEBRTC_VIEWERS[viewer_id]['streams']:
+                            WEBRTC_VIEWERS[viewer_id]['streams'][track_kind] = []
+                        WEBRTC_VIEWERS[viewer_id]['streams'][track_kind].append(sender)
+                else:
+                    sender = viewer_pc.addTrack(tracks)
+                    WEBRTC_VIEWERS[viewer_id]['streams'][track_kind] = [sender]
             except Exception as e:
                 print(f"Error adding track {track_kind} to viewer {viewer_id}: {e}")
         
@@ -4542,6 +4570,28 @@ def handle_webrtc_viewer_answer(data):
         
     except Exception as e:
         print(f"Error setting viewer answer for {viewer_id}: {e}")
+
+@socketio.on('webrtc_viewer_ice_candidate')
+def handle_webrtc_viewer_ice_candidate(data):
+    """Handle ICE candidate from viewer"""
+    viewer_id = request.sid
+    candidate = data.get('candidate')
+    
+    if not candidate or viewer_id not in WEBRTC_VIEWERS:
+        return
+    
+    try:
+        viewer_pc = WEBRTC_VIEWERS[viewer_id]['pc']
+        try:
+            loop = asyncio.get_event_loop()
+            asyncio.run_coroutine_threadsafe(viewer_pc.addIceCandidate(candidate), loop)
+        except RuntimeError:
+            async def add_ice():
+                await viewer_pc.addIceCandidate(candidate)
+            asyncio.run(add_ice())
+        print(f"Viewer ICE candidate added for {viewer_id}")
+    except Exception as e:
+        print(f"Error adding viewer ICE candidate for {viewer_id}: {e}")
 
 @socketio.on('webrtc_viewer_disconnect')
 def handle_webrtc_viewer_disconnect():

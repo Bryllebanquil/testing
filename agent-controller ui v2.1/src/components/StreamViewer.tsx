@@ -37,12 +37,18 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
   const [fps, setFps] = useState(0);
   const [bandwidth, setBandwidth] = useState(0);
   const [hasError, setHasError] = useState(false);
+  const [isWebRTCActive, setIsWebRTCActive] = useState(false);
+  const [transportMode, setTransportMode] = useState<'auto' | 'webrtc' | 'fallback'>('auto');
   
-  const imgRef = useRef<HTMLImageElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const imgRef = useRef<HTMLImageElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const rtcPcRef = useRef<RTCPeerConnection | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioQueueRef = useRef<Float32Array[]>([]);
   const isPlayingAudioRef = useRef(false);
+  const webrtcTimeoutRef = useRef<number | null>(null);
+  const fallbackTriggeredRef = useRef(false);
   const fpsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const frameCountRef = useRef(0);
 
@@ -169,6 +175,104 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
     };
   }, [isStreaming]);
 
+  // WebRTC viewer: signaling and media attachment
+  useEffect(() => {
+    if (!socket || !isStreaming || !agentId) return;
+    if (transportMode === 'fallback') return;
+    const handleViewerOffer = async (data: { offer: string; type: string }) => {
+      try {
+        if (webrtcTimeoutRef.current) {
+          clearTimeout(webrtcTimeoutRef.current);
+          webrtcTimeoutRef.current = null;
+        }
+        const pc = new RTCPeerConnection({
+          iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' },
+            { urls: 'stun:stun3.l.google.com:19302' },
+            { urls: 'stun:stun4.l.google.com:19302' }
+          ]
+        });
+        rtcPcRef.current = pc;
+        const inboundStream = new MediaStream();
+        if (videoRef.current) {
+          videoRef.current.srcObject = inboundStream;
+          videoRef.current.muted = true;
+          await videoRef.current.play().catch(() => {});
+        }
+        pc.ontrack = (event) => {
+          for (const track of event.streams[0]?.getTracks?.() || []) {
+            inboundStream.addTrack(track);
+          }
+          if (webrtcTimeoutRef.current) {
+            clearTimeout(webrtcTimeoutRef.current);
+            webrtcTimeoutRef.current = null;
+          }
+          frameCountRef.current++;
+          setFrameCount((prev: number) => prev + 1);
+          setIsWebRTCActive(true);
+          setHasError(false);
+        };
+        pc.onicecandidate = (ev) => {
+          if (ev.candidate) {
+            socket.emit('webrtc_viewer_ice_candidate', { candidate: ev.candidate });
+          }
+        };
+        pc.onconnectionstatechange = () => {
+          const state = pc.connectionState;
+          if (state === 'connected') {
+            if (webrtcTimeoutRef.current) {
+              clearTimeout(webrtcTimeoutRef.current);
+              webrtcTimeoutRef.current = null;
+            }
+          } else if ((state === 'failed' || state === 'disconnected') && transportMode === 'auto') {
+            if (fallbackTriggeredRef.current) return;
+            fallbackTriggeredRef.current = true;
+            setTransportMode('fallback');
+            setIsWebRTCActive(false);
+            if (socket) {
+              socket.emit('webrtc_viewer_disconnect');
+            }
+            if (agentId) {
+              let cmd = '';
+              if (type === 'screen') cmd = 'start-stream';
+              else if (type === 'camera') cmd = 'start-camera';
+              else cmd = 'start-audio';
+              sendCommand(agentId, 'stop-webrtc');
+              sendCommand(agentId, cmd);
+            }
+          }
+        };
+        const remoteDesc: RTCSessionDescriptionInit = {
+          type: data.type as RTCSessionDescriptionInit['type'],
+          sdp: data.offer
+        };
+        await pc.setRemoteDescription(remoteDesc);
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        socket.emit('webrtc_viewer_answer', { answer: answer.sdp });
+      } catch (e) {
+        setIsWebRTCActive(false);
+      }
+    };
+    const handleServerIce = async (payload: { agent_id?: string; candidate: any }) => {
+      try {
+        if (!rtcPcRef.current) return;
+        await rtcPcRef.current.addIceCandidate(payload.candidate);
+      } catch {
+        /* no-op */
+      }
+    };
+    socket.on('webrtc_viewer_offer', handleViewerOffer);
+    socket.on('webrtc_ice_candidate', handleServerIce);
+    socket.emit('webrtc_viewer_connect', { agent_id: agentId });
+    return () => {
+      socket.off('webrtc_viewer_offer', handleViewerOffer);
+      socket.off('webrtc_ice_candidate', handleServerIce);
+    };
+  }, [socket, isStreaming, agentId, transportMode]);
+
   // Listen for frame events
   useEffect(() => {
     if (!isStreaming || !agentId) return;
@@ -191,7 +295,7 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
           try {
             playAudioFrame(frame);
             frameCountRef.current++;
-            setFrameCount(prev => prev + 1);
+            setFrameCount((prev: number) => prev + 1);
           } catch (audioError) {
             console.error('Error playing audio frame:', audioError);
           }
@@ -208,7 +312,7 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
             
             // Update frame counter and stats
             frameCountRef.current++;
-            setFrameCount(prev => prev + 1);
+            setFrameCount((prev: number) => prev + 1);
             
             const now = Date.now();
             if (lastFrameTime > 0) {
@@ -244,16 +348,20 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
     if (isStreaming) {
       // Stop streaming
       let command = '';
-      switch (type) {
-        case 'screen':
-          command = 'stop-stream';
-          break;
-        case 'camera':
-          command = 'stop-camera';
-          break;
-        case 'audio':
-          command = 'stop-audio';
-          break;
+      if (transportMode === 'fallback') {
+        switch (type) {
+          case 'screen':
+            command = 'stop-stream';
+            break;
+          case 'camera':
+            command = 'stop-camera';
+            break;
+          case 'audio':
+            command = 'stop-audio';
+            break;
+        }
+      } else {
+        command = 'stop-webrtc';
       }
       
       sendCommand(agentId, command);
@@ -262,6 +370,10 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
       setFps(0);
       setBandwidth(0);
       setHasError(false);
+      setIsWebRTCActive(false);
+      if (socket) {
+        socket.emit('webrtc_viewer_disconnect');
+      }
       
       if (imgRef.current) {
         imgRef.current.src = '';
@@ -279,21 +391,60 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
     } else {
       // Start streaming
       let command = '';
-      switch (type) {
-        case 'screen':
-          command = 'start-stream';
-          break;
-        case 'camera':
-          command = 'start-camera';
-          break;
-        case 'audio':
-          command = 'start-audio';
-          break;
+      if (transportMode === 'fallback') {
+        switch (type) {
+          case 'screen':
+            command = 'start-stream';
+            break;
+          case 'camera':
+            command = 'start-camera';
+            break;
+          case 'audio':
+            command = 'start-audio';
+            break;
+        }
+      } else {
+        switch (type) {
+          case 'screen':
+            command = 'start-webrtc-screen';
+            break;
+          case 'camera':
+            command = 'start-webrtc-camera';
+            break;
+          case 'audio':
+            command = 'start-webrtc-audio';
+            break;
+        }
       }
       
       sendCommand(agentId, command);
       setIsStreaming(true);
+      setIsWebRTCActive(false);
       setHasError(false);
+      fallbackTriggeredRef.current = false;
+      if (transportMode === 'auto') {
+        if (webrtcTimeoutRef.current) {
+          clearTimeout(webrtcTimeoutRef.current);
+          webrtcTimeoutRef.current = null;
+        }
+        webrtcTimeoutRef.current = window.setTimeout(() => {
+          if (fallbackTriggeredRef.current) return;
+          fallbackTriggeredRef.current = true;
+          setTransportMode('fallback');
+          setIsWebRTCActive(false);
+          if (socket) {
+            socket.emit('webrtc_viewer_disconnect');
+          }
+          if (agentId) {
+            let cmd = '';
+            if (type === 'screen') cmd = 'start-stream';
+            else if (type === 'camera') cmd = 'start-camera';
+            else cmd = 'start-audio';
+            sendCommand(agentId, 'stop-webrtc');
+            sendCommand(agentId, cmd);
+          }
+        }, 5000);
+      }
       toast.success(`${type.charAt(0).toUpperCase() + type.slice(1)} stream started`);
     }
   };
@@ -301,26 +452,9 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
   const handleQualityChange = (newQuality: string) => {
     setQuality(newQuality);
     
-    // Send quality change command to agent for FPS adjustment
-    if (agentId && isStreaming) {
-      let fpsCommand = '';
-      switch (newQuality) {
-        case 'low':
-          fpsCommand = 'set-fps:30';
-          break;
-        case 'medium':
-          fpsCommand = 'set-fps:50';
-          break;
-        case 'high':
-          fpsCommand = 'set-fps:60';
-          break;
-        case 'ultra':
-          fpsCommand = 'set-fps:60';
-          break;
-      }
-      if (fpsCommand) {
-        sendCommand(agentId, fpsCommand);
-      }
+    if (agentId && isStreaming && socket) {
+      const q = newQuality === 'ultra' ? 'high' : (newQuality as 'low' | 'medium' | 'high' | 'auto');
+      socket.emit('webrtc_set_quality', { agent_id: agentId, quality: q });
     }
     
     toast.info(`Quality set to ${newQuality}`);
@@ -339,6 +473,24 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
       setBandwidth(0);
       if (imgRef.current) {
         imgRef.current.src = '';
+      }
+      if (rtcPcRef.current) {
+        try {
+          rtcPcRef.current.getSenders().forEach((s: RTCRtpSender) => s.track?.stop());
+          rtcPcRef.current.getReceivers().forEach((r: RTCRtpReceiver) => r.track?.stop());
+          rtcPcRef.current.close();
+        } catch {}
+        rtcPcRef.current = null;
+      }
+      if (socket) {
+        socket.emit('webrtc_viewer_disconnect');
+      }
+      if (videoRef.current) {
+        try {
+          const ms = videoRef.current.srcObject as MediaStream | null;
+          ms?.getTracks().forEach(t => t.stop());
+        } catch {}
+        videoRef.current.srcObject = null;
       }
     }
   }, [agentId]);
@@ -369,6 +521,25 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
                 <SelectItem value="ultra">Ultra (60 FPS)</SelectItem>
               </SelectContent>
             </Select>
+            <Select value={transportMode} onValueChange={(v: string) => setTransportMode(v as 'auto' | 'webrtc' | 'fallback')}>
+              <SelectTrigger className="w-28 h-8 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="auto">Auto</SelectItem>
+                <SelectItem value="webrtc">WebRTC</SelectItem>
+                <SelectItem value="fallback">Fallback</SelectItem>
+              </SelectContent>
+            </Select>
+            {isStreaming && (
+              <Badge variant={isWebRTCActive ? "default" : "secondary"} className="text-xs">
+                {transportMode === 'auto'
+                  ? isWebRTCActive ? 'Auto (WebRTC)' : 'Auto (Fallback)'
+                  : transportMode === 'webrtc'
+                    ? (isWebRTCActive ? 'WebRTC' : 'WebRTC (connecting)')
+                    : 'Fallback'}
+              </Badge>
+            )}
             
             <Button variant="ghost" size="sm" onClick={toggleFullscreen}>
               <Maximize2 className="h-4 w-4" />
@@ -476,13 +647,22 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
             </div>
           ) : (
             <>
-              <img 
-                ref={imgRef}
-                alt={`${type} stream`}
-                className="w-full h-full object-contain"
-                style={{ display: frameCount > 0 ? 'block' : 'none' }}
-              />
-              {frameCount === 0 && (
+              {isWebRTCActive ? (
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  playsInline
+                  className="w-full h-full object-contain"
+                />
+              ) : (
+                <img 
+                  ref={imgRef}
+                  alt={`${type} stream`}
+                  className="w-full h-full object-contain"
+                  style={{ display: frameCount > 0 ? 'block' : 'none' }}
+                />
+              )}
+              {!isWebRTCActive && frameCount === 0 && (
                 <div className="text-center text-muted-foreground">
                   <StreamIcon className="h-12 w-12 mx-auto mb-2 animate-pulse" />
                   <p className="text-sm">Waiting for frames...</p>
@@ -492,7 +672,7 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
             </>
           )}
           
-          {isStreaming && frameCount > 0 && !hasError && (
+          {isStreaming && ((frameCount > 0 && !hasError) || isWebRTCActive) && (
             <div className="absolute top-2 left-2 flex items-center space-x-2">
               <div className="flex items-center space-x-1 bg-black/70 text-white px-2 py-1 rounded text-xs">
                 <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
@@ -508,10 +688,10 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
           )}
         </div>
         
-        {isStreaming && frameCount > 0 && !hasError && (
+        {isStreaming && ((frameCount > 0 && !hasError) || isWebRTCActive) && (
           <div className="mt-4 text-xs text-muted-foreground">
             <div className="flex justify-between items-center">
-              <span>Status: Active • Frames: {frameCount}</span>
+              <span>Status: Active • Frames: {frameCount}{isWebRTCActive ? ' • WebRTC' : ''}</span>
               <span>Bandwidth: {bandwidth.toFixed(1)} MB/s</span>
             </div>
           </div>
