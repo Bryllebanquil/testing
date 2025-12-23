@@ -4817,7 +4817,12 @@ def handle_command_result(data):
     
     print(f"🔍 Controller: Processing command result for agent {agent_id}")
     print(f"🔍 Controller: Command: {command}")
-    print(f"🔍 Controller: Output length: {len(output)}")
+    try:
+        safe_output = output if isinstance(output, str) else (output.decode(errors='replace') if isinstance(output, (bytes, bytearray)) else str(output))
+        print(f"🔍 Controller: Output length: {len(safe_output)}")
+    except Exception as e:
+        print(f"🔍 Controller: Output length calc error: {e}")
+        safe_output = str(output)
     print(f"🔍 Controller: Agent exists in AGENTS_DATA: {agent_id in AGENTS_DATA}")
     
     # Broadcast command result to operators
@@ -4825,7 +4830,7 @@ def handle_command_result(data):
         'agent_id': agent_id,
         'execution_id': execution_id,
         'command': command,
-        'output': output,
+        'output': safe_output,
         'formatted_text': data.get('formatted_text'),
         'prompt': data.get('prompt'),
         'terminal_type': data.get('terminal_type'),
