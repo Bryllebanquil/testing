@@ -133,9 +133,15 @@ export interface StreamSource {
 // API Client Class
 class ApiClient {
   private baseUrl: string;
+  private inflight: Map<string, Promise<ApiResponse<any>>>;
+  private controllers: Map<string, AbortController>;
+  private cache: Map<string, { expires: number; value: ApiResponse<any> }>;
 
   constructor(baseUrl: string = API_BASE_URL) {
     this.baseUrl = baseUrl;
+    this.inflight = new Map();
+    this.controllers = new Map();
+    this.cache = new Map();
   }
 
   private async request<T>(
@@ -145,35 +151,75 @@ class ApiClient {
     const url = `${this.baseUrl}${endpoint}`;
     
     const defaultOptions: RequestInit = {
-      credentials: 'include', // Include cookies for session management
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
         ...options.headers,
       },
     };
 
-    try {
-      const response = await fetch(url, { ...defaultOptions, ...options });
-      const data = await response.json();
-
-      if (!response.ok) {
+    const method = String(options.method || 'GET').toUpperCase();
+    const bodyStr = typeof options.body === 'string' ? options.body : '';
+    const key = `${method}:${endpoint}:${method === 'GET' ? '' : bodyStr.slice(0, 512)}`;
+    const now = Date.now();
+    const ttl = method === 'GET' ? 1000 : 0;
+    const cached = method === 'GET' ? this.cache.get(key) : undefined;
+    if (cached && cached.expires > now) {
+      return cached.value as ApiResponse<T>;
+    }
+    const existing = this.inflight.get(key);
+    if (existing) {
+      return existing as Promise<ApiResponse<T>>;
+    }
+    const controller = new AbortController();
+    const merged: RequestInit = { ...defaultOptions, ...options, signal: controller.signal };
+    const p = (async () => {
+      try {
+        const response = await fetch(url, merged);
+        let data: any = null;
+        try {
+          data = await response.json();
+        } catch {
+          data = null;
+        }
+        if (!response.ok) {
+          const fail = {
+            success: false,
+            error: (data && data.error) ? data.error : `HTTP ${response.status}`,
+          } as ApiResponse<T>;
+          return fail;
+        }
+        const ok = {
+          success: true,
+          data,
+        } as ApiResponse<T>;
+        if (ttl > 0) {
+          this.cache.set(key, { expires: now + ttl, value: ok });
+        }
+        return ok;
+      } catch (error: any) {
         return {
           success: false,
-          error: data.error || `HTTP ${response.status}`,
-        };
+          error: error?.message || 'Network error',
+        } as ApiResponse<T>;
+      } finally {
+        this.inflight.delete(key);
+        this.controllers.delete(key);
       }
-
-      return {
-        success: true,
-        data,
-      };
-    } catch (error) {
-      console.error('API request failed:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Network error',
-      };
+    })();
+    this.inflight.set(key, p);
+    this.controllers.set(key, controller);
+    return p;
+  }
+  
+  cancelAll(): void {
+    for (const [, controller] of this.controllers) {
+      try {
+        controller.abort();
+      } catch {}
     }
+    this.controllers.clear();
+    this.inflight.clear();
   }
 
   // Authentication Methods

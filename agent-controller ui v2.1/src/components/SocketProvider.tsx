@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
 import apiClient from '../services/api';
 
@@ -128,6 +128,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [commandOutput, setCommandOutput] = useState<string[]>([]);
   const [agentMetrics, setAgentMetrics] = useState<Record<string, { cpu: number; memory: number; network: number }>>({});
+  const lastEmitRef = useRef<Record<string, number>>({});
 
   const addCommandOutput = useCallback((output: string) => {
     console.log('🔍 SocketProvider: addCommandOutput called with:', output);
@@ -167,8 +168,11 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
         transports: ['websocket', 'polling'],
         timeout: 20000,
         reconnection: true,
-        reconnectionAttempts: 5,
+        reconnectionAttempts: 20,
         reconnectionDelay: 1000,
+        reconnectionDelayMax: 10000,
+        randomizationFactor: 0.5,
+        autoConnect: true,
       });
 
       setSocket(socketInstance);
@@ -210,6 +214,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       setConnected(false);
       console.log('Disconnected from Neural Control Hub:', reason);
       addCommandOutput(`Disconnected: ${reason}`);
+      try { apiClient.cancelAll(); } catch {}
     });
 
     socketInstance.on('connect_error', (error) => {
@@ -543,6 +548,14 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     }
     
     try {
+      const base = command.includes(':') ? command.split(':')[0] : command;
+      const key = `${agentId}:${base}`;
+      const now = Date.now();
+      const last = lastEmitRef.current[key] || 0;
+      if (now - last < 300) {
+        return;
+      }
+      lastEmitRef.current[key] = now;
       const commandData = { agent_id: agentId, command };
       console.log('🔍 SocketProvider: Emitting execute_command:', commandData);
       socket.emit('execute_command', commandData);
@@ -568,6 +581,13 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
           command = 'start-audio';
           break;
       }
+      const k = `${agentId}:stream:${type}:start`;
+      const now = Date.now();
+      const last = lastEmitRef.current[k] || 0;
+      if (now - last < 800) {
+        return;
+      }
+      lastEmitRef.current[k] = now;
       socket.emit('execute_command', { agent_id: agentId, command });
       addCommandOutput(`Starting ${type} stream for ${agentId}`);
     }
@@ -587,6 +607,13 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
           command = 'stop-audio';
           break;
       }
+      const k = `${agentId}:stream:${type}:stop`;
+      const now = Date.now();
+      const last = lastEmitRef.current[k] || 0;
+      if (now - last < 800) {
+        return;
+      }
+      lastEmitRef.current[k] = now;
       socket.emit('execute_command', { agent_id: agentId, command });
       addCommandOutput(`Stopping ${type} stream for ${agentId}`);
     }
