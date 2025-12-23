@@ -54,7 +54,26 @@
       outDir: 'build',
       rollupOptions: {
         output: {
-          inlineDynamicImports: true,
+          manualChunks: {
+            react: ['react', 'react-dom'],
+            socket: ['socket.io-client'],
+            charts: ['recharts'],
+            ui: [
+              'lucide-react',
+              'sonner',
+              '@radix-ui/react-select',
+              '@radix-ui/react-dialog',
+              '@radix-ui/react-tooltip',
+              '@radix-ui/react-tabs',
+              'class-variance-authority',
+              'cmdk',
+              'vaul',
+              'react-resizable-panels',
+              'react-day-picker',
+              'react-hook-form',
+            ],
+            carousel: ['embla-carousel-react'],
+          },
         },
       },
     },

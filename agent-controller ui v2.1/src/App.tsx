@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { useSocket } from "./components/SocketProvider";
+import { useState, useEffect, lazy, Suspense } from "react";
+ import { useSocket } from "./components/SocketProvider";
 import { AgentCard } from "./components/AgentCard";
 import { StreamViewer } from "./components/StreamViewer";
 import { CommandPanel } from "./components/CommandPanel";
@@ -9,16 +9,26 @@ import { Header } from "./components/Header";
 import { Sidebar } from "./components/Sidebar";
 import { SearchAndFilter } from "./components/SearchAndFilter";
 import { ActivityFeed } from "./components/ActivityFeed";
-import { QuickActions } from "./components/QuickActions";
-import { Settings } from "./components/Settings";
-import { About } from "./components/About";
-import { WebRTCMonitoring } from "./components/WebRTCMonitoring";
-import { VoiceControl } from "./components/VoiceControl";
-import { ProcessManager } from "./components/ProcessManager";
-import { VideoPlayer } from "./components/VideoPlayer";
-import { ThemeProvider } from "./components/ThemeProvider";
-import { ErrorBoundary } from "./components/ErrorBoundary";
-import { Login } from "./components/Login";
+ import { QuickActions } from "./components/QuickActions";
+ const SettingsLazy = lazy(() =>
+   import("./components/Settings").then((mod) => ({ default: mod.Settings }))
+ );
+ const AboutLazy = lazy(() =>
+   import("./components/About").then((mod) => ({ default: mod.About }))
+ );
+ const WebRTCMonitoringLazy = lazy(() =>
+   import("./components/WebRTCMonitoring").then((mod) => ({ default: mod.WebRTCMonitoring }))
+ );
+ import { VoiceControl } from "./components/VoiceControl";
+ const ProcessManagerLazy = lazy(() =>
+   import("./components/ProcessManager").then((mod) => ({ default: mod.ProcessManager }))
+ );
+ const VideoPlayerLazy = lazy(() =>
+   import("./components/VideoPlayer").then((mod) => ({ default: mod.VideoPlayer }))
+ );
+ import { ThemeProvider } from "./components/ThemeProvider";
+ import { ErrorBoundary } from "./components/ErrorBoundary";
+ import { Login } from "./components/Login";
 import {
   Tabs,
   TabsContent,
@@ -406,11 +416,10 @@ function AppContent() {
                   </div>
                 </TabsContent>
 
-                <TabsContent
-                  value="videos"
-                  className="space-y-6"
-                >
-                  <VideoPlayer />
+                <TabsContent value="videos" className="space-y-6">
+                  <Suspense fallback={<div className="text-sm text-muted-foreground p-4">Loading videos…</div>}>
+                    <VideoPlayerLazy />
+                  </Suspense>
                 </TabsContent>
 
                 <TabsContent
@@ -426,10 +435,12 @@ function AppContent() {
                       <CommandPanel agentId={selectedAgent} />
                     </TabsContent>
                     <TabsContent value="processes">
-                      <ProcessManager 
-                        agentId={selectedAgent} 
-                        isConnected={onlineAgents.length > 0}
-                      />
+                      <Suspense fallback={<div className="text-sm text-muted-foreground p-4">Loading processes…</div>}>
+                        <ProcessManagerLazy
+                          agentId={selectedAgent}
+                          isConnected={onlineAgents.length > 0}
+                        />
+                      </Suspense>
                     </TabsContent>
                   </Tabs>
                 </TabsContent>
@@ -495,20 +506,27 @@ function AppContent() {
                   </div>
                 </TabsContent>
 
-                <TabsContent
-                  value="webrtc"
-                  className="space-y-6"
-                >
-                  <WebRTCMonitoring selectedAgent={selectedAgent} />
+                <TabsContent value="webrtc" className="space-y-6">
+                  <Suspense fallback={<div className="text-sm text-muted-foreground p-4">Loading WebRTC monitoring…</div>}>
+                    <WebRTCMonitoringLazy selectedAgent={selectedAgent} />
+                  </Suspense>
                 </TabsContent>
               </Tabs>
             )}
 
             {/* Settings Page */}
-            {activeTab === "settings" && <Settings />}
+            {activeTab === "settings" && (
+              <Suspense fallback={<div className="text-sm text-muted-foreground p-4">Loading settings…</div>}>
+                <SettingsLazy />
+              </Suspense>
+            )}
 
             {/* About Page */}
-            {activeTab === "about" && <About />}
+            {activeTab === "about" && (
+              <Suspense fallback={<div className="text-sm text-muted-foreground p-4">Loading about…</div>}>
+                <AboutLazy />
+              </Suspense>
+            )}
               </div>
             </ErrorBoundary>
           </main>
