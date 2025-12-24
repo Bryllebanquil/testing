@@ -99,6 +99,7 @@ export function FileManager({ agentId }: FileManagerProps) {
   const currentPathRef = useRef<string>('/');
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const previewVideoRef = useRef<HTMLVideoElement | null>(null);
+  const lastRefreshRef = useRef<number>(0);
 
   const filteredFiles = files.filter(file => 
     file.name.toLowerCase().includes(searchTerm.toLowerCase())
@@ -319,6 +320,12 @@ export function FileManager({ agentId }: FileManagerProps) {
     const url = kind === 'video' ? makeStreamFastUrl(item.path) : makeStreamUrl(item.path);
     setPreviewUrl(url);
   }, [previewOpen, previewIndex, previewItems, agentId]);
+
+  useEffect(() => {
+    if (!agentId || !socket) return;
+    const reqPath = currentPathRef.current || '/';
+    socket.emit('execute_command', { agent_id: agentId, command: `list-dir:${reqPath}` });
+  }, [agentId, socket]);
 
   useEffect(() => {
     if (previewOpen) return;
@@ -626,6 +633,11 @@ export function FileManager({ agentId }: FileManagerProps) {
                                   }
                                 } else {
                                   handleFileSelect(file.path);
+                                }
+                                const now = Date.now();
+                                if (now - (lastRefreshRef.current || 0) > 700) {
+                                  lastRefreshRef.current = now;
+                                  handleRefresh();
                                 }
                               }
                             }}
