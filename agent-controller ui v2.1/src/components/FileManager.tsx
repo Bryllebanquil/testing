@@ -308,6 +308,7 @@ export function FileManager({ agentId }: FileManagerProps) {
     const kind = getPreviewKind(ext);
     setPreviewKind(kind);
     setPreviewErrorCount(0);
+    setPreviewUrl(null);
     if (kind === 'video' && previewVideoRef.current) {
       try {
         previewVideoRef.current.pause();
@@ -498,7 +499,7 @@ export function FileManager({ agentId }: FileManagerProps) {
                         <img src={previewUrl} className="max-w-full max-h-full object-contain" />
                       )}
                       {previewUrl && previewKind === 'video' && (
-                        <video ref={previewVideoRef} className="w-full h-full" controls playsInline preload="metadata" onError={() => {
+                        <video key={`${previewItems[previewIndex]?.path || ''}:${previewErrorCount}`} ref={previewVideoRef} className="w-full h-full" controls playsInline preload="metadata" onError={() => {
                           if (previewItems[previewIndex] && previewErrorCount === 0) {
                             setPreviewErrorCount(1);
                             setPreviewUrl(makeStreamUrl(previewItems[previewIndex].path));
@@ -623,10 +624,8 @@ export function FileManager({ agentId }: FileManagerProps) {
                                   } else {
                                     handleFileSelect(file.path);
                                   }
-                                  setSearchTerm('');
                                 } else {
                                   handleFileSelect(file.path);
-                                  setSearchTerm('');
                                 }
                               }
                             }}
