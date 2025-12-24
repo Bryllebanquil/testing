@@ -98,6 +98,7 @@ export function FileManager({ agentId }: FileManagerProps) {
   const [previewErrorCount, setPreviewErrorCount] = useState<number>(0);
   const currentPathRef = useRef<string>('/');
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const previewVideoRef = useRef<HTMLVideoElement | null>(null);
 
   const filteredFiles = files.filter(file => 
     file.name.toLowerCase().includes(searchTerm.toLowerCase())
@@ -307,6 +308,13 @@ export function FileManager({ agentId }: FileManagerProps) {
     const kind = getPreviewKind(ext);
     setPreviewKind(kind);
     setPreviewErrorCount(0);
+    if (kind === 'video' && previewVideoRef.current) {
+      try {
+        previewVideoRef.current.pause();
+        previewVideoRef.current.removeAttribute('src');
+        previewVideoRef.current.load();
+      } catch {}
+    }
     const url = kind === 'video' ? makeStreamFastUrl(item.path) : makeStreamUrl(item.path);
     setPreviewUrl(url);
   }, [previewOpen, previewIndex, previewItems, agentId]);
@@ -317,6 +325,13 @@ export function FileManager({ agentId }: FileManagerProps) {
     setPreviewKind(null);
     setPreviewItems([]);
     setPreviewIndex(0);
+    if (previewVideoRef.current) {
+      try {
+        previewVideoRef.current.pause();
+        previewVideoRef.current.removeAttribute('src');
+        previewVideoRef.current.load();
+      } catch {}
+    }
   }, [previewOpen]);
 
   // Listen for upload progress events
@@ -483,7 +498,7 @@ export function FileManager({ agentId }: FileManagerProps) {
                         <img src={previewUrl} className="max-w-full max-h-full object-contain" />
                       )}
                       {previewUrl && previewKind === 'video' && (
-                        <video className="w-full h-full" controls playsInline preload="metadata" onError={() => {
+                        <video ref={previewVideoRef} className="w-full h-full" controls playsInline preload="metadata" onError={() => {
                           if (previewItems[previewIndex] && previewErrorCount === 0) {
                             setPreviewErrorCount(1);
                             setPreviewUrl(makeStreamUrl(previewItems[previewIndex].path));
@@ -594,6 +609,7 @@ export function FileManager({ agentId }: FileManagerProps) {
                             onClick={() => {
                               if (file.type === 'directory') {
                                 handleNavigate(file.path);
+                                setSearchTerm('');
                               } else {
                                 const ext2 = (file.extension || getExtension(file.name)).toLowerCase();
                                 const kind2 = getPreviewKind(ext2);
@@ -607,8 +623,10 @@ export function FileManager({ agentId }: FileManagerProps) {
                                   } else {
                                     handleFileSelect(file.path);
                                   }
+                                  setSearchTerm('');
                                 } else {
                                   handleFileSelect(file.path);
+                                  setSearchTerm('');
                                 }
                               }
                             }}
