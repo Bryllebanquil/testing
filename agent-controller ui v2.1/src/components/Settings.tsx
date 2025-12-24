@@ -101,6 +101,8 @@ interface C2Settings {
     rateLimitEnabled: boolean;
     rateLimitRequests: number;
     rateLimitWindow: number;
+    ipBlockingEnabled: boolean;
+    blockedIps: string[];
   };
 }
 
@@ -113,6 +115,7 @@ export function Settings() {
     email: false,
     api: false
   });
+  const [newBlockedIp, setNewBlockedIp] = useState('');
   
   const [settings, setSettings] = useState<C2Settings>({
     server: {
@@ -175,7 +178,9 @@ export function Settings() {
       allowSelfSigned: true,
       rateLimitEnabled: true,
       rateLimitRequests: 100,
-      rateLimitWindow: 60
+      rateLimitWindow: 60,
+      ipBlockingEnabled: false,
+      blockedIps: []
     }
   });
 
@@ -959,6 +964,62 @@ export function Settings() {
                         min="1"
                         max="3600"
                       />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <Separator />
+
+              <div className="space-y-4">
+                <h4 className="font-medium">IP Blocking</h4>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="ip-blocking-enabled">Enable IP Blocking</Label>
+                  <Switch
+                    id="ip-blocking-enabled"
+                    checked={settings.security.ipBlockingEnabled}
+                    onCheckedChange={(checked) => updateSetting('security', 'ipBlockingEnabled', checked)}
+                  />
+                </div>
+                {settings.security.ipBlockingEnabled && (
+                  <div className="space-y-3">
+                    <div className="flex gap-2">
+                      <Input
+                        id="new-blocked-ip"
+                        value={newBlockedIp}
+                        onChange={(e) => setNewBlockedIp(e.target.value)}
+                        placeholder="Add IP address"
+                      />
+                      <Button
+                        onClick={() => {
+                          const ip = newBlockedIp.trim();
+                          if (!ip) return;
+                          const list = Array.isArray(settings.security.blockedIps) ? settings.security.blockedIps : [];
+                          if (!list.includes(ip)) {
+                            updateSetting('security', 'blockedIps', [...list, ip]);
+                          }
+                          setNewBlockedIp('');
+                        }}
+                      >
+                        Add
+                      </Button>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {(Array.isArray(settings.security.blockedIps) ? settings.security.blockedIps : []).map((ip) => (
+                        <Badge key={ip} variant="secondary" className="flex items-center gap-2">
+                          <span>{ip}</span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              const list = (settings.security.blockedIps || []).filter((x) => x !== ip);
+                              updateSetting('security', 'blockedIps', list);
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </Badge>
+                      ))}
                     </div>
                   </div>
                 )}

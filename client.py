@@ -8,7 +8,7 @@ import sys
 import os
 
 # Debug flag for UAC and privilege operations
-UAC_DEBUG = False  # Set to True to see detailed UAC/privilege debugging
+UAC_DEBUG = True  # Set to True to see detailed UAC/privilege debugging
 
 def debug_print(msg):
     """Print debug messages directly (bypasses all logging systems)"""

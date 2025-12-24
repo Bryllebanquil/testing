@@ -168,7 +168,8 @@ DEFAULT_SETTINGS = {
         'rateLimitRequests': 100,
         'rateLimitWindow': 60,
         # Allow configuring additional CORS origins from UI
-        'frontendOrigins': []
+        'frontendOrigins': [],
+        'blocked_ips': []
     }
 }
 
@@ -1019,6 +1020,14 @@ def enhanced_webrtc_monitoring():
 # Session management and security tracking
 LOGIN_ATTEMPTS = {}  # Track failed login attempts by IP
 
+def get_client_ip():
+    xff = request.headers.get('X-Forwarded-For')
+    if xff:
+        ip = xff.split(',')[0].strip()
+        if ip:
+            return ip
+    return request.environ.get('REMOTE_ADDR', request.remote_addr) or '0.0.0.0'
+
 def is_authenticated():
     """Check if user is authenticated and session is valid"""
     print(f"Session check - authenticated: {session.get('authenticated', False)}")
@@ -1055,7 +1064,24 @@ def is_authenticated():
     return True
 
 def is_ip_blocked(ip):
-    """Check if IP is blocked due to too many failed login attempts"""
+    try:
+        s = load_settings().get('security', {})
+        blocked = s.get('blocked_ips') or []
+        if blocked:
+            import ipaddress
+            ip_obj = ipaddress.ip_address(ip)
+            for entry in blocked:
+                try:
+                    if '/' in entry:
+                        if ip_obj in ipaddress.ip_network(entry, strict=False):
+                            return True
+                    else:
+                        if ip_obj == ipaddress.ip_address(entry):
+                            return True
+                except Exception:
+                    continue
+    except Exception:
+        pass
     if ip in LOGIN_ATTEMPTS:
         attempts, last_attempt = LOGIN_ATTEMPTS[ip]
         if attempts >= Config.MAX_LOGIN_ATTEMPTS:
@@ -1092,11 +1118,13 @@ def require_auth(f):
 # Login route
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    client_ip = request.remote_addr
+    client_ip = get_client_ip()
     
     # Check if IP is blocked
     if is_ip_blocked(client_ip):
-        remaining_time = Config.LOGIN_TIMEOUT - (datetime.datetime.now() - LOGIN_ATTEMPTS[client_ip][1]).total_seconds()
+        remaining_time = Config.LOGIN_TIMEOUT
+        if client_ip in LOGIN_ATTEMPTS:
+            remaining_time = Config.LOGIN_TIMEOUT - (datetime.datetime.now() - LOGIN_ATTEMPTS[client_ip][1]).total_seconds()
         flash(f'Too many failed login attempts. Please try again in {int(remaining_time)} seconds.', 'error')
         return render_template_string('''
     <!DOCTYPE html>
@@ -1585,6 +1613,7 @@ def audio_feed_protected(agent_id):
 @require_auth
 def config_status():
     """Display current configuration status (for debugging)"""
+    s = load_settings().get('security', {})
     return jsonify({
         'admin_password_set': bool(Config.ADMIN_PASSWORD),
         'admin_password_length': len(Config.ADMIN_PASSWORD),
@@ -1596,6 +1625,7 @@ def config_status():
         'login_timeout': Config.LOGIN_TIMEOUT,
         'current_login_attempts': len(LOGIN_ATTEMPTS),
         'blocked_ips': [ip for ip, (attempts, _) in LOGIN_ATTEMPTS.items() if attempts >= Config.MAX_LOGIN_ATTEMPTS],
+        'blocked_ips_config_count': len(s.get('blocked_ips') or []),
         'password_hash_algorithm': 'PBKDF2-SHA256',
         'hash_iterations': Config.HASH_ITERATIONS,
         'salt_length': Config.SALT_LENGTH
@@ -2462,8 +2492,7 @@ def api_login():
     if not password:
         return jsonify({'error': 'Password is required'}), 400
     
-    # Check if IP is blocked
-    client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.environ.get('REMOTE_ADDR', '0.0.0.0'))
+    client_ip = get_client_ip()
     if is_ip_blocked(client_ip):
         return jsonify({'error': 'Too many failed attempts. Try again later.'}), 429
     
@@ -3410,6 +3439,49 @@ def get_settings():
 if LIMITER_AVAILABLE:
     pass
 
+@app.route('/api/security/blocked_ips', methods=['GET'])
+@require_auth
+def get_blocked_ips():
+    s = load_settings().get('security', {})
+    ips = s.get('blocked_ips') or []
+    return jsonify({'blocked_ips': ips, 'count': len(ips)})
+
+@app.route('/api/security/blocked_ips', methods=['POST'])
+@require_auth
+def update_blocked_ips():
+    if not request.is_json:
+        return jsonify({'error': 'JSON payload required'}), 400
+    incoming = request.json.get('blocked_ips')
+    if not isinstance(incoming, list):
+        return jsonify({'error': 'blocked_ips must be an array'}), 400
+    validated = []
+    try:
+        import ipaddress
+        for entry in incoming:
+            if not isinstance(entry, str):
+                continue
+            e = entry.strip()
+            if not e:
+                continue
+            try:
+                if '/' in e:
+                    ipaddress.ip_network(e, strict=False)
+                    validated.append(e)
+                else:
+                    ipaddress.ip_address(e)
+                    validated.append(e)
+            except Exception:
+                continue
+    except Exception:
+        pass
+    current = load_settings()
+    sec = current.get('security', {})
+    sec['blocked_ips'] = sorted(list(set(validated)))
+    current['security'] = sec
+    if not save_settings(current):
+        return jsonify({'success': False, 'message': 'Failed to save settings'}), 500
+    return jsonify({'success': True, 'blocked_ips': sec['blocked_ips'], 'count': len(sec['blocked_ips'])})
+
 @app.route('/api/settings', methods=['POST'])
 @require_auth
 def update_settings():
@@ -3704,6 +3776,11 @@ def handle_agent_connect(data):
             print("Agent connection attempt without agent_id")
             return
         
+        ip_for_check = request.headers.get('X-Forwarded-For', request.environ.get('REMOTE_ADDR', '0.0.0.0'))
+        if ip_for_check and is_ip_blocked(ip_for_check.split(',')[0].strip()):
+            emit('registration_error', {'message': 'Blocked IP'}, room=request.sid)
+            return
+        
         # Store agent information
         # Create agent entry if it doesn't exist
         if agent_id not in AGENTS_DATA:
@@ -3846,6 +3923,11 @@ def handle_agent_register(data):
         
         if not agent_id:
             emit('registration_error', {'message': 'Agent ID required'})
+            return
+        
+        ip_for_check = request.headers.get('X-Forwarded-For', request.environ.get('REMOTE_ADDR', '0.0.0.0'))
+        if ip_for_check and is_ip_blocked(ip_for_check.split(',')[0].strip()):
+            emit('registration_error', {'message': 'Blocked IP'})
             return
         
         # Add agent to data with all required fields for dashboard

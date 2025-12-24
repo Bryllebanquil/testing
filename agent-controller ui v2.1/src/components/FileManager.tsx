@@ -92,7 +92,7 @@ export function FileManager({ agentId }: FileManagerProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [previewKind, setPreviewKind] = useState<'image' | 'video' | 'pdf' | null>(null);
+  const [previewKind, setPreviewKind] = useState<'image' | 'video' | 'pdf' | 'ppt' | 'gif' | null>(null);
   const [previewItems, setPreviewItems] = useState<FileItem[]>([]);
   const [previewIndex, setPreviewIndex] = useState<number>(0);
   const [previewErrorCount, setPreviewErrorCount] = useState<number>(0);
@@ -153,12 +153,14 @@ export function FileManager({ agentId }: FileManagerProps) {
     return idx >= 0 ? name.slice(idx + 1).toLowerCase() : '';
   };
 
-  const getPreviewKind = (ext: string): 'image' | 'video' | 'pdf' | null => {
+  const getPreviewKind = (ext: string): 'image' | 'video' | 'pdf' | 'ppt' | null => {
     const image = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg']);
     const video = new Set(['mp4', 'webm', 'mov', 'mkv', 'avi', 'm4v']);
+    const office = new Set(['ppt', 'pptx']);
     if (ext === 'pdf') return 'pdf';
     if (image.has(ext)) return 'image';
     if (video.has(ext)) return 'video';
+    if (office.has(ext)) return 'ppt';
     return null;
   };
 
@@ -517,6 +519,15 @@ export function FileManager({ agentId }: FileManagerProps) {
                       )}
                       {previewUrl && previewKind === 'pdf' && (
                         <iframe src={previewUrl} className="w-full h-full" title="PDF Preview" />
+                      )}
+                      {previewKind === 'ppt' && (
+                        <div className="flex flex-col items-center gap-2 text-sm text-muted-foreground">
+                          <div>Preview not available for PowerPoint files</div>
+                          <Button size="sm" onClick={handleDownload}>
+                            <Download className="h-3 w-3 mr-1" />
+                            Download
+                          </Button>
+                        </div>
                       )}
                       {!previewUrl && (
                         <div className="text-sm text-muted-foreground">Loading preview…</div>
