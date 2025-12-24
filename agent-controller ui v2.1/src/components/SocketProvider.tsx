@@ -339,9 +339,15 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       window.dispatchEvent(event);
     });
 
-    socketInstance.on('audio_frame', (data: { agent_id: string; frame: string }) => {
+    socketInstance.on('audio_frame', (data: { agent_id: string; frame: any }) => {
       console.log('🎤 SocketProvider: Received audio_frame from agent:', data.agent_id);
-      // Handle audio frame updates
+      try {
+        const f = data?.frame as any;
+        if (typeof f !== 'string' && f) {
+          const bytes = f instanceof Uint8Array ? f : new Uint8Array(f);
+          data.frame = bytesToBase64(bytes);
+        }
+      } catch {}
       const event = new CustomEvent('audio_frame', { detail: data });
       window.dispatchEvent(event);
     });

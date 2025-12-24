@@ -75,15 +75,24 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
   };
 
   // Play audio frame using Web Audio API
-  const playAudioFrame = async (base64Data: string) => {
+  const playAudioFrame = async (payload: string | ArrayBuffer | Uint8Array) => {
     try {
       const audioContext = initAudioContext();
       
-      // Decode base64 to binary
-      const binaryString = atob(base64Data);
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
+      // Normalize payload to Uint8Array
+      let bytes: Uint8Array;
+      if (typeof payload === 'string') {
+        const binaryString = atob(payload);
+        bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+      } else if (payload instanceof Uint8Array) {
+        bytes = payload;
+      } else if (payload instanceof ArrayBuffer) {
+        bytes = new Uint8Array(payload);
+      } else {
+        return;
       }
       
       // For PCM audio (16-bit samples)
@@ -198,13 +207,20 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
         const inboundStream = new MediaStream();
         if (videoRef.current) {
           videoRef.current.srcObject = inboundStream;
-          videoRef.current.muted = true;
+          videoRef.current.muted = isMuted;
           await videoRef.current.play().catch(() => {});
         }
         pc.ontrack = (event) => {
           for (const track of event.streams[0]?.getTracks?.() || []) {
             inboundStream.addTrack(track);
           }
+          try {
+            const hasAudio = !!event.streams[0]?.getAudioTracks?.()?.length;
+            if (hasAudio && videoRef.current) {
+              videoRef.current.muted = isMuted;
+              videoRef.current.play().catch(() => {});
+            }
+          } catch {}
           if (webrtcTimeoutRef.current) {
             clearTimeout(webrtcTimeoutRef.current);
             webrtcTimeoutRef.current = null;
@@ -346,13 +362,31 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
         setHasError(true);
       }
     };
-
     window.addEventListener(eventName, handleFrame);
 
     return () => {
       window.removeEventListener(eventName, handleFrame);
     };
   }, [isStreaming, agentId, type, lastFrameTime]);
+
+  // Also listen for audio frames when viewing screen/camera in fallback mode
+  useEffect(() => {
+    if (!isStreaming || !agentId) return;
+    if (!(type === 'screen' || type === 'camera')) return;
+    const handleAudioFrame = (event: any) => {
+      const data = event.detail;
+      if (data.agent_id !== agentId) return;
+      try {
+        playAudioFrame(data.frame);
+        frameCountRef.current++;
+        setFrameCount((prev: number) => prev + 1);
+      } catch {}
+    };
+    window.addEventListener('audio_frame', handleAudioFrame);
+    return () => {
+      window.removeEventListener('audio_frame', handleAudioFrame);
+    };
+  }, [isStreaming, agentId, type]);
 
   const handleStartStop = () => {
     if (!agentId) {
@@ -595,11 +629,23 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
               onClick={() => {
                 setIsMuted(!isMuted);
                 // Mute/unmute audio context if it's an audio stream
-                if (type === 'audio' && audioContextRef.current) {
-                  if (!isMuted) {
-                    audioContextRef.current.suspend();
-                  } else {
-                    audioContextRef.current.resume();
+                if (type === 'audio') {
+                  if (audioContextRef.current) {
+                    if (!isMuted) {
+                      audioContextRef.current.suspend();
+                    } else {
+                      audioContextRef.current.resume();
+                    }
+                  }
+                } else {
+                  const video = videoRef.current;
+                  if (video) {
+                    if (!isMuted) {
+                      video.muted = true;
+                    } else {
+                      video.muted = false;
+                      video.play().catch(() => {});
+                    }
                   }
                 }
               }}
