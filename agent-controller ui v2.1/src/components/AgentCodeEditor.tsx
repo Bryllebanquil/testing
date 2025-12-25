@@ -8,7 +8,46 @@ import { ScrollArea } from "./ui/scroll-area";
 import { toast } from "sonner";
 import { useSocket } from "./SocketProvider";
 import { useTheme } from "./ThemeProvider";
-import Editor from "@monaco-editor/react";
+type MonacoEditorProps = {
+  height: string;
+  defaultLanguage: string;
+  theme: string;
+  value: string;
+  onChange: (v?: string) => void;
+  options?: Record<string, any>;
+};
+function MonacoEditor({ height, defaultLanguage, theme, value, onChange, options }: MonacoEditorProps) {
+  const [Editor, setEditor] = useState<any>(null);
+  useEffect(() => {
+    let mounted = true;
+    const MOD: any = "@monaco-editor/react";
+    import(MOD).then((mod) => {
+      if (mounted) setEditor(mod.default);
+    }).catch(() => {
+      setEditor(null);
+    });
+    return () => { mounted = false; };
+  }, []);
+  if (Editor) {
+    return (
+      <Editor
+        height={height}
+        defaultLanguage={defaultLanguage}
+        theme={theme}
+        value={value}
+        onChange={(v?: string) => onChange(v)}
+        options={options}
+      />
+    );
+  }
+  return (
+    <textarea
+      style={{ height, width: "100%" }}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+    />
+  );
+}
 
 type AgentCodeEditorProps = {
   open: boolean;
@@ -187,12 +226,12 @@ export function AgentCodeEditor({ open, onOpenChange, defaultAgentId = null }: A
             </TabsList>
             <TabsContent value="editor" className="space-y-2">
               <div className="border rounded">
-                <Editor
+                <MonacoEditor
                   height="520px"
                   defaultLanguage="python"
                   theme={monacoTheme}
                   value={code}
-                  onChange={(v) => setCode(v || "")}
+                  onChange={(v?: string) => setCode(v || "")}
                   options={{
                     fontSize: 13,
                     minimap: { enabled: false },
@@ -233,4 +272,3 @@ function CardLike({ title, children }: { title: string; children: React.ReactNod
     </div>
   );
 }
-
