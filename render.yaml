@@ -6,10 +6,12 @@ services:
     plan: free
     buildCommand: |
       pip install -r requirements-controller.txt
-      cd "agent-controller ui v2.1" && rm -rf build && npm install && npm run build && cd ..
+      cd "agent-controller ui v2.1" && rm -rf node_modules build && npm install --no-fund --no-audit --include=dev && node ./node_modules/vite/bin/vite.js build && cd ..
     startCommand: gunicorn -k eventlet -w 1 controller:app --bind 0.0.0.0:$PORT
     autoDeploy: true
     envVars:
+      - key: NPM_CONFIG_PRODUCTION
+        value: "false"
       - key: HOST
         value: 0.0.0.0
       - key: PORT
