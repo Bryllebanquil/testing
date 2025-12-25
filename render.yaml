@@ -6,7 +6,7 @@ services:
     plan: free
     buildCommand: |
       pip install -r requirements-controller.txt
-      cd "agent-controller ui v2.1" && rm -rf node_modules build && npm install --no-fund --no-audit --include=dev && node ./node_modules/vite/bin/vite.js build && cd ..
+      cd "agent-controller ui v2.1" && rm -rf node_modules build && rm -f package-lock.json && npm install --no-fund --no-audit --include=dev && node ./node_modules/vite/bin/vite.js build && cd ..
     startCommand: gunicorn -k eventlet -w 1 controller:app --bind 0.0.0.0:$PORT
     autoDeploy: true
     envVars:
