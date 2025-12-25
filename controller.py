@@ -1522,7 +1522,7 @@ def login():
             secret = auth.get('totpSecret')
             if not secret:
                 secret = pyotp.random_base32()
-                uri = pyotp.TOTP(secret).provisioning_uri(name='operator', issuer_name=issuer)
+                uri = pyotp.TOTP(secret).provisioning_uri(name='Authentication', issuer_name=issuer)
                 img = qrcode.make(uri)
                 buf = io.BytesIO()
                 img.save(buf, format='PNG')
@@ -1537,20 +1537,12 @@ def login():
             # Secret exists -> require OTP
             if not otp:
                 flash('OTP required. Please enter the 6-digit code.', 'error')
-                try:
-                    uri = pyotp.TOTP(secret).provisioning_uri(name='operator', issuer_name=issuer)
-                    img = qrcode.make(uri)
-                    buf = io.BytesIO()
-                    img.save(buf, format='PNG')
-                    qr_b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
-                except Exception:
-                    qr_b64 = None
-                return render_template_string(login_template, qr_b64=qr_b64, secret=secret, require_totp=True, enrolled=True, issuer=issuer)
+                return render_template_string(login_template, qr_b64=None, secret=None, require_totp=True, enrolled=True, issuer=issuer)
             totp = pyotp.TOTP(secret)
             if not totp.verify(str(otp), valid_window=1):
                 record_failed_login(client_ip)
                 flash('Invalid OTP. Please try again.', 'error')
-                return render_template_string(login_template, qr_b64=None, secret=secret, require_totp=True, enrolled=True, issuer=issuer)
+                return render_template_string(login_template, qr_b64=None, secret=None, require_totp=True, enrolled=True, issuer=issuer)
             # Successful password + OTP
             clear_login_attempts(client_ip)
             session['authenticated'] = True
@@ -1569,17 +1561,7 @@ def login():
             else:
                 flash(f'Too many failed attempts. Please wait {Config.LOGIN_TIMEOUT} seconds.', 'error')
     
-    # If two-factor enabled and enrolled, pre-render QR to assist setup
-    try:
-        if require_totp and secret:
-            uri = pyotp.TOTP(secret).provisioning_uri(name='operator', issuer_name=issuer)
-            img = qrcode.make(uri)
-            buf = io.BytesIO()
-            img.save(buf, format='PNG')
-            qr_b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
-    except Exception:
-        qr_b64 = None
-    return render_template_string(login_template, qr_b64=qr_b64, secret=secret, require_totp=require_totp, enrolled=enrolled, issuer=issuer)
+    return render_template_string(login_template, qr_b64=None, secret=None, require_totp=require_totp, enrolled=enrolled, issuer=issuer)
 
 # Logout route
 @app.route('/logout')
