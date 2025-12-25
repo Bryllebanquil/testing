@@ -681,7 +681,8 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       socket.emit('download_file', {
         agent_id: agentId,
         filename,
-        download_id: downloadId
+        download_id: downloadId,
+        path: filename
       });
       addCommandOutput(`Previewing ${filename} from ${agentId}`);
     }

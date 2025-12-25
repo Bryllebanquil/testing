@@ -4045,6 +4045,7 @@ def handle_download_file(data):
     agent_id = data.get('agent_id')
     filename = data.get('filename')
     local_path = data.get('local_path')
+    path = data.get('path') or filename
     download_id = data.get('download_id') or filename
     agent_sid = AGENTS_DATA.get(agent_id, {}).get('sid')
     if agent_sid:
@@ -4052,7 +4053,7 @@ def handle_download_file(data):
         if download_id not in DOWNLOAD_BUFFERS:
             DOWNLOAD_BUFFERS[download_id] = {"chunks": [], "total_size": 0, "local_path": None}
         DOWNLOAD_BUFFERS[download_id]["local_path"] = local_path
-        emit('request_file_chunk_from_agent', {'filename': filename, 'download_id': download_id}, room=agent_sid)
+        emit('request_file_chunk_from_agent', {'filename': filename, 'path': path, 'download_id': download_id}, room=agent_sid)
     else:
         emit('status_update', {'message': f'Agent {agent_id} not found.', 'type': 'error'}, room=request.sid)
 

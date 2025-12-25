@@ -154,6 +154,11 @@ export function AgentCodeEditor({ open, onOpenChange, defaultAgentId = null }: A
     const fname = sanitizeFilename(filePath);
     previewFile?.(agentId, fname);
     setTimeout(() => setLoading(false), 800);
+    setTimeout(() => {
+      if (!code.trim()) {
+        toast.error("Preview not received. Try full path like C:/Users/YourName/Desktop/client.py");
+      }
+    }, 2500);
   };
 
   const handleDebug = async () => {
