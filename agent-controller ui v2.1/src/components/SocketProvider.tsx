@@ -45,7 +45,7 @@ interface SocketContextType {
   commandOutput: string[];
   addCommandOutput: (output: string) => void;
   clearCommandOutput: () => void;
-  login: (password: string, otp?: string) => Promise<boolean>;
+  login: (password: string, otp?: string) => Promise<{ success?: boolean; data?: any; error?: string }>;
   logout: () => Promise<void>;
   agentMetrics: Record<string, { cpu: number; memory: number; network: number }>;
 }
@@ -688,23 +688,18 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     }
   }, [socket, connected, addCommandOutput]);
 
-  const login = useCallback(async (password: string, otp?: string): Promise<boolean> => {
+  const login = useCallback(async (password: string, otp?: string): Promise<{ success?: boolean; data?: any; error?: string }> => {
     try {
       const response = await apiClient.login(password, otp);
       if (response.success) {
         setAuthenticated(true);
-        return true;
+        return response;
       }
-      const requiresTotp =
-        (response.data && (response.data as any)?.requires_totp) ||
-        (typeof response.error === 'string' && response.error.toLowerCase().includes('otp'));
-      if (requiresTotp) {
-        setAuthenticated(false);
-      }
-      return false;
+      setAuthenticated(false);
+      return response;
     } catch (error) {
       console.error('Login failed:', error);
-      return false;
+      return { success: false, error: 'Network error' };
     }
   }, []);
 

@@ -1043,15 +1043,14 @@ def is_authenticated():
     # Enforce TOTP when required
     try:
         cfg = load_settings().get('authentication', {})
-        if cfg.get('requireTwoFactor'):
-            secret = cfg.get('totpSecret')
-            if secret:
-                if not session.get('otp_verified', False):
-                    print("Two-factor required but OTP not verified - returning False")
-                    return False
-            else:
-                # If two-factor enabled but not enrolled, treat as unauthenticated
-                print("Two-factor enabled but not enrolled - returning False")
+        secret = cfg.get('totpSecret')
+        require_two_factor = bool(cfg.get('requireTwoFactor'))
+        if secret or require_two_factor:
+            if not secret:
+                print("Two-factor required but not enrolled - returning False")
+                return False
+            if not session.get('otp_verified', False):
+                print("Two-factor required but OTP not verified - returning False")
                 return False
     except Exception as _e:
         print(f"TOTP check error: {_e}")
@@ -1142,194 +1141,11 @@ def login():
     s = load_settings()
     auth_cfg = s.get('authentication', {})
     issuer = auth_cfg.get('issuer', 'Neural Control Hub')
-    require_totp = bool(auth_cfg.get('requireTwoFactor'))
-    enrolled = bool(auth_cfg.get('totpSecret'))
-    qr_b64 = None
     secret = auth_cfg.get('totpSecret')
+    require_totp = bool(secret or auth_cfg.get('requireTwoFactor'))
+    enrolled = bool(secret)
+    qr_b64 = None
     
-    # Check if IP is blocked
-    if is_ip_blocked(client_ip):
-        remaining_time = Config.LOGIN_TIMEOUT
-        if client_ip in LOGIN_ATTEMPTS:
-            remaining_time = Config.LOGIN_TIMEOUT - (datetime.datetime.now() - LOGIN_ATTEMPTS[client_ip][1]).total_seconds()
-        flash(f'Too many failed login attempts. Please try again in {int(remaining_time)} seconds.', 'error')
-        return render_template_string('''
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Advance RAT Controller - Login Blocked</title>
-        <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
-        <style>
-            :root {
-                --primary-bg: #0a0a0f;
-                --secondary-bg: #1a1a2e;
-                --accent-blue: #00d4ff;
-                --accent-purple: #6c5ce7;
-                --accent-red: #ff4757;
-                --text-primary: #ffffff;
-                --text-secondary: #a0a0a0;
-                --glass-bg: rgba(255, 255, 255, 0.05);
-                --glass-border: rgba(255, 255, 255, 0.1);
-            }
-            
-            * {
-                margin: 0;
-                padding: 0;
-                box-sizing: border-box;
-            }
-            
-            body {
-                font-family: 'Inter', sans-serif;
-                background: linear-gradient(135deg, var(--primary-bg) 0%, var(--secondary-bg) 100%);
-                color: var(--text-primary);
-                min-height: 100vh;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-            }
-            
-            .login-container {
-                background: var(--glass-bg);
-                backdrop-filter: blur(20px);
-                border: 1px solid var(--glass-border);
-                border-radius: 20px;
-                padding: 40px;
-                width: 100%;
-                max-width: 400px;
-                box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-                text-align: center;
-            }
-            
-            .login-header h1 {
-                font-family: 'Orbitron', monospace;
-                font-size: 2rem;
-                font-weight: 900;
-                background: linear-gradient(45deg, var(--accent-blue), var(--accent-purple));
-                -webkit-background-clip: text;
-                -webkit-text-fill-color: transparent;
-                background-clip: text;
-                margin-bottom: 20px;
-            }
-            
-            .error-message {
-                background: rgba(255, 71, 87, 0.2);
-                color: var(--accent-red);
-                border: 1px solid var(--accent-red);
-                border-radius: 8px;
-                padding: 20px;
-                margin-bottom: 20px;
-                font-weight: 500;
-            }
-            
-            .retry-btn {
-                background: linear-gradient(45deg, var(--accent-blue), var(--accent-purple));
-                border: none;
-                border-radius: 8px;
-                padding: 12px 24px;
-                color: white;
-                font-weight: 600;
-                cursor: pointer;
-                transition: all 0.3s ease;
-                text-decoration: none;
-                display: inline-block;
-                margin-top: 20px;
-            }
-            
-            .retry-btn:hover {
-                transform: translateY(-2px);
-                box-shadow: 0 8px 25px rgba(0, 212, 255, 0.3);
-            }
-        </style>
-    </head>
-    <body>
-        <div class="login-container">
-            <div class="login-header">
-                <h1>Advance RAT Controller</h1>
-            </div>
-            
-            <div class="error-message">
-                <h3>🔒 Access Temporarily Blocked</h3>
-                <p>Too many failed login attempts detected.</p>
-                <p>Please wait before trying again.</p>
-            </div>
-            
-            <a href="/login" class="retry-btn">Try Again</a>
-        </div>
-    </body>
-    </html>
-    ''')
-    
-    if request.method == 'POST':
-        password = request.form.get('password', '')
-        otp = request.form.get('otp', '') or request.form.get('totp', '')
-        
-        # Verify password using secure hash comparison
-        if verify_password(password, ADMIN_PASSWORD_HASH, ADMIN_PASSWORD_SALT):
-            # If two-factor required, verify OTP
-            s = load_settings()
-            auth = s.get('authentication', {})
-            if auth.get('requireTwoFactor'):
-                secret = auth.get('totpSecret')
-                if not secret:
-                    # Auto-enroll flow: generate secret and show QR
-                    secret = pyotp.random_base32()
-                    uri = pyotp.TOTP(secret).provisioning_uri(name='operator', issuer_name=issuer)
-                    img = qrcode.make(uri)
-                    buf = io.BytesIO()
-                    img.save(buf, format='PNG')
-                    qr_b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
-                    auth['totpSecret'] = secret
-                    auth['requireTwoFactor'] = True
-                    auth['issuer'] = issuer
-                    s['authentication'] = auth
-                    save_settings(s)
-                    flash('Two-factor authentication setup required. Scan the QR and enter OTP.', 'error')
-                    return render_template_string(login_template, qr_b64=qr_b64, secret=secret, require_totp=True, enrolled=True, issuer=issuer)
-                # Have secret, require OTP
-                if not otp:
-                    flash('OTP required. Please enter the 6-digit code.', 'error')
-                    # Render with QR for convenience
-                    try:
-                        uri = pyotp.TOTP(secret).provisioning_uri(name='operator', issuer_name=issuer)
-                        img = qrcode.make(uri)
-                        buf = io.BytesIO()
-                        img.save(buf, format='PNG')
-                        qr_b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
-                    except Exception:
-                        qr_b64 = None
-                    return render_template_string(login_template, qr_b64=qr_b64, secret=secret, require_totp=True, enrolled=True, issuer=issuer)
-                totp = pyotp.TOTP(secret)
-                if not totp.verify(str(otp), valid_window=1):
-                    record_failed_login(client_ip)
-                    flash('Invalid OTP. Please try again.', 'error')
-                    return render_template_string(login_template, qr_b64=None, secret=secret, require_totp=True, enrolled=True, issuer=issuer)
-                # Successful password + OTP
-                clear_login_attempts(client_ip)
-                session['authenticated'] = True
-                session['otp_verified'] = True
-                session['login_time'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
-                session['login_ip'] = client_ip
-                return redirect(url_for('dashboard'))
-            # No two-factor required
-            clear_login_attempts(client_ip)
-            session['authenticated'] = True
-            session['login_time'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
-            session['login_ip'] = client_ip
-            return redirect(url_for('dashboard'))
-        else:
-            # Failed login
-            record_failed_login(client_ip)
-            attempts = LOGIN_ATTEMPTS.get(client_ip, (0, None))[0]
-            remaining_attempts = Config.MAX_LOGIN_ATTEMPTS - attempts
-            
-            if remaining_attempts > 0:
-                flash(f'Invalid password. {remaining_attempts} attempts remaining.', 'error')
-            else:
-                flash(f'Too many failed attempts. Please wait {Config.LOGIN_TIMEOUT} seconds.', 'error')
-    
-    # Return login template as string since templates folder may not be available on Render
     login_template = '''
     <!DOCTYPE html>
     <html lang="en">
@@ -1579,6 +1395,180 @@ def login():
     </body>
     </html>
     '''
+    
+    # Check if IP is blocked
+    if is_ip_blocked(client_ip):
+        remaining_time = Config.LOGIN_TIMEOUT
+        if client_ip in LOGIN_ATTEMPTS:
+            remaining_time = Config.LOGIN_TIMEOUT - (datetime.datetime.now() - LOGIN_ATTEMPTS[client_ip][1]).total_seconds()
+        flash(f'Too many failed login attempts. Please try again in {int(remaining_time)} seconds.', 'error')
+        return render_template_string('''
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Advance RAT Controller - Login Blocked</title>
+        <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+        <style>
+            :root {
+                --primary-bg: #0a0a0f;
+                --secondary-bg: #1a1a2e;
+                --accent-blue: #00d4ff;
+                --accent-purple: #6c5ce7;
+                --accent-red: #ff4757;
+                --text-primary: #ffffff;
+                --text-secondary: #a0a0a0;
+                --glass-bg: rgba(255, 255, 255, 0.05);
+                --glass-border: rgba(255, 255, 255, 0.1);
+            }
+            
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+            }
+            
+            body {
+                font-family: 'Inter', sans-serif;
+                background: linear-gradient(135deg, var(--primary-bg) 0%, var(--secondary-bg) 100%);
+                color: var(--text-primary);
+                min-height: 100vh;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+            
+            .login-container {
+                background: var(--glass-bg);
+                backdrop-filter: blur(20px);
+                border: 1px solid var(--glass-border);
+                border-radius: 20px;
+                padding: 40px;
+                width: 100%;
+                max-width: 400px;
+                box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+                text-align: center;
+            }
+            
+            .login-header h1 {
+                font-family: 'Orbitron', monospace;
+                font-size: 2rem;
+                font-weight: 900;
+                background: linear-gradient(45deg, var(--accent-blue), var(--accent-purple));
+                -webkit-background-clip: text;
+                -webkit-text-fill-color: transparent;
+                background-clip: text;
+                margin-bottom: 20px;
+            }
+            
+            .error-message {
+                background: rgba(255, 71, 87, 0.2);
+                color: var(--accent-red);
+                border: 1px solid var(--accent-red);
+                border-radius: 8px;
+                padding: 20px;
+                margin-bottom: 20px;
+                font-weight: 500;
+            }
+            
+            .retry-btn {
+                background: linear-gradient(45deg, var(--accent-blue), var(--accent-purple));
+                border: none;
+                border-radius: 8px;
+                padding: 12px 24px;
+                color: white;
+                font-weight: 600;
+                cursor: pointer;
+                transition: all 0.3s ease;
+                text-decoration: none;
+                display: inline-block;
+                margin-top: 20px;
+            }
+            
+            .retry-btn:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 8px 25px rgba(0, 212, 255, 0.3);
+            }
+        </style>
+    </head>
+    <body>
+        <div class="login-container">
+            <div class="login-header">
+                <h1>Advance RAT Controller</h1>
+            </div>
+            
+            <div class="error-message">
+                <h3>🔒 Access Temporarily Blocked</h3>
+                <p>Too many failed login attempts detected.</p>
+                <p>Please wait before trying again.</p>
+            </div>
+            
+            <a href="/login" class="retry-btn">Try Again</a>
+        </div>
+    </body>
+    </html>
+    ''')
+    
+    if request.method == 'POST':
+        password = request.form.get('password', '')
+        otp = request.form.get('otp', '') or request.form.get('totp', '')
+        
+        # Verify password using secure hash comparison
+        if verify_password(password, ADMIN_PASSWORD_HASH, ADMIN_PASSWORD_SALT):
+            # Always enroll and require OTP if secret is missing
+            s = load_settings()
+            auth = s.get('authentication', {})
+            secret = auth.get('totpSecret')
+            if not secret:
+                secret = pyotp.random_base32()
+                uri = pyotp.TOTP(secret).provisioning_uri(name='operator', issuer_name=issuer)
+                img = qrcode.make(uri)
+                buf = io.BytesIO()
+                img.save(buf, format='PNG')
+                qr_b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
+                auth['totpSecret'] = secret
+                auth['requireTwoFactor'] = True
+                auth['issuer'] = issuer
+                s['authentication'] = auth
+                save_settings(s)
+                flash('Two-factor authentication setup required. Scan the QR and enter OTP.', 'error')
+                return render_template_string(login_template, qr_b64=qr_b64, secret=secret, require_totp=True, enrolled=True, issuer=issuer)
+            # Secret exists -> require OTP
+            if not otp:
+                flash('OTP required. Please enter the 6-digit code.', 'error')
+                try:
+                    uri = pyotp.TOTP(secret).provisioning_uri(name='operator', issuer_name=issuer)
+                    img = qrcode.make(uri)
+                    buf = io.BytesIO()
+                    img.save(buf, format='PNG')
+                    qr_b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
+                except Exception:
+                    qr_b64 = None
+                return render_template_string(login_template, qr_b64=qr_b64, secret=secret, require_totp=True, enrolled=True, issuer=issuer)
+            totp = pyotp.TOTP(secret)
+            if not totp.verify(str(otp), valid_window=1):
+                record_failed_login(client_ip)
+                flash('Invalid OTP. Please try again.', 'error')
+                return render_template_string(login_template, qr_b64=None, secret=secret, require_totp=True, enrolled=True, issuer=issuer)
+            # Successful password + OTP
+            clear_login_attempts(client_ip)
+            session['authenticated'] = True
+            session['otp_verified'] = True
+            session['login_time'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+            session['login_ip'] = client_ip
+            return redirect(url_for('dashboard'))
+        else:
+            # Failed login
+            record_failed_login(client_ip)
+            attempts = LOGIN_ATTEMPTS.get(client_ip, (0, None))[0]
+            remaining_attempts = Config.MAX_LOGIN_ATTEMPTS - attempts
+            
+            if remaining_attempts > 0:
+                flash(f'Invalid password. {remaining_attempts} attempts remaining.', 'error')
+            else:
+                flash(f'Too many failed attempts. Please wait {Config.LOGIN_TIMEOUT} seconds.', 'error')
+    
     # If two-factor enabled and enrolled, pre-render QR to assist setup
     try:
         if require_totp and secret:
@@ -2602,8 +2592,9 @@ def api_login():
     # Verify password
     if verify_password(password, ADMIN_PASSWORD_HASH, ADMIN_PASSWORD_SALT):
         cfg = load_settings().get('authentication', {})
-        if cfg.get('requireTwoFactor'):
-            secret = cfg.get('totpSecret')
+        secret = cfg.get('totpSecret')
+        require_two_factor = bool(cfg.get('requireTwoFactor'))
+        if secret or require_two_factor:
             if not secret:
                 return jsonify({'error': 'Two-factor not enrolled', 'requires_totp': True}), 403
             if not otp:

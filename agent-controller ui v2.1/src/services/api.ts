@@ -189,6 +189,7 @@ class ApiClient {
           const fail = {
             success: false,
             error: (data && data.error) ? data.error : `HTTP ${response.status}`,
+            data,
           } as ApiResponse<T>;
           return fail;
         }

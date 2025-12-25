@@ -28,9 +28,20 @@ export function Login() {
     setError('');
 
     try {
-      const success = await login(password, otp.trim() || undefined);
-      if (!success) {
-        setError('Invalid credentials or OTP required.');
+      const resp = await login(password, otp.trim() || undefined);
+      if (resp?.success) {
+        return;
+      }
+      const requiresTotp = !!(resp?.data && (resp.data as any).requires_totp);
+      if (requiresTotp) {
+        if (String(resp?.error || '').toLowerCase().includes('not enrolled')) {
+          await handleEnroll();
+          setError('Scan the QR and enter the OTP to sign in.');
+        } else {
+          setError('Enter the 6-digit OTP from your Auth-App.');
+        }
+      } else {
+        setError(resp?.error || 'Login failed. Check password or OTP.');
       }
     } catch (error) {
       setError('Login failed. Please check your connection and try again.');
