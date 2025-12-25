@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { cn } from './ui/utils';
 import { toast } from 'sonner';
+import { AgentCodeEditor } from './AgentCodeEditor';
 
 interface QuickAction {
   id: string;
@@ -119,10 +120,16 @@ interface QuickActionsProps {
 export function QuickActions({ agentCount, selectedAgent }: QuickActionsProps) {
   const [executingAction, setExecutingAction] = useState<string | null>(null);
   const [confirmAction, setConfirmAction] = useState<QuickAction | null>(null);
+  const [editorOpen, setEditorOpen] = useState<boolean>(false);
 
   const executeAction = async (action: QuickAction) => {
     if (action.dangerous) {
       setConfirmAction(action);
+      return;
+    }
+
+    if (action.id === 'update-agents') {
+      setEditorOpen(true);
       return;
     }
 
@@ -297,6 +304,8 @@ export function QuickActions({ agentCount, selectedAgent }: QuickActionsProps) {
           )}
         </DialogContent>
       </Dialog>
+
+      <AgentCodeEditor open={editorOpen} onOpenChange={setEditorOpen} defaultAgentId={selectedAgent} />
     </>
   );
 }

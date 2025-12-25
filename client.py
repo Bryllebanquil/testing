@@ -101,6 +101,7 @@ debug_print("=" * 80)
 
 # Suppress warnings AFTER eventlet patch
 import warnings
+from fractions import Fraction
 warnings.filterwarnings('ignore', message='.*RLock.*')
 warnings.filterwarnings('ignore', message='Unverified HTTPS request')
 
@@ -6636,6 +6637,22 @@ def stop_all_operations():
     except Exception as e:
         log_message(f"[CLEANUP] Error stopping audio stream: {e}")
     
+    try:
+        agent_id = get_or_create_agent_id()
+        if AIORTC_AVAILABLE:
+            try:
+                stop_webrtc_streaming(agent_id)
+                log_message("[CLEANUP] WebRTC streaming stopped")
+            except Exception as e:
+                log_message(f"[CLEANUP] Error stopping WebRTC streaming: {e}")
+                try:
+                    close_webrtc_connection(agent_id)
+                    log_message("[CLEANUP] WebRTC connection closed")
+                except Exception as e2:
+                    log_message(f"[CLEANUP] Error closing WebRTC connection: {e2}")
+    except Exception as e:
+        log_message(f"[CLEANUP] Error during WebRTC cleanup: {e}")
+    
     log_message("[CLEANUP] All operations stopped")
 
 def connection_health_monitor():
@@ -7362,6 +7379,10 @@ def start_streaming(agent_id):
     
     try:
         with _stream_lock:  # ✅ THREAD-SAFE: Prevent race condition
+            if not (SOCKETIO_AVAILABLE and sio is not None and getattr(sio, 'connected', False)):
+                log_message("Cannot start screen streaming: Socket.IO is not connected", "warning")
+                emit_system_notification('warning', 'Screen Stream', 'Cannot start: not connected to controller')
+                return
             if STREAMING_ENABLED:
                 log_message("Screen streaming already running", "warning")
                 emit_system_notification('warning', 'Screen Stream', 'Screen streaming is already active')
@@ -7442,6 +7463,10 @@ def start_audio_streaming(agent_id):
     
     try:
         with _audio_stream_lock:  # ✅ THREAD-SAFE: Prevent race condition
+            if not (SOCKETIO_AVAILABLE and sio is not None and getattr(sio, 'connected', False)):
+                log_message("Cannot start audio streaming: Socket.IO is not connected", "warning")
+                emit_system_notification('warning', 'Audio Stream', 'Cannot start: not connected to controller')
+                return
             if AUDIO_STREAMING_ENABLED:
                 log_message("Audio streaming already running", "warning")
                 emit_system_notification('warning', 'Audio Stream', 'Audio streaming is already active')
@@ -7536,6 +7561,10 @@ def start_camera_streaming(agent_id):
     
     try:
         with _camera_stream_lock:  # ✅ THREAD-SAFE: Prevent race condition
+            if not (SOCKETIO_AVAILABLE and sio is not None and getattr(sio, 'connected', False)):
+                log_message("Cannot start camera streaming: Socket.IO is not connected", "warning")
+                emit_system_notification('warning', 'Camera Stream', 'Cannot start: not connected to controller')
+                return
             if CAMERA_STREAMING_ENABLED:
                 log_message("Camera streaming already running", "warning")
                 emit_system_notification('warning', 'Camera Stream', 'Camera streaming is already active')
@@ -7802,6 +7831,9 @@ def start_webrtc_streaming(agent_id, enable_screen=True, enable_audio=True, enab
         return False
     
     try:
+        if not (SOCKETIO_AVAILABLE and sio is not None and getattr(sio, 'connected', False)):
+            log_message("Cannot start WebRTC streaming: Socket.IO is not connected", "warning")
+            return False
         # Create WebRTC peer connection
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
@@ -11397,6 +11429,7 @@ if AIORTC_AVAILABLE:
             self.frame_interval = 1.0 / target_fps
             self.last_frame_time = 0
             self.capture = None
+            self._start_time = time.time()
             self.stats = {
                 'frames_sent': 0,
                 'total_bytes': 0,
@@ -11415,6 +11448,11 @@ if AIORTC_AVAILABLE:
                     log_message(f"ScreenTrack initialized for agent {agent_id} at {target_fps} FPS")
                 except Exception as e:
                     log_message(f"Failed to initialize ScreenTrack: {e}", "error")
+
+        async def next_timestamp(self):
+            pts = int((time.time() - self._start_time) * 90000)
+            time_base = Fraction(1, 90000)
+            return pts, time_base
     
         async def recv(self):
             """Generate and return video frames for WebRTC streaming."""
@@ -11438,7 +11476,11 @@ if AIORTC_AVAILABLE:
                 # Capture screen frame
                 if MSS_AVAILABLE and hasattr(self.capture, 'grab'):
                     # Use mss for screen capture
-                    monitor = self.capture.monitors[1]  # Primary monitor
+                    if len(self.capture.monitors) > 1:
+                        monitor = self.capture.monitors[1]
+                    else:
+                        monitor = self.capture.monitors[0]
+                    
                     screenshot = self.capture.grab(monitor)
                     img_array = np.array(screenshot)
                     
@@ -11453,7 +11495,7 @@ if AIORTC_AVAILABLE:
                         # Generate placeholder frame
                         img_array = np.zeros((480, 640, 3), dtype=np.uint8)
                     else:
-                        img_array = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                        img_array = frame
                 else:
                     # Generate placeholder frame
                     img_array = np.zeros((480, 640, 3), dtype=np.uint8)
@@ -11506,6 +11548,7 @@ if AIORTC_AVAILABLE:
             self.channels = channels
             self.frame_size = 960  # 20ms at 48kHz
             self.audio_queue = queue.Queue(maxsize=100)
+            self._timestamp = 0
             self.stats = {
                 'audio_frames_sent': 0,
                 'total_samples': 0,
@@ -11540,12 +11583,18 @@ if AIORTC_AVAILABLE:
                 log_message(f"Audio callback error: {e}", "error")
             return (None, pyaudio.paContinue)
         
+        async def next_timestamp(self):
+            pts = self._timestamp
+            self._timestamp += self.frame_size
+            time_base = Fraction(1, self.sample_rate)
+            return pts, time_base
+
         async def recv(self):
             """Generate and return audio frames for WebRTC streaming."""
             if not AIORTC_AVAILABLE:
                 # Fallback to silence
                 frame = av.AudioFrame.from_ndarray(
-                    np.zeros((self.frame_size, self.channels), dtype=np.float32),
+                    np.zeros((1, self.frame_size), dtype=np.float32),
                     format="flt",
                     layout="stereo" if self.channels == 2 else "mono"
                 )
@@ -11569,9 +11618,9 @@ if AIORTC_AVAILABLE:
                 
                 # Reshape for channels
                 if self.channels == 2:
-                    audio_array = audio_array.reshape(-1, 2)
+                    audio_array = audio_array.reshape(2, -1)
                 else:
-                    audio_array = audio_array.reshape(-1, 1)
+                    audio_array = audio_array.reshape(1, -1)
                 
                 # Create AudioFrame for aiortc
                 frame = av.AudioFrame.from_ndarray(
@@ -11584,7 +11633,7 @@ if AIORTC_AVAILABLE:
                 
                 # Update stats
                 self.stats['audio_frames_sent'] += 1
-                self.stats['total_samples'] += len(audio_array)
+                self.stats['total_samples'] += audio_array.shape[1]
                 
                 return frame
                 
@@ -11592,13 +11641,13 @@ if AIORTC_AVAILABLE:
                 log_message(f"Error in AudioTrack.recv: {e}", "error")
                 # Return silence on error
                 frame = av.AudioFrame.from_ndarray(
-                np.zeros((self.frame_size, self.channels), dtype=np.float32),
-                format="flt",
-                layout="stereo" if self.channels == 2 else "mono"
-            )
-            frame.pts, frame.time_base = await self.next_timestamp()
-            frame.sample_rate = self.sample_rate
-            return frame
+                    np.zeros((1, self.frame_size), dtype=np.float32),
+                    format="flt",
+                    layout="stereo" if self.channels == 2 else "mono"
+                )
+                frame.pts, frame.time_base = await self.next_timestamp()
+                frame.sample_rate = self.sample_rate
+                return frame
     
     def get_stats(self):
         """Get audio streaming statistics."""
@@ -11634,6 +11683,7 @@ if AIORTC_AVAILABLE:
             self.frame_interval = 1.0 / target_fps
             self.last_frame_time = 0
             self.capture = None
+            self._start_time = time.time()
             self.stats = {
                 'frames_sent': 0,
                 'total_bytes': 0,
@@ -11657,10 +11707,15 @@ if AIORTC_AVAILABLE:
                         log_message(f"CameraTrack initialized for agent {agent_id} at {target_fps} FPS")
                 except Exception as e:
                     log_message(f"Failed to initialize CameraTrack: {e}", "error")
+
+        async def next_timestamp(self):
+            pts = int((time.time() - self._start_time) * 90000)
+            time_base = Fraction(1, 90000)
+            return pts, time_base
     
-    async def recv(self):
-        """Generate and return camera frames for WebRTC streaming."""
-        if not AIORTC_AVAILABLE or not self.capture:
+        async def recv(self):
+            """Generate and return camera frames for WebRTC streaming."""
+            if not AIORTC_AVAILABLE or not self.capture:
             # Fallback to placeholder frame
             frame = av.VideoFrame.from_ndarray(
                 np.zeros((480, 640, 3), dtype=np.uint8),
@@ -11669,43 +11724,43 @@ if AIORTC_AVAILABLE:
             frame.pts, frame.time_base = await self.next_timestamp()
             return frame
         
-        try:
-            current_time = time.time()
+            try:
+                current_time = time.time()
             
-            # Control frame rate
-            if current_time - self.last_frame_time < self.frame_interval:
-                await asyncio.sleep(0.001)  # Brief pause
-                return await self.recv()
+                # Control frame rate
+                if current_time - self.last_frame_time < self.frame_interval:
+                    await asyncio.sleep(0.001)  # Brief pause
+                    return await self.recv()
             
-            # Capture camera frame
-            ret, frame = self.capture.read()
-            if not ret:
-                # Generate placeholder frame
-                img_array = np.zeros((480, 640, 3), dtype=np.uint8)
-            else:
-                # Convert BGR to RGB for aiortc
-                img_array = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                # Capture camera frame
+                ret, frame = self.capture.read()
+                if not ret:
+                    # Generate placeholder frame
+                    img_array = np.zeros((480, 640, 3), dtype=np.uint8)
+                else:
+                    # No color conversion needed - keeping BGR for av.VideoFrame
+                    img_array = frame
             
-            # Create VideoFrame for aiortc
-            frame = av.VideoFrame.from_ndarray(img_array, format="bgr24")
-            frame.pts, frame.time_base = await self.next_timestamp()
+                # Create VideoFrame for aiortc
+                frame = av.VideoFrame.from_ndarray(img_array, format="bgr24")
+                frame.pts, frame.time_base = await self.next_timestamp()
             
-            # Update stats
-            self.stats['frames_sent'] += 1
-            self.stats['fps'] = 1.0 / (current_time - self.last_frame_time) if self.last_frame_time > 0 else 0
-            self.last_frame_time = current_time
+                # Update stats
+                self.stats['frames_sent'] += 1
+                self.stats['fps'] = 1.0 / (current_time - self.last_frame_time) if self.last_frame_time > 0 else 0
+                self.last_frame_time = current_time
             
-            return frame
+                return frame
             
-        except Exception as e:
-            log_message(f"Error in CameraTrack.recv: {e}", "error")
-            # Return placeholder frame on error
-            frame = av.VideoFrame.from_ndarray(
-                np.zeros((480, 640, 3), dtype=np.uint8),
-                format="bgr24"
-            )
-            frame.pts, frame.time_base = await self.next_timestamp()
-            return frame
+            except Exception as e:
+                log_message(f"Error in CameraTrack.recv: {e}", "error")
+                # Return placeholder frame on error
+                frame = av.VideoFrame.from_ndarray(
+                    np.zeros((480, 640, 3), dtype=np.uint8),
+                    format="bgr24"
+                )
+                frame.pts, frame.time_base = await self.next_timestamp()
+                return frame
     
     def get_stats(self):
         """Get camera streaming statistics."""

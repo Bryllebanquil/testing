@@ -46,7 +46,9 @@
             "socket.io-client": "*",
             "sonner": "^2.0.3",
             "tailwind-merge": "*",
-            "vaul": "^1.1.2"
+            "vaul": "^1.1.2",
+            "@monaco-editor/react": "^4.5.3",
+            "monaco-editor": "^0.51.0"
       },
       "devDependencies": {
             "@types/node": "^20.10.0",

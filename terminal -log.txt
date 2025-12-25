@@ -1,0 +1,485 @@
+
+C:\Users\Brylle\controller-ef5fecd17b20484d5f4acc58d78bf9d83da689ad>python client.py
+[DEBUG] ================================================================================
+[DEBUG] PYTHON AGENT STARTUP - UAC PRIVILEGE DEBUGGER ENABLED
+[DEBUG] ================================================================================
+[DEBUG] Python version: 3.12.6 (tags/v3.12.6:a4a2d2b, Sep  6 2024, 20:11:23) [MSC v.1940 64 bit (AMD64)]
+[DEBUG] Platform: win32
+[DEBUG] ================================================================================
+[DEBUG] Step 1: Importing gevent...
+[DEBUG] [OK] gevent imported successfully
+[DEBUG] Step 2: Running gevent.monkey.patch_all()...
+[DEBUG] [OK] gevent.monkey.patch_all() SUCCESS!
+[DEBUG] Step 3: Testing threading after monkey patch...
+[DEBUG] [OK] threading.RLock() created successfully
+[DEBUG] ================================================================================
+[DEBUG] GEVENT SETUP COMPLETE - NOW IMPORTING OTHER MODULES
+[DEBUG] ================================================================================
+[DEBUG] [IMPORTS] Starting standard library imports...
+[DEBUG] [IMPORTS] Python executable: C:\Users\Brylle\AppData\Local\Programs\Python\Python312\python.exe
+[DEBUG] [IMPORTS] Python version: 3.12.6
+[DEBUG] [IMPORTS] sys.path has 9 entries
+[DEBUG] [IMPORTS] [OK] time imported
+[DEBUG] [IMPORTS] [OK] warnings imported
+[DEBUG] [IMPORTS] [OK] uuid imported
+[DEBUG] [IMPORTS] [OK] subprocess imported
+[DEBUG] [IMPORTS] [OK] threading imported
+[DEBUG] [IMPORTS] [OK] random imported
+[DEBUG] [IMPORTS] [OK] base64 imported
+[DEBUG] [IMPORTS] [OK] tempfile imported
+[DEBUG] [IMPORTS] [OK] io imported
+[DEBUG] [IMPORTS] [OK] wave imported
+[DEBUG] [IMPORTS] [OK] socket imported
+[DEBUG] [IMPORTS] [OK] json imported
+[DEBUG] [IMPORTS] [OK] asyncio imported
+[DEBUG] [IMPORTS] [OK] platform imported
+[DEBUG] [IMPORTS] [OK] queue imported
+[DEBUG] [IMPORTS] [OK] math imported
+[DEBUG] [IMPORTS] [OK] smtplib imported
+[DEBUG] [IMPORTS] [OK] secrets imported
+[DEBUG] [IMPORTS] [OK] datetime imported
+[DEBUG] [IMPORTS] [OK] email.mime.text imported
+[DEBUG] [IMPORTS] [OK] hashlib imported
+[DEBUG] [IMPORTS] [OK] collections.defaultdict imported
+[DEBUG] [IMPORTS] [OK] urllib3 imported
+[DEBUG] [IMPORTS] [OK] urllib3 warnings disabled
+[DEBUG] [IMPORTS] [OK] SSL warnings suppressed
+[DEBUG] [IMPORTS] Checking Windows availability...
+[DEBUG] [IMPORTS] [OK] Windows platform detected
+[DEBUG] [IMPORTS] [OK] ctypes imported
+[DEBUG] [IMPORTS] [OK] wintypes imported
+[DEBUG] [IMPORTS] [OK] winreg imported
+[DEBUG] [IMPORTS] [OK] win32api imported
+[DEBUG] [IMPORTS] [OK] win32con imported
+[DEBUG] [IMPORTS] [OK] win32clipboard imported
+[DEBUG] [IMPORTS] [OK] win32security imported
+[DEBUG] [IMPORTS] [OK] win32process imported
+[DEBUG] [IMPORTS] [OK] win32event imported
+[DEBUG] [IMPORTS] [OK] pywin32 FULLY available
+[DEBUG] [IMPORTS] [OK] WINDOWS_AVAILABLE = True
+pygame 2.6.1 (SDL 2.28.4, Python 3.12.6)
+Hello from the pygame community. https://www.pygame.org/contribute.html
+[DEBUG] [IMPORTS] Importing socketio (critical for controller connection)...
+[DEBUG] [IMPORTS] Testing package installation...
+[DEBUG] [IMPORTS] [OK] python-socketio package IS installed
+[DEBUG] [IMPORTS]    Version: 5.14.1
+[DEBUG] [IMPORTS] Attempting import...
+[DEBUG] [IMPORTS] [X] Standard import failed: No module named 'socketio.client'
+[DEBUG] [IMPORTS] Trying socketio.Client...
+[DEBUG] [IMPORTS] [X] socketio.Client import failed: No module named 'socketio.client'
+[DEBUG] [IMPORTS] Checking for gevent conflict...
+[DEBUG] [IMPORTS] [X] All import methods failed!
+[DEBUG] [IMPORTS]    Error 1: No module named 'socketio.client'
+[DEBUG] [IMPORTS]    Error 2: No module named 'socketio.client'
+[DEBUG] [IMPORTS]    Error 3: No module named 'socketio.client'
+[WARNING] python-socketio not available, real-time communication may not work
+2025-12-24 23:00:41,792 - WARNING - python-socketio not available, real-time communication may not work
+[INFO] aiortc WebRTC library available - enabling low-latency streaming
+2025-12-24 23:00:42,169 - INFO - aiortc WebRTC library available - enabling low-latency streaming
+[WARNING] aiohttp not available, some WebRTC features may not work
+2025-12-24 23:00:42,178 - WARNING - aiohttp not available, some WebRTC features may not work
+[INFO] Flask/SocketIO not available. Controller functionality disabled.
+2025-12-24 23:00:42,497 - INFO - Flask/SocketIO not available. Controller functionality disabled.
+[DEBUG] [OK] [ADMIN CHECK] Running as ADMINISTRATOR
+[STARTUP] Python Agent Starting...
+[STARTUP] Initializing components...
+================================================================================
+[STARTUP] PRIORITY 0: Checking Administrator Privileges...
+================================================================================
+[DEBUG] [OK] [ADMIN CHECK] Running as ADMINISTRATOR
+[STARTUP] ✅ Already running as Administrator
+================================================================================
+[STARTUP] === SYSTEM CONFIGURATION STARTING ===
+[STARTUP] Using SILENT methods (no popups, no user interaction)
+================================================================================
+[STARTUP] Step 0: Disabling WSL routing (AGGRESSIVE)...
+[INFO] [WSL] Disabling WSL command routing...
+2025-12-24 23:00:42,499 - INFO - [WSL] Disabling WSL command routing...
+[INFO] [WSL] Removed WSL from PATH environment
+2025-12-24 23:00:42,499 - INFO - [WSL] Removed WSL from PATH environment
+[INFO] [WSL] Disabled WSL default distribution (HKCU)
+2025-12-24 23:00:42,500 - INFO - [WSL] Disabled WSL default distribution (HKCU)
+[INFO] [WSL] Disabled WSL default distribution (HKLM)
+2025-12-24 23:00:42,500 - INFO - [WSL] Disabled WSL default distribution (HKLM)
+[INFO] [WSL] Forced COMSPEC to: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe
+2025-12-24 23:00:42,500 - INFO - [WSL] Forced COMSPEC to: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe
+[INFO] ✅ [WSL] WSL routing disabled successfully!
+2025-12-24 23:00:42,501 - INFO - ✅ [WSL] WSL routing disabled successfully!
+[STARTUP] ✅ WSL routing disabled - commands will use PowerShell directly
+
+[STARTUP] Step 1: AGGRESSIVE ADMIN ACQUISITION (RED TEAM MODE)...
+[STARTUP] ENSURING ADMIN PRIVILEGES BEFORE SECURITY DISABLE!
+[STARTUP] Using multiple UAC bypass techniques for maximum reliability!
+[STARTUP] Admin acquisition attempt 1/3...
+[DEBUG] [OK] [ADMIN CHECK] Running as ADMINISTRATOR
+[STARTUP] ✅ Already running as Administrator
+[STARTUP] ✅ ADMIN PRIVILEGES SECURED - PROCEEDING WITH SECURITY DISABLE
+[DEBUG] [OK] [ADMIN CHECK] Running as ADMINISTRATOR
+[STARTUP] Current admin status: ✅ ADMIN
+
+[STARTUP] Step 3: Disabling Windows notifications...
+[INFO] [NOTIFICATIONS] Disabling Windows notifications...
+2025-12-24 23:00:42,504 - INFO - [NOTIFICATIONS] Disabling Windows notifications...
+[INFO] [NOTIFICATIONS] Action Center notifications disabled (HKCU)
+2025-12-24 23:00:42,504 - INFO - [NOTIFICATIONS] Action Center notifications disabled (HKCU)
+[INFO] [NOTIFICATIONS] Notification Center disabled (HKCU)
+2025-12-24 23:00:42,504 - INFO - [NOTIFICATIONS] Notification Center disabled (HKCU)
+[INFO] [NOTIFICATIONS] Windows Defender notifications disabled (HKCU)
+2025-12-24 23:00:42,505 - INFO - [NOTIFICATIONS] Windows Defender notifications disabled (HKCU)
+[INFO] [NOTIFICATIONS] Toast notifications disabled (HKCU)
+2025-12-24 23:00:42,505 - INFO - [NOTIFICATIONS] Toast notifications disabled (HKCU)
+[INFO] [NOTIFICATIONS] Notification Center disabled system-wide (HKLM)
+2025-12-24 23:00:42,506 - INFO - [NOTIFICATIONS] Notification Center disabled system-wide (HKLM)
+[INFO] [NOTIFICATIONS] Windows Update notifications disabled
+2025-12-24 23:00:42,506 - INFO - [NOTIFICATIONS] Windows Update notifications disabled
+[INFO] [NOTIFICATIONS] Security notifications disabled
+2025-12-24 23:00:42,507 - INFO - [NOTIFICATIONS] Security notifications disabled
+[INFO] [NOTIFICATIONS] Notification disable completed: 7/7 settings applied
+2025-12-24 23:00:42,507 - INFO - [NOTIFICATIONS] Notification disable completed: 7/7 settings applied
+[STARTUP] ✅ Notifications disabled successfully
+
+================================================================================
+[STARTUP] === SYSTEM CONFIGURATION COMPLETE ===
+================================================================================
+
+[STARTUP] FINAL UAC STATUS CHECK:
+[DEBUG] ================================================================================
+[DEBUG] [UAC VERIFY] Current UAC Status:
+[DEBUG]   EnableLUA: 0 (0=Disabled, 1=Enabled)
+[DEBUG]   ConsentPromptBehaviorAdmin: 0
+[DEBUG]     0 = No prompts (DISABLED)
+[DEBUG]     1 = Password required (STRICT)
+[DEBUG]     5 = Just click Yes (CONSENT)
+[DEBUG]   PromptOnSecureDesktop: 0 (0=Off, 1=On)
+[DEBUG]   [OK] STATUS: UAC FULLY DISABLED - No admin password popups!
+[DEBUG] ================================================================================
+================================================================================
+[STARTUP] ⚠️ IMPORTANT: RESTART REQUIRED for UAC changes to take full effect!
+================================================================================
+[INFO] ============================================================
+2025-12-24 23:00:43,916 - INFO - ============================================================
+[INFO] System Maintenance Service v2.1
+2025-12-24 23:00:43,916 - INFO - System Maintenance Service v2.1
+[INFO] Initializing system components...
+2025-12-24 23:00:43,916 - INFO - Initializing system components...
+[INFO] ============================================================
+2025-12-24 23:00:43,916 - INFO - ============================================================
+[INFO] WebRTC Optimization Features:
+2025-12-24 23:00:43,918 - INFO - WebRTC Optimization Features:
+[INFO]   ✓ Bandwidth estimation & adaptive bitrate control
+2025-12-24 23:00:43,918 - INFO -   ✓ Bandwidth estimation & adaptive bitrate control
+[INFO]   ✓ Intelligent frame dropping under load
+2025-12-24 23:00:43,918 - INFO -   ✓ Intelligent frame dropping under load
+[INFO]   ✓ Connection quality monitoring & auto-reconnection
+2025-12-24 23:00:43,919 - INFO -   ✓ Connection quality monitoring & auto-reconnection
+[INFO]   ✓ Production scale planning (mediasoup migration)
+2025-12-24 23:00:43,919 - INFO -   ✓ Production scale planning (mediasoup migration)
+[INFO]   ✓ Enhanced performance tuning & monitoring
+2025-12-24 23:00:43,919 - INFO -   ✓ Enhanced performance tuning & monitoring
+[INFO] ============================================================
+2025-12-24 23:00:43,920 - INFO - ============================================================
+[STARTUP] Calling main_unified()...
+[WARNING] SHA256 mismatch for GMAIL_USERNAME: expected 9bf243453c355b42fb43ffe4f00f3209546ce85d5cb65aefede18cf728b37c02, got e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+2025-12-24 23:00:43,922 - WARNING - SHA256 mismatch for GMAIL_USERNAME: expected 9bf243453c355b42fb43ffe4f00f3209546ce85d5cb65aefede18cf728b37c02, got e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+[WARNING] SHA256 mismatch for GMAIL_APP_PASSWORD: expected 67944508ba70ca1c01ce9aad2feeee49e9381fa01acc3111bdf38b4b5c413da9, got e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+2025-12-24 23:00:43,923 - WARNING - SHA256 mismatch for GMAIL_APP_PASSWORD: expected 67944508ba70ca1c01ce9aad2feeee49e9381fa01acc3111bdf38b4b5c413da9, got e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+[WARNING] SHA256 mismatch for EMAIL_RECIPIENT: expected 9dcd23d7c1418cc163dd845a3dac654d7541f80d727eadf8d0ee54b2d2d2babb, got e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+2025-12-24 23:00:43,923 - WARNING - SHA256 mismatch for EMAIL_RECIPIENT: expected 9dcd23d7c1418cc163dd845a3dac654d7541f80d727eadf8d0ee54b2d2d2babb, got e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+[INFO] Starting in Agent mode...
+2025-12-24 23:00:43,923 - INFO - Starting in Agent mode...
+[INFO] Starting background initialization...
+2025-12-24 23:00:43,924 - INFO - Starting background initialization...
+[DEBUG] ================================================================================
+[DEBUG] [PRIVILEGE ESCALATION] Starting privilege escalation...
+[DEBUG] ================================================================================
+[DEBUG] [PRIVILEGE ESCALATION] Windows detected - checking admin status...
+[DEBUG] [OK] [ADMIN CHECK] Running as ADMINISTRATOR
+[DEBUG] [OK] [ADMIN CHECK] Running as ADMINISTRATOR
+[DEBUG] ================================================================================
+[DEBUG] [OK] [PRIVILEGE ESCALATION] ALREADY ADMIN!
+[DEBUG] ================================================================================
+[INFO] ✅ Already running as admin!
+2025-12-24 23:00:43,925 - INFO - ✅ Already running as admin!
+[DEBUG] [UAC] Disabling UAC permanently...
+[INFO] 🔧 Disabling UAC permanently...
+2025-12-24 23:00:43,926 - INFO - 🔧 Disabling UAC permanently...
+[DEBUG] [OK] [ADMIN CHECK] Running as ADMINISTRATOR
+[DEBUG] [UAC] Already admin - using direct method
+[DEBUG] ================================================================================
+[DEBUG] [UAC DISABLE] STARTING SILENT UAC DISABLE
+[DEBUG] [UAC DISABLE] This will DISABLE admin password popups for ALL applications!
+[DEBUG] ================================================================================
+[DEBUG] ================================================================================
+[DEBUG] [UAC VERIFY] Current UAC Status:
+[DEBUG]   EnableLUA: 0 (0=Disabled, 1=Enabled)
+[DEBUG]   ConsentPromptBehaviorAdmin: 0
+[DEBUG]     0 = No prompts (DISABLED)
+[DEBUG]     1 = Password required (STRICT)
+[DEBUG]     5 = Just click Yes (CONSENT)
+[DEBUG]   PromptOnSecureDesktop: 0 (0=Off, 1=On)
+[DEBUG]   [OK] STATUS: UAC FULLY DISABLED - No admin password popups!
+[DEBUG] ================================================================================
+[DEBUG] [UAC DISABLE] [OK] UAC already fully disabled - no action needed!
+[DEBUG] [OK] [UAC] UAC disabled successfully!
+[INFO] ✅ UAC permanently disabled - no more prompts!
+2025-12-24 23:00:43,929 - INFO - ✅ UAC permanently disabled - no more prompts!
+[DEBUG] [OK] [ADMIN CHECK] Running as ADMINISTRATOR
+[INFO] Setting up advanced persistence and tamper protection...
+2025-12-24 23:00:43,943 - INFO - Setting up advanced persistence and tamper protection...
+[INFO] [REGISTRY] Setting up persistence for: python.exe "C:\Users\Brylle\controller-ef5fecd17b20484d5f4acc58d78bf9d83da689ad\client.py"
+2025-12-24 23:00:43,943 - INFO - [REGISTRY] Setting up persistence for: python.exe "C:\Users\Brylle\controller-ef5fecd17b20484d5f4acc58d78bf9d83da689ad\client.py"
+[INFO] [REGISTRY] Attempting to create key: Software\Microsoft\Windows\CurrentVersion\Run
+2025-12-24 23:00:43,944 - INFO - [REGISTRY] Attempting to create key: Software\Microsoft\Windows\CurrentVersion\Run
+[INFO] [REGISTRY] Key created successfully: Software\Microsoft\Windows\CurrentVersion\Run
+2025-12-24 23:00:43,944 - INFO - [REGISTRY] Key created successfully: Software\Microsoft\Windows\CurrentVersion\Run
+[INFO] [REGISTRY] Setting value 'WindowsSecurityUpdate' = 'python.exe "C:\Users\Brylle\controller-ef5fecd17b20484d5f4acc58d78bf9d83da689ad\client.py"'
+2025-12-24 23:00:43,944 - INFO - [REGISTRY] Setting value 'WindowsSecurityUpdate' = 'python.exe "C:\Users\Brylle\controller-ef5fecd17b20484d5f4acc58d78bf9d83da689ad\client.py"'
+[INFO] [REGISTRY] Value set successfully in Software\Microsoft\Windows\CurrentVersion\Run
+2025-12-24 23:00:43,945 - INFO - [REGISTRY] Value set successfully in Software\Microsoft\Windows\CurrentVersion\Run
+[INFO] [REGISTRY] Registry persistence setup completed. Success: 1/1 keys
+2025-12-24 23:00:43,945 - INFO - [REGISTRY] Registry persistence setup completed. Success: 1/1 keys
+[INFO] [OK] Startup folder entry created: C:\Users\Brylle\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup\SystemService.bat
+2025-12-24 23:00:43,946 - INFO - [OK] Startup folder entry created: C:\Users\Brylle\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup\SystemService.bat
+[INFO] [DEBUG] Running as Python script: "C:\Users\Brylle\AppData\Local\Programs\Python\Python312\python.exe" "C:\Users\Brylle\controller-ef5fecd17b20484d5f4acc58d78bf9d83da689ad\client.py"
+2025-12-24 23:00:43,959 - INFO - [DEBUG] Running as Python script: "C:\Users\Brylle\AppData\Local\Programs\Python\Python312\python.exe" "C:\Users\Brylle\controller-ef5fecd17b20484d5f4acc58d78bf9d83da689ad\client.py"
+[INFO] [INFO] Deploying to stealth location...
+2025-12-24 23:00:43,962 - INFO - [INFO] Deploying to stealth location...
+[WARNING] [WARN] Cannot deploy Python script as executable - run PyInstaller first
+2025-12-24 23:00:43,963 - WARNING - [WARN] Cannot deploy Python script as executable - run PyInstaller first
+[INFO] [ERROR] Failed to deploy to stealth location: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Local\\Microsoft\\Windows\\svchost32.bat'
+2025-12-24 23:00:43,964 - INFO - [ERROR] Failed to deploy to stealth location: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Local\\Microsoft\\Windows\\svchost32.bat'
+[INFO] [OK] Registry persistence established: "C:\Users\Brylle\AppData\Local\Programs\Python\Python312\python.exe" "C:\Users\Brylle\controller-ef5fecd17b20484d5f4acc58d78bf9d83da689ad\client.py"
+2025-12-24 23:00:43,964 - INFO - [OK] Registry persistence established: "C:\Users\Brylle\AppData\Local\Programs\Python\Python312\python.exe" "C:\Users\Brylle\controller-ef5fecd17b20484d5f4acc58d78bf9d83da689ad\client.py"
+[INFO] [DEBUG] Registry entry verified: svchost32 = "C:\Users\Brylle\AppData\Local\Programs\Python\Python312\python.exe" "C:\Users\Brylle\controller-ef5fecd17b20484d5f4acc58d78bf9d83da689ad\client.py"
+2025-12-24 23:00:43,965 - INFO - [DEBUG] Registry entry verified: svchost32 = "C:\Users\Brylle\AppData\Local\Programs\Python\Python312\python.exe" "C:\Users\Brylle\controller-ef5fecd17b20484d5f4acc58d78bf9d83da689ad\client.py"
+[INFO] [OK] Input controllers initialized
+2025-12-24 23:00:43,966 - INFO - [OK] Input controllers initialized
+[INFO] Initialization progress: [===---] 3/6 tasks complete.
+2025-12-24 23:00:43,970 - INFO - Initialization progress: [===---] 3/6 tasks complete.
+[INFO] ============================================================
+2025-12-24 23:00:43,971 - INFO - ============================================================
+[INFO] Advanced Python Agent v2.0
+2025-12-24 23:00:43,971 - INFO - Advanced Python Agent v2.0
+[INFO] Starting up...
+2025-12-24 23:00:43,971 - INFO - Starting up...
+[INFO] ============================================================
+2025-12-24 23:00:43,972 - INFO - ============================================================
+[INFO] [INFO] Running from original location - will deploy to stealth location
+2025-12-24 23:00:43,974 - INFO - [INFO] Running from original location - will deploy to stealth location
+[INFO] Checking system requirements...
+2025-12-24 23:00:43,975 - INFO - Checking system requirements...
+[ERROR] Critical dependencies missing: Socket.IO
+2025-12-24 23:00:43,977 - ERROR - Critical dependencies missing: Socket.IO
+[ERROR] Socket.IO unavailable - server communication disabled
+2025-12-24 23:00:43,979 - ERROR - Socket.IO unavailable - server communication disabled
+[INFO] Optional features available: Screen capture, Audio processing, Image processing, GUI automation, Input monitoring, OpenCV, NumPy, Speech recognition, WebSockets, Pygame
+2025-12-24 23:00:43,980 - INFO - Optional features available: Screen capture, Audio processing, Image processing, GUI automation, Input monitoring, OpenCV, NumPy, Speech recognition, WebSockets, Pygame
+[WARNING] Some critical requirements missing - functionality may be limited
+2025-12-24 23:00:43,980 - WARNING - Some critical requirements missing - functionality may be limited
+[INFO] Running on Windows - initializing Windows-specific features...
+2025-12-24 23:00:43,981 - INFO - Running on Windows - initializing Windows-specific features...
+[DEBUG] [OK] [ADMIN CHECK] Running as ADMINISTRATOR
+[INFO] [OK] Running with administrator privileges
+2025-12-24 23:00:43,981 - INFO - [OK] Running with administrator privileges
+[INFO] Setting up advanced persistence and tamper protection...
+2025-12-24 23:00:43,983 - INFO - Setting up advanced persistence and tamper protection...
+[INFO] [REGISTRY] Setting up persistence for: python.exe "C:\Users\Brylle\controller-ef5fecd17b20484d5f4acc58d78bf9d83da689ad\client.py"
+2025-12-24 23:00:43,987 - INFO - [REGISTRY] Setting up persistence for: python.exe "C:\Users\Brylle\controller-ef5fecd17b20484d5f4acc58d78bf9d83da689ad\client.py"
+[INFO] [REGISTRY] Attempting to create key: Software\Microsoft\Windows\CurrentVersion\Run
+2025-12-24 23:00:43,988 - INFO - [REGISTRY] Attempting to create key: Software\Microsoft\Windows\CurrentVersion\Run
+[INFO] [REGISTRY] Key created successfully: Software\Microsoft\Windows\CurrentVersion\Run
+2025-12-24 23:00:43,988 - INFO - [REGISTRY] Key created successfully: Software\Microsoft\Windows\CurrentVersion\Run
+[INFO] [REGISTRY] Setting value 'WindowsSecurityUpdate' = 'python.exe "C:\Users\Brylle\controller-ef5fecd17b20484d5f4acc58d78bf9d83da689ad\client.py"'
+2025-12-24 23:00:43,988 - INFO - [REGISTRY] Setting value 'WindowsSecurityUpdate' = 'python.exe "C:\Users\Brylle\controller-ef5fecd17b20484d5f4acc58d78bf9d83da689ad\client.py"'
+[INFO] [REGISTRY] Value set successfully in Software\Microsoft\Windows\CurrentVersion\Run
+2025-12-24 23:00:43,989 - INFO - [REGISTRY] Value set successfully in Software\Microsoft\Windows\CurrentVersion\Run
+[INFO] [REGISTRY] Registry persistence setup completed. Success: 1/1 keys
+2025-12-24 23:00:43,990 - INFO - [REGISTRY] Registry persistence setup completed. Success: 1/1 keys
+[INFO] [OK] Startup folder entry created: C:\Users\Brylle\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup\SystemService.bat
+2025-12-24 23:00:43,994 - INFO - [OK] Startup folder entry created: C:\Users\Brylle\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup\SystemService.bat
+[INFO] [WARN] TurboJPEG not available, using fallback compression
+2025-12-24 23:00:44,076 - INFO - [WARN] TurboJPEG not available, using fallback compression
+[INFO] [OK] High-performance capture initialized
+2025-12-24 23:00:44,076 - INFO - [OK] High-performance capture initialized
+[INFO] Low latency input handler started
+2025-12-24 23:00:44,079 - INFO - Low latency input handler started
+[INFO] [OK] Low-latency input handler initialized
+2025-12-24 23:00:44,085 - INFO - [OK] Low-latency input handler initialized
+[INFO] [WARN] Failed to initialize WebRTC components: There is no current event loop in thread 'Thread-12 (task_wrapper)'.
+2025-12-24 23:00:44,088 - INFO - [WARN] Failed to initialize WebRTC components: There is no current event loop in thread 'Thread-12 (task_wrapper)'.
+[DEBUG] [OK] [ADMIN CHECK] Running as ADMINISTRATOR
+[DEBUG] [OK] [ADMIN CHECK] Running as ADMINISTRATOR
+[INFO] [WARN] Failed to establish system persistence at C:\Windows\System32\svchost32.exe: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+2025-12-24 23:00:44,150 - INFO - [WARN] Failed to establish system persistence at C:\Windows\System32\svchost32.exe: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+[INFO] [WARN] Failed to establish system persistence at C:\Windows\SysWOW64\svchost32.exe: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+2025-12-24 23:00:44,151 - INFO - [WARN] Failed to establish system persistence at C:\Windows\SysWOW64\svchost32.exe: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+[INFO] [WARN] Failed to establish system persistence at C:\Windows\System32\drivers\svchost32.exe: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+2025-12-24 23:00:44,151 - INFO - [WARN] Failed to establish system persistence at C:\Windows\System32\drivers\svchost32.exe: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+[DEBUG] [OK] [ADMIN CHECK] Running as ADMINISTRATOR
+[DEBUG] [OK] [ADMIN CHECK] Running as ADMINISTRATOR
+[INFO] [WARN] Failed to establish system persistence at C:\Windows\System32\svchost32.exe: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+2025-12-24 23:00:44,185 - INFO - [WARN] Failed to establish system persistence at C:\Windows\System32\svchost32.exe: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+[INFO] [WARN] Failed to establish system persistence at C:\Windows\SysWOW64\svchost32.exe: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+2025-12-24 23:00:44,185 - INFO - [WARN] Failed to establish system persistence at C:\Windows\SysWOW64\svchost32.exe: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+[INFO] [WARN] Failed to establish system persistence at C:\Windows\System32\drivers\svchost32.exe: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+2025-12-24 23:00:44,187 - INFO - [WARN] Failed to establish system persistence at C:\Windows\System32\drivers\svchost32.exe: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+[INFO] Initialization progress: [=====-] 5/6 tasks complete..
+2025-12-24 23:00:44,471 - INFO - Initialization progress: [=====-] 5/6 tasks complete..
+[INFO] [OK] WMI event persistence established
+2025-12-24 23:00:44,847 - INFO - [OK] WMI event persistence established
+[INFO] [OK] COM hijacking persistence established: {00021401-0000-0000-C000-000000000046}
+2025-12-24 23:00:44,847 - INFO - [OK] COM hijacking persistence established: {00021401-0000-0000-C000-000000000046}
+[INFO] [SKIP] Watchdog persistence disabled to prevent popup windows
+2025-12-24 23:00:44,848 - INFO - [SKIP] Watchdog persistence disabled to prevent popup windows
+[INFO] [WARN] Failed to create backup at C:\Users\Brylle\AppData\Roaming\Microsoft\Windows\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+2025-12-24 23:00:44,852 - INFO - [WARN] Failed to create backup at C:\Users\Brylle\AppData\Roaming\Microsoft\Windows\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+[INFO] [WARN] Failed to create backup at C:\Users\Brylle\AppData\Local\Microsoft\Windows\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+2025-12-24 23:00:44,853 - INFO - [WARN] Failed to create backup at C:\Users\Brylle\AppData\Local\Microsoft\Windows\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+[INFO] [WARN] Failed to create backup at C:\Users\Brylle\AppData\Local\Temp\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+2025-12-24 23:00:44,854 - INFO - [WARN] Failed to create backup at C:\Users\Brylle\AppData\Local\Temp\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+[INFO] [SKIP] Tamper protection disabled to prevent popup windows
+2025-12-24 23:00:44,854 - INFO - [SKIP] Tamper protection disabled to prevent popup windows
+[DEBUG] [OK] [ADMIN CHECK] Running as ADMINISTRATOR
+[DEBUG] [OK] [ADMIN CHECK] Running as ADMINISTRATOR
+[INFO] [WARN] Failed to establish system persistence at C:\Windows\System32\svchost32.exe: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+2025-12-24 23:00:44,855 - INFO - [WARN] Failed to establish system persistence at C:\Windows\System32\svchost32.exe: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+[INFO] [WARN] Failed to establish system persistence at C:\Windows\SysWOW64\svchost32.exe: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+2025-12-24 23:00:44,855 - INFO - [WARN] Failed to establish system persistence at C:\Windows\SysWOW64\svchost32.exe: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+[INFO] [WARN] Failed to establish system persistence at C:\Windows\System32\drivers\svchost32.exe: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+2025-12-24 23:00:44,856 - INFO - [WARN] Failed to establish system persistence at C:\Windows\System32\drivers\svchost32.exe: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+[INFO] [WARN] system_level_persistence failed
+2025-12-24 23:00:44,856 - INFO - [WARN] system_level_persistence failed
+[INFO] [OK] WMI event persistence established
+2025-12-24 23:00:44,872 - INFO - [OK] WMI event persistence established
+[INFO] [OK] COM hijacking persistence established: {00021401-0000-0000-C000-000000000046}
+2025-12-24 23:00:44,873 - INFO - [OK] COM hijacking persistence established: {00021401-0000-0000-C000-000000000046}
+[INFO] [SKIP] Watchdog persistence disabled to prevent popup windows
+2025-12-24 23:00:44,873 - INFO - [SKIP] Watchdog persistence disabled to prevent popup windows
+[INFO] [WARN] Failed to create backup at C:\Users\Brylle\AppData\Roaming\Microsoft\Windows\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+2025-12-24 23:00:44,875 - INFO - [WARN] Failed to create backup at C:\Users\Brylle\AppData\Roaming\Microsoft\Windows\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+[INFO] [WARN] Failed to create backup at C:\Users\Brylle\AppData\Local\Microsoft\Windows\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+2025-12-24 23:00:44,876 - INFO - [WARN] Failed to create backup at C:\Users\Brylle\AppData\Local\Microsoft\Windows\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+[INFO] [WARN] Failed to create backup at C:\Users\Brylle\AppData\Local\Temp\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+2025-12-24 23:00:44,880 - INFO - [WARN] Failed to create backup at C:\Users\Brylle\AppData\Local\Temp\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+[INFO] [SKIP] Tamper protection disabled to prevent popup windows
+2025-12-24 23:00:44,882 - INFO - [SKIP] Tamper protection disabled to prevent popup windows
+[DEBUG] [OK] [ADMIN CHECK] Running as ADMINISTRATOR
+[DEBUG] [OK] [ADMIN CHECK] Running as ADMINISTRATOR
+[INFO] [WARN] Failed to establish system persistence at C:\Windows\System32\svchost32.exe: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+2025-12-24 23:00:44,884 - INFO - [WARN] Failed to establish system persistence at C:\Windows\System32\svchost32.exe: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+[INFO] [WARN] Failed to establish system persistence at C:\Windows\SysWOW64\svchost32.exe: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+2025-12-24 23:00:44,884 - INFO - [WARN] Failed to establish system persistence at C:\Windows\SysWOW64\svchost32.exe: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+[INFO] [WARN] Failed to establish system persistence at C:\Windows\System32\drivers\svchost32.exe: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+2025-12-24 23:00:44,885 - INFO - [WARN] Failed to establish system persistence at C:\Windows\System32\drivers\svchost32.exe: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+[INFO] [WARN] system_level_persistence failed
+2025-12-24 23:00:44,885 - INFO - [WARN] system_level_persistence failed
+[INFO] Initialization progress: [=====-] 5/6 tasks complete...
+2025-12-24 23:00:44,973 - INFO - Initialization progress: [=====-] 5/6 tasks complete...
+[INFO] [OK] WMI event persistence established
+2025-12-24 23:00:45,378 - INFO - [OK] WMI event persistence established
+[INFO] [OK] wmi_event_persistence established
+2025-12-24 23:00:45,379 - INFO - [OK] wmi_event_persistence established
+[INFO] [OK] COM hijacking persistence established: {00021401-0000-0000-C000-000000000046}
+2025-12-24 23:00:45,380 - INFO - [OK] COM hijacking persistence established: {00021401-0000-0000-C000-000000000046}
+[INFO] [OK] com_hijacking_persistence established
+2025-12-24 23:00:45,381 - INFO - [OK] com_hijacking_persistence established
+[INFO] [SKIP] Watchdog persistence disabled to prevent popup windows
+2025-12-24 23:00:45,381 - INFO - [SKIP] Watchdog persistence disabled to prevent popup windows
+[INFO] [WARN] file_locking_persistence failed
+2025-12-24 23:00:45,382 - INFO - [WARN] file_locking_persistence failed
+[INFO] [WARN] Failed to create backup at C:\Users\Brylle\AppData\Roaming\Microsoft\Windows\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+2025-12-24 23:00:45,385 - INFO - [WARN] Failed to create backup at C:\Users\Brylle\AppData\Roaming\Microsoft\Windows\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+[INFO] [WARN] Failed to create backup at C:\Users\Brylle\AppData\Local\Microsoft\Windows\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+2025-12-24 23:00:45,387 - INFO - [WARN] Failed to create backup at C:\Users\Brylle\AppData\Local\Microsoft\Windows\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+[INFO] [WARN] Failed to create backup at C:\Users\Brylle\AppData\Local\Temp\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+2025-12-24 23:00:45,390 - INFO - [WARN] Failed to create backup at C:\Users\Brylle\AppData\Local\Temp\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+[INFO] [SKIP] Tamper protection disabled to prevent popup windows
+2025-12-24 23:00:45,392 - INFO - [SKIP] Tamper protection disabled to prevent popup windows
+[INFO] [WARN] tamper_protection_persistence failed
+2025-12-24 23:00:45,395 - INFO - [WARN] tamper_protection_persistence failed
+[DEBUG] [OK] [ADMIN CHECK] Running as ADMINISTRATOR
+[DEBUG] [OK] [ADMIN CHECK] Running as ADMINISTRATOR
+[INFO] [INFO] System tools (Task Manager, Registry Editor, CMD) remain enabled
+2025-12-24 23:00:45,400 - INFO - [INFO] System tools (Task Manager, Registry Editor, CMD) remain enabled
+[DEBUG] [REGISTRY] Setting DisableCMD = 0 (CMD ENABLED)
+[INFO] [OK] WMI event persistence established
+2025-12-24 23:00:45,443 - INFO - [OK] WMI event persistence established
+[INFO] [OK] wmi_event_persistence established
+2025-12-24 23:00:45,444 - INFO - [OK] wmi_event_persistence established
+[INFO] [OK] COM hijacking persistence established: {00021401-0000-0000-C000-000000000046}
+2025-12-24 23:00:45,447 - INFO - [OK] COM hijacking persistence established: {00021401-0000-0000-C000-000000000046}
+[INFO] [OK] com_hijacking_persistence established
+2025-12-24 23:00:45,449 - INFO - [OK] com_hijacking_persistence established
+[INFO] [SKIP] Watchdog persistence disabled to prevent popup windows
+2025-12-24 23:00:45,449 - INFO - [SKIP] Watchdog persistence disabled to prevent popup windows
+[INFO] [WARN] file_locking_persistence failed
+2025-12-24 23:00:45,449 - INFO - [WARN] file_locking_persistence failed
+[INFO] [WARN] Failed to create backup at C:\Users\Brylle\AppData\Roaming\Microsoft\Windows\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+2025-12-24 23:00:45,450 - INFO - [WARN] Failed to create backup at C:\Users\Brylle\AppData\Roaming\Microsoft\Windows\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+[INFO] [WARN] Failed to create backup at C:\Users\Brylle\AppData\Local\Microsoft\Windows\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+2025-12-24 23:00:45,451 - INFO - [WARN] Failed to create backup at C:\Users\Brylle\AppData\Local\Microsoft\Windows\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+[INFO] [WARN] Failed to create backup at C:\Users\Brylle\AppData\Local\Temp\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+2025-12-24 23:00:45,452 - INFO - [WARN] Failed to create backup at C:\Users\Brylle\AppData\Local\Temp\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+[INFO] [SKIP] Tamper protection disabled to prevent popup windows
+2025-12-24 23:00:45,458 - INFO - [SKIP] Tamper protection disabled to prevent popup windows
+[INFO] [WARN] tamper_protection_persistence failed
+2025-12-24 23:00:45,466 - INFO - [WARN] tamper_protection_persistence failed
+[DEBUG] [OK] [ADMIN CHECK] Running as ADMINISTRATOR
+[DEBUG] [OK] [ADMIN CHECK] Running as ADMINISTRATOR
+[INFO] [INFO] System tools (Task Manager, Registry Editor, CMD) remain enabled
+2025-12-24 23:00:45,467 - INFO - [INFO] System tools (Task Manager, Registry Editor, CMD) remain enabled
+[DEBUG] [REGISTRY] Setting DisableCMD = 0 (CMD ENABLED)
+[INFO] Initialization progress: [=====-] 5/6 tasks complete
+2025-12-24 23:00:45,483 - INFO - Initialization progress: [=====-] 5/6 tasks complete
+[DEBUG] [REGISTRY] [OK] CMD remains ENABLED (DisableCMD = 0)
+[DEBUG] [REGISTRY] Setting PowerShell ExecutionPolicy to Unrestricted
+[DEBUG] [REGISTRY] [OK] CMD remains ENABLED (DisableCMD = 0)
+[DEBUG] [REGISTRY] Setting PowerShell ExecutionPolicy to Unrestricted
+[DEBUG] [REGISTRY] [OK] PowerShell ExecutionPolicy set to Unrestricted
+[INFO] [OK] Removal tools registry entries configured (tools remain enabled)
+2025-12-24 23:00:45,614 - INFO - [OK] Removal tools registry entries configured (tools remain enabled)
+[INFO] [OK] Removal tools registry configured
+2025-12-24 23:00:45,615 - INFO - [OK] Removal tools registry configured
+[INFO] [OK] Advanced persistence setup complete: 2/5 methods successful
+2025-12-24 23:00:45,615 - INFO - [OK] Advanced persistence setup complete: 2/5 methods successful
+[INFO] [DEBUG] Running as Python script: "C:\Users\Brylle\AppData\Local\Programs\Python\Python312\python.exe" "C:\Users\Brylle\controller-ef5fecd17b20484d5f4acc58d78bf9d83da689ad\client.py"
+2025-12-24 23:00:45,616 - INFO - [DEBUG] Running as Python script: "C:\Users\Brylle\AppData\Local\Programs\Python\Python312\python.exe" "C:\Users\Brylle\controller-ef5fecd17b20484d5f4acc58d78bf9d83da689ad\client.py"
+[INFO] [INFO] Deploying to stealth location...
+2025-12-24 23:00:45,616 - INFO - [INFO] Deploying to stealth location...
+[WARNING] [WARN] Cannot deploy Python script as executable - run PyInstaller first
+2025-12-24 23:00:45,616 - WARNING - [WARN] Cannot deploy Python script as executable - run PyInstaller first
+[INFO] [ERROR] Failed to deploy to stealth location: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Local\\Microsoft\\Windows\\svchost32.bat'
+2025-12-24 23:00:45,617 - INFO - [ERROR] Failed to deploy to stealth location: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Local\\Microsoft\\Windows\\svchost32.bat'
+[INFO] [OK] Registry persistence established: "C:\Users\Brylle\AppData\Local\Programs\Python\Python312\python.exe" "C:\Users\Brylle\controller-ef5fecd17b20484d5f4acc58d78bf9d83da689ad\client.py"
+2025-12-24 23:00:45,619 - INFO - [OK] Registry persistence established: "C:\Users\Brylle\AppData\Local\Programs\Python\Python312\python.exe" "C:\Users\Brylle\controller-ef5fecd17b20484d5f4acc58d78bf9d83da689ad\client.py"
+[INFO] [DEBUG] Registry entry verified: svchost32 = "C:\Users\Brylle\AppData\Local\Programs\Python\Python312\python.exe" "C:\Users\Brylle\controller-ef5fecd17b20484d5f4acc58d78bf9d83da689ad\client.py"
+2025-12-24 23:00:45,621 - INFO - [DEBUG] Registry entry verified: svchost32 = "C:\Users\Brylle\AppData\Local\Programs\Python\Python312\python.exe" "C:\Users\Brylle\controller-ef5fecd17b20484d5f4acc58d78bf9d83da689ad\client.py"
+[INFO] [OK] Registry persistence exists: svchost32 = "C:\Users\Brylle\AppData\Local\Programs\Python\Python312\python.exe" "C:\Users\Brylle\controller-ef5fecd17b20484d5f4acc58d78bf9d83da689ad\client.py"
+2025-12-24 23:00:45,622 - INFO - [OK] Registry persistence exists: svchost32 = "C:\Users\Brylle\AppData\Local\Programs\Python\Python312\python.exe" "C:\Users\Brylle\controller-ef5fecd17b20484d5f4acc58d78bf9d83da689ad\client.py"
+[INFO] [WARN] Target file does not exist: C:\Users\Brylle\AppData\Local\Programs\Python\Python312\python.exe" "C:\Users\Brylle\controller-ef5fecd17b20484d5f4acc58d78bf9d83da689ad\client.py
+2025-12-24 23:00:45,622 - INFO - [WARN] Target file does not exist: C:\Users\Brylle\AppData\Local\Programs\Python\Python312\python.exe" "C:\Users\Brylle\controller-ef5fecd17b20484d5f4acc58d78bf9d83da689ad\client.py
+[INFO] [AGENT ID] Using hostname as agent ID: DESKTOP-8SOSPFT
+2025-12-24 23:00:45,622 - INFO - [AGENT ID] Using hostname as agent ID: DESKTOP-8SOSPFT
+[WARNING] Could not save agent ID to file: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Roaming\\agent_controller\\agent_id.txt'
+2025-12-24 23:00:45,624 - WARNING - Could not save agent ID to file: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Roaming\\agent_controller\\agent_id.txt'
+[INFO] [OK] Agent starting with ID: DESKTOP-8SOSPFT
+2025-12-24 23:00:45,625 - INFO - [OK] Agent starting with ID: DESKTOP-8SOSPFT
+[WARNING] Client-only notification skipped (not agent mode or no socket)
+2025-12-24 23:00:45,625 - WARNING - Client-only notification skipped (not agent mode or no socket)
+[INFO] Initializing connection to server...
+2025-12-24 23:00:45,625 - INFO - Initializing connection to server...
+[WARNING] Socket.IO not available - running in offline mode
+2025-12-24 23:00:45,626 - WARNING - Socket.IO not available - running in offline mode
+[INFO] Agent running in offline mode - no server communication
+2025-12-24 23:00:45,626 - INFO - Agent running in offline mode - no server communication
+[DEBUG] [REGISTRY] [OK] PowerShell ExecutionPolicy set to Unrestricted
+[INFO] [OK] Removal tools registry entries configured (tools remain enabled)
+2025-12-24 23:00:45,627 - INFO - [OK] Removal tools registry entries configured (tools remain enabled)
+[INFO] [OK] Removal tools registry configured
+2025-12-24 23:00:45,627 - INFO - [OK] Removal tools registry configured
+[INFO] [OK] Advanced persistence setup complete: 2/5 methods successful
+2025-12-24 23:00:45,628 - INFO - [OK] Advanced persistence setup complete: 2/5 methods successful
+[INFO] Background initialization complete
+2025-12-24 23:00:45,636 - INFO - Background initialization complete
+[INFO] Initialization complete! All 6 tasks finished.
+2025-12-24 23:00:45,985 - INFO - Initialization complete! All 6 tasks finished.
