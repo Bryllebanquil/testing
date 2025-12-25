@@ -59,7 +59,7 @@ export function AgentCodeEditor({ open, onOpenChange, defaultAgentId = null }: A
   const { agents, selectedAgent, setSelectedAgent, previewFile, uploadFile, socket, sendCommand, connected } = useSocket();
   const { theme } = useTheme();
   const [agentId, setAgentId] = useState<string | null>(defaultAgentId || selectedAgent);
-  const [filePath, setFilePath] = useState<string>("/client.py");
+  const [filePath, setFilePath] = useState<string>("client.py");
   const [code, setCode] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(false);
   const [tab, setTab] = useState<string>("editor");
@@ -80,6 +80,14 @@ export function AgentCodeEditor({ open, onOpenChange, defaultAgentId = null }: A
     setAgentId(defaultAgentId || selectedAgent || agents.find(a => a.status === "online")?.id || null);
   }, [open, defaultAgentId, selectedAgent, agents]);
 
+  useEffect(() => {
+    if (!open) return;
+    if (!agentId || !connected) return;
+    const t = setTimeout(() => {
+      handleLoadCode();
+    }, 200);
+    return () => clearTimeout(t);
+  }, [open, agentId, connected]);
   useEffect(() => {
     const handlePreviewReady = async (event: any) => {
       const data = event?.detail;
@@ -130,6 +138,12 @@ export function AgentCodeEditor({ open, onOpenChange, defaultAgentId = null }: A
     return raw;
   };
 
+  const sanitizeFilename = (path: string): string => {
+    const raw = String(path || '').trim();
+    const s = raw.replace(/^[/\\]+/, '');
+    return s || 'client.py';
+  };
+
   const handleLoadCode = () => {
     if (!agentId || !connected) {
       toast.error("No agent connected");
@@ -137,7 +151,8 @@ export function AgentCodeEditor({ open, onOpenChange, defaultAgentId = null }: A
     }
     setLoading(true);
     previewRequestRef.current = { agentId, filePath };
-    previewFile?.(agentId, filePath);
+    const fname = sanitizeFilename(filePath);
+    previewFile?.(agentId, fname);
     setTimeout(() => setLoading(false), 800);
   };
 
@@ -209,7 +224,7 @@ export function AgentCodeEditor({ open, onOpenChange, defaultAgentId = null }: A
             </div>
             <div className="flex items-center gap-2">
               <span className="text-xs text-muted-foreground">Path</span>
-              <Input value={filePath} onChange={(e) => setFilePath(e.target.value)} placeholder="/client.py" />
+              <Input value={filePath} onChange={(e) => setFilePath(e.target.value)} placeholder="client.py" />
             </div>
             <div className="flex items-center gap-2">
               <Button size="sm" onClick={handleLoadCode} disabled={!agentId || loading}>

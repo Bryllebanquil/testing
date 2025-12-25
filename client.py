@@ -11716,13 +11716,13 @@ if AIORTC_AVAILABLE:
         async def recv(self):
             """Generate and return camera frames for WebRTC streaming."""
             if not AIORTC_AVAILABLE or not self.capture:
-            # Fallback to placeholder frame
-            frame = av.VideoFrame.from_ndarray(
-                np.zeros((480, 640, 3), dtype=np.uint8),
-                format="bgr24"
-            )
-            frame.pts, frame.time_base = await self.next_timestamp()
-            return frame
+                # Fallback to placeholder frame
+                frame = av.VideoFrame.from_ndarray(
+                    np.zeros((480, 640, 3), dtype=np.uint8),
+                    format="bgr24"
+                )
+                frame.pts, frame.time_base = await self.next_timestamp()
+                return frame
         
             try:
                 current_time = time.time()
@@ -11762,26 +11762,26 @@ if AIORTC_AVAILABLE:
                 frame.pts, frame.time_base = await self.next_timestamp()
                 return frame
     
-    def get_stats(self):
-        """Get camera streaming statistics."""
-        return self.stats.copy()
-    
-    def set_quality(self, quality):
-        """Set video quality (1-100)."""
-        self.quality = max(1, min(100, quality))
-    
-    def set_fps(self, fps):
-        """Set target frame rate."""
-        self.target_fps = max(1, min(60, fps))
-        self.frame_interval = 1.0 / self.target_fps
-    
-    def __del__(self):
-        """Cleanup camera resources."""
-        if hasattr(self, 'capture') and self.capture:
-            try:
-                self.capture.release()
-            except:
-                pass
+        def get_stats(self):
+            """Get camera streaming statistics."""
+            return self.stats.copy()
+        
+        def set_quality(self, quality):
+            """Set video quality (1-100)."""
+            self.quality = max(1, min(100, quality))
+        
+        def set_fps(self, fps):
+            """Set target frame rate."""
+            self.target_fps = max(1, min(60, fps))
+            self.frame_interval = 1.0 / self.target_fps
+        
+        def __del__(self):
+            """Cleanup camera resources."""
+            if hasattr(self, 'capture') and self.capture:
+                try:
+                    self.capture.release()
+                except:
+                    pass
 
 
 # Fast serialization
