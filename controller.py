@@ -1040,6 +1040,23 @@ def is_authenticated():
         print("Not authenticated - returning False")
         return False
     
+    # Enforce TOTP when required
+    try:
+        cfg = load_settings().get('authentication', {})
+        if cfg.get('requireTwoFactor'):
+            secret = cfg.get('totpSecret')
+            if secret:
+                if not session.get('otp_verified', False):
+                    print("Two-factor required but OTP not verified - returning False")
+                    return False
+            else:
+                # If two-factor enabled but not enrolled, treat as unauthenticated
+                print("Two-factor enabled but not enrolled - returning False")
+                return False
+    except Exception as _e:
+        print(f"TOTP check error: {_e}")
+        return False
+    
     # Check session timeout
     login_time = session.get('login_time')
     if login_time:
@@ -1122,6 +1139,13 @@ def require_auth(f):
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     client_ip = get_client_ip()
+    s = load_settings()
+    auth_cfg = s.get('authentication', {})
+    issuer = auth_cfg.get('issuer', 'Neural Control Hub')
+    require_totp = bool(auth_cfg.get('requireTwoFactor'))
+    enrolled = bool(auth_cfg.get('totpSecret'))
+    qr_b64 = None
+    secret = auth_cfg.get('totpSecret')
     
     # Check if IP is blocked
     if is_ip_blocked(client_ip):
@@ -1239,10 +1263,56 @@ def login():
     
     if request.method == 'POST':
         password = request.form.get('password', '')
+        otp = request.form.get('otp', '') or request.form.get('totp', '')
         
         # Verify password using secure hash comparison
         if verify_password(password, ADMIN_PASSWORD_HASH, ADMIN_PASSWORD_SALT):
-            # Successful login
+            # If two-factor required, verify OTP
+            s = load_settings()
+            auth = s.get('authentication', {})
+            if auth.get('requireTwoFactor'):
+                secret = auth.get('totpSecret')
+                if not secret:
+                    # Auto-enroll flow: generate secret and show QR
+                    secret = pyotp.random_base32()
+                    uri = pyotp.TOTP(secret).provisioning_uri(name='operator', issuer_name=issuer)
+                    img = qrcode.make(uri)
+                    buf = io.BytesIO()
+                    img.save(buf, format='PNG')
+                    qr_b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
+                    auth['totpSecret'] = secret
+                    auth['requireTwoFactor'] = True
+                    auth['issuer'] = issuer
+                    s['authentication'] = auth
+                    save_settings(s)
+                    flash('Two-factor authentication setup required. Scan the QR and enter OTP.', 'error')
+                    return render_template_string(login_template, qr_b64=qr_b64, secret=secret, require_totp=True, enrolled=True, issuer=issuer)
+                # Have secret, require OTP
+                if not otp:
+                    flash('OTP required. Please enter the 6-digit code.', 'error')
+                    # Render with QR for convenience
+                    try:
+                        uri = pyotp.TOTP(secret).provisioning_uri(name='operator', issuer_name=issuer)
+                        img = qrcode.make(uri)
+                        buf = io.BytesIO()
+                        img.save(buf, format='PNG')
+                        qr_b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
+                    except Exception:
+                        qr_b64 = None
+                    return render_template_string(login_template, qr_b64=qr_b64, secret=secret, require_totp=True, enrolled=True, issuer=issuer)
+                totp = pyotp.TOTP(secret)
+                if not totp.verify(str(otp), valid_window=1):
+                    record_failed_login(client_ip)
+                    flash('Invalid OTP. Please try again.', 'error')
+                    return render_template_string(login_template, qr_b64=None, secret=secret, require_totp=True, enrolled=True, issuer=issuer)
+                # Successful password + OTP
+                clear_login_attempts(client_ip)
+                session['authenticated'] = True
+                session['otp_verified'] = True
+                session['login_time'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+                session['login_ip'] = client_ip
+                return redirect(url_for('dashboard'))
+            # No two-factor required
             clear_login_attempts(client_ip)
             session['authenticated'] = True
             session['login_time'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
@@ -1479,8 +1549,27 @@ def login():
                     <label for="password">Admin Password</label>
                     <input type="password" id="password" name="password" placeholder="Enter admin password" required>
                 </div>
+                {% if require_totp %}
+                <div class="form-group">
+                    <label for="otp">Auth-App OTP</label>
+                    <input type="text" id="otp" name="otp" placeholder="6-digit code">
+                </div>
+                {% endif %}
                 <button type="submit" class="login-btn">Sign In</button>
             </form>
+            
+            {% if require_totp %}
+            <div class="login-footer" style="margin-top:1rem;">
+                <p>Two-factor authentication is enabled</p>
+                {% if qr_b64 %}
+                <p>Scan the QR with Google Authenticator:</p>
+                <img src="data:image/png;base64,{{ qr_b64 }}" alt="Scan with Authenticator" style="border:1px solid var(--border); border-radius:8px; padding:8px; max-width:100%;">
+                {% endif %}
+                {% if secret %}
+                <p style="margin-top:0.5rem;">Secret: {{ secret }}</p>
+                {% endif %}
+            </div>
+            {% endif %}
             
             <div class="login-footer">
                 <p>Secure authentication required</p>
@@ -1490,7 +1579,17 @@ def login():
     </body>
     </html>
     '''
-    return render_template_string(login_template)
+    # If two-factor enabled and enrolled, pre-render QR to assist setup
+    try:
+        if require_totp and secret:
+            uri = pyotp.TOTP(secret).provisioning_uri(name='operator', issuer_name=issuer)
+            img = qrcode.make(uri)
+            buf = io.BytesIO()
+            img.save(buf, format='PNG')
+            qr_b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
+    except Exception:
+        qr_b64 = None
+    return render_template_string(login_template, qr_b64=qr_b64, secret=secret, require_totp=require_totp, enrolled=enrolled, issuer=issuer)
 
 # Logout route
 @app.route('/logout')
