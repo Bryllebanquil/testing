@@ -1,16 +1,22 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Alert, AlertDescription } from './ui/alert';
 import { Shield, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { useSocket } from './SocketProvider';
+import apiClient from '../services/api';
 
 export function Login() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [otp, setOtp] = useState('');
+  const [qrB64, setQrB64] = useState('');
+  const [secret, setSecret] = useState('');
+  const [enrolling, setEnrolling] = useState(false);
+  const [totpInfo, setTotpInfo] = useState<{ enabled: boolean; enrolled: boolean; issuer?: string } | null>(null);
   
   const { login } = useSocket();
 
@@ -22,14 +28,46 @@ export function Login() {
     setError('');
 
     try {
-      const success = await login(password);
+      const success = await login(password, otp.trim() || undefined);
       if (!success) {
-        setError('Invalid password. Please try again.');
+        setError('Invalid credentials or OTP required.');
       }
     } catch (error) {
       setError('Login failed. Please check your connection and try again.');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    (async () => {
+      const res = await apiClient.getTotpStatus();
+      if (res.success && res.data) {
+        setTotpInfo(res.data);
+      }
+    })();
+  }, []);
+
+  const handleEnroll = async () => {
+    if (!password.trim()) {
+      setError('Enter admin password to enroll');
+      return;
+    }
+    setEnrolling(true);
+    setError('');
+    try {
+      const res = await apiClient.enrollTotp(password);
+      if (res.success && res.data) {
+        setSecret(res.data.secret);
+        setQrB64(res.data.qr);
+        setTotpInfo({ enabled: true, enrolled: true, issuer: (totpInfo?.issuer || 'Neural Control Hub') });
+      } else {
+        setError(res.error || 'Enrollment failed');
+      }
+    } catch {
+      setError('Enrollment failed');
+    } finally {
+      setEnrolling(false);
     }
   };
 
@@ -88,6 +126,23 @@ export function Login() {
               </div>
             </div>
             
+            <div className="space-y-2">
+              <label htmlFor="otp" className="text-sm font-medium">
+                Auth-App OTP
+              </label>
+              <Input
+                id="otp"
+                type="text"
+                value={otp}
+                onChange={(e) => setOtp(e.target.value)}
+                placeholder="6-digit code"
+                disabled={isLoading}
+              />
+              <div className="text-xs text-muted-foreground">
+                {totpInfo?.enabled ? 'Two-factor authentication is enabled' : 'Two-factor authentication is optional'}
+              </div>
+            </div>
+            
             <Button 
               type="submit" 
               className="w-full" 
@@ -102,6 +157,41 @@ export function Login() {
                 'Sign In'
               )}
             </Button>
+            
+            <div className="mt-4 space-y-2">
+              <div className="text-sm font-medium">Set up Auth-App (Google Authenticator)</div>
+              <div className="text-xs text-muted-foreground">
+                Scan the QR and enter OTP to sign in
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleEnroll}
+                  disabled={enrolling || !password.trim()}
+                >
+                  {enrolling ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Generating QR...
+                    </>
+                  ) : (
+                    'Generate QR'
+                  )}
+                </Button>
+                {secret ? <div className="text-xs">Secret: {secret}</div> : null}
+              </div>
+              {qrB64 ? (
+                <div className="mt-2 flex justify-center">
+                  <img
+                    src={`data:image/png;base64,${qrB64}`}
+                    alt="Scan with Authenticator"
+                    className="border rounded p-2"
+                  />
+                </div>
+              ) : null}
+            </div>
           </form>
           
           <div className="mt-6 pt-6 border-t text-center text-xs text-muted-foreground">

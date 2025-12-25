@@ -21,6 +21,9 @@ import json
 import re
 import mimetypes
 from typing import Optional
+import io
+import pyotp
+import qrcode
 
 # WebRTC imports for SFU functionality
 try:
@@ -2489,6 +2492,7 @@ def api_login():
         return jsonify({'error': 'JSON payload required'}), 400
     
     password = request.json.get('password')
+    otp = request.json.get('otp')
     if not password:
         return jsonify({'error': 'Password is required'}), 400
     
@@ -2498,12 +2502,24 @@ def api_login():
     
     # Verify password
     if verify_password(password, ADMIN_PASSWORD_HASH, ADMIN_PASSWORD_SALT):
+        cfg = load_settings().get('authentication', {})
+        if cfg.get('requireTwoFactor'):
+            secret = cfg.get('totpSecret')
+            if not secret:
+                return jsonify({'error': 'Two-factor not enrolled', 'requires_totp': True}), 403
+            if not otp:
+                return jsonify({'error': 'OTP required', 'requires_totp': True}), 401
+            totp = pyotp.TOTP(secret)
+            if not totp.verify(str(otp), valid_window=1):
+                record_failed_login(client_ip)
+                return jsonify({'error': 'Invalid OTP', 'requires_totp': True}), 401
         # Clear failed attempts on successful login
         clear_login_attempts(client_ip)
         
         # Set session
         session.permanent = True
         session['authenticated'] = True
+        session['otp_verified'] = True if cfg.get('requireTwoFactor') else False
         session['login_time'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
         session['ip'] = client_ip
         
@@ -2536,6 +2552,59 @@ def api_auth_status():
         })
     else:
         return jsonify({'authenticated': False})
+
+@app.route('/api/auth/totp/status', methods=['GET'])
+def api_totp_status():
+    cfg = load_settings().get('authentication', {})
+    enabled = bool(cfg.get('requireTwoFactor'))
+    enrolled = bool(cfg.get('totpSecret'))
+    issuer = cfg.get('issuer', 'Neural Control Hub')
+    return jsonify({'enabled': enabled, 'enrolled': enrolled, 'issuer': issuer})
+
+@app.route('/api/auth/totp/enroll', methods=['POST'])
+def api_totp_enroll():
+    if not request.is_json:
+        return jsonify({'error': 'JSON payload required'}), 400
+    password = request.json.get('password')
+    if not password:
+        return jsonify({'error': 'Password is required'}), 400
+    if not verify_password(password, ADMIN_PASSWORD_HASH, ADMIN_PASSWORD_SALT):
+        return jsonify({'error': 'Invalid password'}), 401
+    s = load_settings()
+    auth = s.get('authentication', {})
+    secret = auth.get('totpSecret')
+    if not secret:
+        secret = pyotp.random_base32()
+    issuer = auth.get('issuer') or 'Neural Control Hub'
+    uri = pyotp.TOTP(secret).provisioning_uri(name='operator', issuer_name=issuer)
+    img = qrcode.make(uri)
+    buf = io.BytesIO()
+    img.save(buf, format='PNG')
+    png_b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
+    auth['totpSecret'] = secret
+    auth['requireTwoFactor'] = True
+    auth['issuer'] = issuer
+    s['authentication'] = auth
+    save_settings(s)
+    return jsonify({'success': True, 'secret': secret, 'uri': uri, 'qr': png_b64})
+
+@app.route('/api/auth/totp/verify', methods=['POST'])
+def api_totp_verify():
+    if not request.is_json:
+        return jsonify({'error': 'JSON payload required'}), 400
+    otp = request.json.get('otp')
+    if not otp:
+        return jsonify({'error': 'OTP is required'}), 400
+    cfg = load_settings().get('authentication', {})
+    secret = cfg.get('totpSecret')
+    if not secret:
+        return jsonify({'error': 'Two-factor not enrolled'}), 400
+    totp = pyotp.TOTP(secret)
+    ok = totp.verify(str(otp), valid_window=1)
+    if not ok:
+        return jsonify({'error': 'Invalid OTP'}), 401
+    session['otp_verified'] = True
+    return jsonify({'success': True})
 
 # --- NEW API ENDPOINTS FOR MODERN UI ---
 
