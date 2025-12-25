@@ -20,7 +20,22 @@ function MonacoEditor({ height, defaultLanguage, theme, value, onChange, options
   const [Editor, setEditor] = useState<any>(null);
   useEffect(() => {
     let mounted = true;
-    const MOD: any = "@monaco-editor/react";
+    const allowsEval = (() => {
+      try {
+        // If CSP blocks eval/new Function, this will throw
+        // We avoid loading Monaco in that case
+        // eslint-disable-next-line no-new-func
+        const f = new Function("return 1");
+        return typeof f === "function" && f() === 1;
+      } catch {
+        return false;
+      }
+    })();
+    if (!allowsEval) {
+      setEditor(null);
+      return () => { mounted = false; };
+    }
+    const MOD: any = /* @vite-ignore */ "@monaco-editor/react";
     import(MOD).then((mod) => {
       if (mounted) setEditor(mod.default);
     }).catch(() => {
