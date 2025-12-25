@@ -91,12 +91,25 @@ export function AgentCodeEditor({ open, onOpenChange, defaultAgentId = null }: A
   useEffect(() => {
     const handlePreviewReady = async (event: any) => {
       const data = event?.detail;
-      if (!data || !data.url) return;
+      if (!data) return;
       const req = previewRequestRef.current;
       if (!req) return;
       try {
-        const res = await fetch(data.url);
-        const text = await res.text();
+        let text = '';
+        const payload = typeof data?.chunk === 'string' ? data.chunk : null;
+        if (payload) {
+          const base = payload.includes(',') ? payload.split(',', 1)[1] : payload;
+          const bin = atob(base);
+          const bytes = new Uint8Array(bin.length);
+          for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+          const decoder = new TextDecoder('utf-8');
+          text = decoder.decode(bytes);
+        } else if (data.blob && typeof data.blob.text === 'function') {
+          text = await data.blob.text();
+        } else if (data.url) {
+          const res = await fetch(data.url);
+          text = await res.text();
+        }
         setCode(text);
         toast.success(`Loaded ${data.filename || req.filePath}`);
       } catch (e: any) {

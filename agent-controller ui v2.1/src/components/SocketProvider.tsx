@@ -452,13 +452,13 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
         
         const filename = String(data?.filename || 'download');
         const mime = detectMimeFromBytes(combinedArray, filename);
-        const blob = new Blob([combinedArray], { type: mime });
-        const url = URL.createObjectURL(blob);
-
         if (data?.download_id && String(data.download_id).startsWith('preview_')) {
-          const event = new CustomEvent('file_preview_ready', { detail: { ...data, url, mime } });
+          const chunkB64 = bytesToBase64(combinedArray);
+          const event = new CustomEvent('file_preview_ready', { detail: { ...data, chunk: chunkB64, mime, filename } });
           window.dispatchEvent(event);
         } else {
+          const blob = new Blob([combinedArray], { type: mime });
+          const url = URL.createObjectURL(blob);
           const a = document.createElement('a');
           a.href = url;
           a.download = filename;
