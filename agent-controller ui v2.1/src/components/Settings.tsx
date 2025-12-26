@@ -59,8 +59,14 @@ interface C2Settings {
     sessionTimeout: number;
     maxLoginAttempts: number;
     requireTwoFactor: boolean;
+    phoneAuthEnabled: boolean;
     apiKeyEnabled: boolean;
     apiKey: string;
+    firebase?: {
+      apiKey: string;
+      projectId: string;
+      authDomain: string;
+    }
   };
   email: {
     enabled: boolean;
@@ -134,8 +140,10 @@ export function Settings() {
       sessionTimeout: 30,
       maxLoginAttempts: 3,
       requireTwoFactor: false,
+      phoneAuthEnabled: false,
       apiKeyEnabled: true,
-      apiKey: 'neural-hub-api-key-2024'
+      apiKey: 'neural-hub-api-key-2024',
+      firebase: { apiKey: '', projectId: '', authDomain: '' }
     },
     email: {
       enabled: false,
@@ -251,12 +259,18 @@ export function Settings() {
           },
           authentication: {
             ...prev.authentication,
-            operatorPassword: data?.authentication?.operatorPassword ?? prev.authentication.operatorPassword,
+            operatorPassword: data?.authentication?.operatorPassword ?? prev.authentication.operatorPassword,     
             sessionTimeout: data?.authentication?.sessionTimeout ?? prev.authentication.sessionTimeout,
-            maxLoginAttempts: data?.authentication?.maxLoginAttempts ?? prev.authentication.maxLoginAttempts,
+            maxLoginAttempts: data?.authentication?.maxLoginAttempts ?? prev.authentication.maxLoginAttempts,     
             requireTwoFactor: data?.authentication?.requireTwoFactor ?? prev.authentication.requireTwoFactor,
+            phoneAuthEnabled: data?.authentication?.phoneAuthEnabled ?? prev.authentication.phoneAuthEnabled,
             apiKeyEnabled: data?.authentication?.apiKeyEnabled ?? prev.authentication.apiKeyEnabled,
             apiKey: data?.authentication?.apiKey ?? prev.authentication.apiKey,
+            firebase: {
+              apiKey: data?.authentication?.firebase?.apiKey ?? prev.authentication.firebase?.apiKey ?? '',
+              projectId: data?.authentication?.firebase?.projectId ?? prev.authentication.firebase?.projectId ?? '',
+              authDomain: data?.authentication?.firebase?.authDomain ?? prev.authentication.firebase?.authDomain ?? ''
+            }
           },
           email: {
             ...prev.email,
@@ -728,6 +742,14 @@ export function Settings() {
                   </div>
                 )}
                 <div className="flex items-center justify-between">
+                  <Label htmlFor="phone-auth">Phone Auth (Firebase)</Label>
+                  <Switch
+                    id="phone-auth"
+                    checked={settings.authentication.phoneAuthEnabled}
+                    onCheckedChange={(checked) => updateSetting('authentication', 'phoneAuthEnabled', checked)}   
+                  />
+                </div>
+                <div className="flex items-center justify-between">
                   <Label htmlFor="trusted-device">Trust this device</Label>
                   <Switch
                     id="trusted-device"
@@ -741,6 +763,32 @@ export function Settings() {
                     id="api-key-enabled"
                     checked={settings.authentication.apiKeyEnabled}
                     onCheckedChange={(checked) => updateSetting('authentication', 'apiKeyEnabled', checked)}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="firebase-api-key">Firebase API Key</Label>
+                  <Input
+                    id="firebase-api-key"
+                    value={settings.authentication.firebase?.apiKey ?? ''}
+                    onChange={(e) => setSettings(prev => ({ ...prev, authentication: { ...prev.authentication, firebase: { ...(prev.authentication.firebase || { apiKey: '', projectId: '', authDomain: '' }), apiKey: e.target.value } } }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="firebase-project-id">Firebase Project ID</Label>
+                  <Input
+                    id="firebase-project-id"
+                    value={settings.authentication.firebase?.projectId ?? ''}
+                    onChange={(e) => setSettings(prev => ({ ...prev, authentication: { ...prev.authentication, firebase: { ...(prev.authentication.firebase || { apiKey: '', projectId: '', authDomain: '' }), projectId: e.target.value } } }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="firebase-auth-domain">Firebase Auth Domain</Label>
+                  <Input
+                    id="firebase-auth-domain"
+                    value={settings.authentication.firebase?.authDomain ?? ''}
+                    onChange={(e) => setSettings(prev => ({ ...prev, authentication: { ...prev.authentication, firebase: { ...(prev.authentication.firebase || { apiKey: '', projectId: '', authDomain: '' }), authDomain: e.target.value } } }))}
                   />
                 </div>
               </div>

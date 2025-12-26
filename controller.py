@@ -22,10 +22,22 @@ import re
 import mimetypes
 from typing import Optional
 import io
-import pyotp
-import qrcode
+try:
+    import pyotp
+    TOTP_AVAILABLE = True
+except ImportError:
+    TOTP_AVAILABLE = False
+try:
+    import qrcode
+    QR_AVAILABLE = True
+except ImportError:
+    QR_AVAILABLE = False
+import urllib.request
+import urllib.error
 
 def verify_totp_code(secret: str, otp: str, window: int = 2) -> bool:
+    if not TOTP_AVAILABLE:
+        return False
     try:
         totp = pyotp.TOTP(secret)
         now = time.time()
@@ -46,6 +58,8 @@ def get_or_create_totp_secret() -> str:
     auth = s.get('authentication', {})
     secret = auth.get('totpSecret')
     if not secret:
+        if not TOTP_AVAILABLE:
+            return ''
         secret = pyotp.random_base32()
         issuer = auth.get('issuer') or 'Neural Control Hub'
         auth['totpSecret'] = secret
@@ -56,6 +70,8 @@ def get_or_create_totp_secret() -> str:
     return secret
 
 def verify_totp_code(secret: str, otp: str, window: int = 2) -> bool:
+    if not TOTP_AVAILABLE:
+        return False
     try:
         totp = pyotp.TOTP(secret)
         now = time.time()
@@ -70,6 +86,37 @@ def verify_totp_code(secret: str, otp: str, window: int = 2) -> bool:
     except Exception as _e:
         print(f"TOTP verify error: {_e}")
         return False
+ 
+def verify_firebase_id_token(id_token: str, api_key: str):
+    try:
+        url = f"https://identitytoolkit.googleapis.com/v1/accounts:lookup?key={api_key}"
+        data = json.dumps({'idToken': id_token}).encode('utf-8')
+        req = urllib.request.Request(url, data=data, headers={'Content-Type': 'application/json'})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            body = resp.read().decode('utf-8')
+            payload = json.loads(body)
+            users = payload.get('users') or []
+            if not users:
+                return False, {}
+            info = users[0]
+            phone = info.get('phoneNumber')
+            if phone:
+                return True, info
+            providers = info.get('providerUserInfo') or []
+            for p in providers:
+                if p.get('providerId') == 'phone':
+                    return True, info
+            return False, {}
+    except urllib.error.HTTPError as e:
+        try:
+            msg = e.read().decode('utf-8')
+            print(f"Firebase verify HTTPError: {msg}")
+        except Exception:
+            print(f"Firebase verify HTTPError: {e}")
+        return False, {}
+    except Exception as e:
+        print(f"Firebase verify error: {e}")
+        return False, {}
 
 # WebRTC imports for SFU functionality
 try:
@@ -171,10 +218,16 @@ DEFAULT_SETTINGS = {
         'sessionTimeout': 30,
         'maxLoginAttempts': 3,
         'requireTwoFactor': False,
+        'phoneAuthEnabled': False,
         'apiKeyEnabled': True,
         'apiKey': '',
         'trustedDevices': []
         ,
+        'firebase': {
+            'apiKey': '',
+            'projectId': '',
+            'authDomain': ''
+        },
         'totpEnrolled': False
     },
     'email': {
@@ -1104,7 +1157,7 @@ def is_authenticated():
     # Enforce TOTP when required
     try:
         cfg = load_settings().get('authentication', {})
-        secret = cfg.get('totpSecret')
+        require_phone = bool(cfg.get('phoneAuthEnabled'))
         require_two_factor = bool(cfg.get('requireTwoFactor'))
         trusted_ok = False
         try:
@@ -1115,7 +1168,12 @@ def is_authenticated():
                 trusted_ok = h in lst
         except Exception:
             trusted_ok = False
-        if require_two_factor:
+        if require_phone:
+            if not session.get('phone_verified', False) and not trusted_ok:
+                print("Phone auth required but not verified - returning False")
+                return False
+        elif require_two_factor:
+            secret = cfg.get('totpSecret')
             if not secret:
                 print("Two-factor required but not enrolled - returning False")
                 return False
@@ -1123,7 +1181,7 @@ def is_authenticated():
                 print("Two-factor required but OTP not verified - returning False")
                 return False
     except Exception as _e:
-        print(f"TOTP check error: {_e}")
+        print(f"Auth check error: {_e}")
         return False
     
     # Check session timeout
@@ -1199,441 +1257,14 @@ def require_auth(f):
     """Decorator to require authentication for routes"""
     def decorated_function(*args, **kwargs):
         if not is_authenticated():
-            return redirect(url_for('login'))
+            if request.path.startswith('/api/'):
+                return jsonify({'authenticated': False, 'error': 'unauthorized'}), 401
+            return jsonify({'error': 'unauthorized'}), 401
         return f(*args, **kwargs)
     decorated_function.__name__ = f.__name__
     return decorated_function
 
-# Login route
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    client_ip = get_client_ip()
-    s = load_settings()
-    auth_cfg = s.get('authentication', {})
-    issuer = auth_cfg.get('issuer', 'Neural Control Hub')
-    secret = auth_cfg.get('totpSecret')
-    require_totp = bool(auth_cfg.get('requireTwoFactor'))
-    enrolled = bool(auth_cfg.get('totpEnrolled'))
-    qr_b64 = None
-    
-    login_template = '''
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Neural Control Hub - Login</title>
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-        <style>
-            :root {
-                --background: #ffffff;
-                --foreground: #0a0a0f;
-                --card: #ffffff;
-                --card-foreground: #0a0a0f;
-                --primary: #0a0a0f;
-                --primary-foreground: #ffffff;
-                --secondary: #f1f5f9;
-                --secondary-foreground: #0a0a0f;
-                --muted: #f1f5f9;
-                --muted-foreground: #64748b;
-                --accent: #f1f5f9;
-                --accent-foreground: #0a0a0f;
-                --destructive: #ef4444;
-                --destructive-foreground: #ffffff;
-                --border: #e2e8f0;
-                --input: #f8fafc;
-                --ring: #0a0a0f;
-                --radius: 0.625rem;
-            }
-            
-            @media (prefers-color-scheme: dark) {
-                :root {
-                    --background: #0a0a0f;
-                    --foreground: #f8fafc;
-                    --card: #0a0a0f;
-                    --card-foreground: #f8fafc;
-                    --primary: #f8fafc;
-                    --primary-foreground: #0a0a0f;
-                    --secondary: #1e293b;
-                    --secondary-foreground: #f8fafc;
-                    --muted: #1e293b;
-                    --muted-foreground: #94a3b8;
-                    --accent: #1e293b;
-                    --accent-foreground: #f8fafc;
-                    --destructive: #ef4444;
-                    --destructive-foreground: #ffffff;
-                    --border: #1e293b;
-                    --input: #1e293b;
-                    --ring: #f8fafc;
-                }
-            }
-            
-            * {
-                margin: 0;
-                padding: 0;
-                box-sizing: border-box;
-            }
-            
-            body {
-                font-family: 'Inter', sans-serif;
-                background-color: var(--background);
-                color: var(--foreground);
-                min-height: 100vh;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                padding: 1rem;
-                transition: background-color 0.3s ease, color 0.3s ease;
-            }
-            
-            .login-container {
-                background-color: var(--card);
-                border: 1px solid var(--border);
-                border-radius: var(--radius);
-                padding: 2rem;
-                width: 100%;
-                max-width: 28rem;
-                box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-            }
-            
-            .login-header {
-                text-align: center;
-                margin-bottom: 2rem;
-            }
-            
-            .login-icon {
-                width: 4rem;
-                height: 4rem;
-                background-color: var(--primary);
-                border-radius: 50%;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                margin: 0 auto 1rem;
-            }
-            
-            .login-icon svg {
-                width: 2rem;
-                height: 2rem;
-                color: var(--primary-foreground);
-            }
-            
-            .login-header h1 {
-                font-size: 1.5rem;
-                font-weight: 700;
-                color: var(--foreground);
-                margin-bottom: 0.5rem;
-            }
-            
-            .login-header p {
-                color: var(--muted-foreground);
-                font-size: 1rem;
-            }
-            
-            .form-group {
-                margin-bottom: 1rem;
-            }
-            
-            .form-group label {
-                display: block;
-                margin-bottom: 0.5rem;
-                color: var(--foreground);
-                font-weight: 500;
-                font-size: 0.875rem;
-            }
-            
-            .form-group input {
-                width: 100%;
-                background-color: var(--input);
-                border: 1px solid var(--border);
-                border-radius: calc(var(--radius) - 2px);
-                padding: 0.75rem 1rem;
-                color: var(--foreground);
-                font-size: 1rem;
-                transition: border-color 0.2s ease, box-shadow 0.2s ease;
-            }
-            
-            .form-group input:focus {
-                outline: none;
-                border-color: var(--ring);
-                box-shadow: 0 0 0 2px rgba(10, 10, 15, 0.1);
-            }
-            
-            .login-btn {
-                width: 100%;
-                background-color: var(--primary);
-                color: var(--primary-foreground);
-                border: none;
-                border-radius: calc(var(--radius) - 2px);
-                padding: 0.75rem 1rem;
-                font-weight: 500;
-                font-size: 1rem;
-                cursor: pointer;
-                transition: background-color 0.2s ease, transform 0.1s ease;
-                margin-top: 1rem;
-            }
-            
-            .login-btn:hover {
-                background-color: var(--primary);
-                opacity: 0.9;
-                transform: translateY(-1px);
-            }
-            
-            .login-btn:active {
-                transform: translateY(0);
-            }
-            
-            .error-message {
-                background-color: var(--destructive);
-                color: var(--destructive-foreground);
-                border: 1px solid var(--destructive);
-                border-radius: calc(var(--radius) - 2px);
-                padding: 0.75rem 1rem;
-                margin-bottom: 1rem;
-                text-align: center;
-                font-size: 0.875rem;
-            }
-            
-            .login-footer {
-                margin-top: 1.5rem;
-                padding-top: 1.5rem;
-                border-top: 1px solid var(--border);
-                text-align: center;
-                font-size: 0.75rem;
-                color: var(--muted-foreground);
-            }
-            
-            .login-footer p {
-                margin-bottom: 0.25rem;
-            }
-        </style>
-    </head>
-    <body>
-        <div class="login-container">
-            <div class="login-header">
-                <div class="login-icon">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                        <path d="M9 12l2 2 4-4"/>
-                    </svg>
-                </div>
-                <h1>Neural Control Hub</h1>
-                <p>Admin Authentication Required</p>
-                <p>Advanced Agent Management System</p>
-            </div>
-            
-            {% with messages = get_flashed_messages(with_categories=true) %}
-                {% if messages %}
-                    {% for category, message in messages %}
-                        <div class="error-message">{{ message }}</div>
-                    {% endfor %}
-                {% endif %}
-            {% endwith %}
-            
-            <form method="POST">
-                <div class="form-group">
-                    <label for="password">Admin Password</label>
-                    <input type="password" id="password" name="password" placeholder="Enter admin password" required>
-                </div>
-                {% if require_totp %}
-                <div class="form-group">
-                    <label for="otp">Auth-App OTP</label>
-                    <input type="text" id="otp" name="otp" placeholder="6-digit code">
-                </div>
-                {% endif %}
-                <button type="submit" class="login-btn">Sign In</button>
-            </form>
-            
-            {% if require_totp %}
-            <div class="login-footer" style="margin-top:1rem;">
-                <p>Two-factor authentication is enabled</p>
-                {% if qr_b64 %}
-                <p>Scan the QR with Google Authenticator:</p>
-                <img src="data:image/png;base64,{{ qr_b64 }}" alt="Scan with Authenticator" style="border:1px solid var(--border); border-radius:8px; padding:8px; max-width:100%;">
-                {% endif %}
-                {% if secret %}
-                <p style="margin-top:0.5rem;">Secret: {{ secret }}</p>
-                {% endif %}
-            </div>
-            {% endif %}
-            
-            <div class="login-footer">
-                <p>Secure authentication required</p>
-                <p>Contact your administrator for access credentials</p>
-            </div>
-        </div>
-    </body>
-    </html>
-    '''
-    
-    # Check if IP is blocked
-    if is_ip_blocked(client_ip):
-        remaining_time = Config.LOGIN_TIMEOUT
-        if client_ip in LOGIN_ATTEMPTS:
-            remaining_time = Config.LOGIN_TIMEOUT - (datetime.datetime.now() - LOGIN_ATTEMPTS[client_ip][1]).total_seconds()
-        flash(f'Too many failed login attempts. Please try again in {int(remaining_time)} seconds.', 'error')
-        return render_template_string('''
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Advance RAT Controller - Login Blocked</title>
-        <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
-        <style>
-            :root {
-                --primary-bg: #0a0a0f;
-                --secondary-bg: #1a1a2e;
-                --accent-blue: #00d4ff;
-                --accent-purple: #6c5ce7;
-                --accent-red: #ff4757;
-                --text-primary: #ffffff;
-                --text-secondary: #a0a0a0;
-                --glass-bg: rgba(255, 255, 255, 0.05);
-                --glass-border: rgba(255, 255, 255, 0.1);
-            }
-            
-            * {
-                margin: 0;
-                padding: 0;
-                box-sizing: border-box;
-            }
-            
-            body {
-                font-family: 'Inter', sans-serif;
-                background: linear-gradient(135deg, var(--primary-bg) 0%, var(--secondary-bg) 100%);
-                color: var(--text-primary);
-                min-height: 100vh;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-            }
-            
-            .login-container {
-                background: var(--glass-bg);
-                backdrop-filter: blur(20px);
-                border: 1px solid var(--glass-border);
-                border-radius: 20px;
-                padding: 40px;
-                width: 100%;
-                max-width: 400px;
-                box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-                text-align: center;
-            }
-            
-            .login-header h1 {
-                font-family: 'Orbitron', monospace;
-                font-size: 2rem;
-                font-weight: 900;
-                background: linear-gradient(45deg, var(--accent-blue), var(--accent-purple));
-                -webkit-background-clip: text;
-                -webkit-text-fill-color: transparent;
-                background-clip: text;
-                margin-bottom: 20px;
-            }
-            
-            .error-message {
-                background: rgba(255, 71, 87, 0.2);
-                color: var(--accent-red);
-                border: 1px solid var(--accent-red);
-                border-radius: 8px;
-                padding: 20px;
-                margin-bottom: 20px;
-                font-weight: 500;
-            }
-            
-            .retry-btn {
-                background: linear-gradient(45deg, var(--accent-blue), var(--accent-purple));
-                border: none;
-                border-radius: 8px;
-                padding: 12px 24px;
-                color: white;
-                font-weight: 600;
-                cursor: pointer;
-                transition: all 0.3s ease;
-                text-decoration: none;
-                display: inline-block;
-                margin-top: 20px;
-            }
-            
-            .retry-btn:hover {
-                transform: translateY(-2px);
-                box-shadow: 0 8px 25px rgba(0, 212, 255, 0.3);
-            }
-        </style>
-    </head>
-    <body>
-        <div class="login-container">
-            <div class="login-header">
-                <h1>Advance RAT Controller</h1>
-            </div>
-            
-            <div class="error-message">
-                <h3>🔒 Access Temporarily Blocked</h3>
-                <p>Too many failed login attempts detected.</p>
-                <p>Please wait before trying again.</p>
-            </div>
-            
-            <a href="/login" class="retry-btn">Try Again</a>
-        </div>
-    </body>
-    </html>
-    ''')
-    
-    if request.method == 'POST':
-        password = request.form.get('password', '')
-        otp_raw = request.form.get('otp', '') or request.form.get('totp', '')
-        otp = re.sub(r'\D', '', str(otp_raw or ''))[:6]
-        
-        if verify_admin_or_operator(password):
-            s = load_settings()
-            auth = s.get('authentication', {})
-            secret = auth.get('totpSecret')
-            issuer = auth.get('issuer', 'Neural Control Hub')
-            require_two_factor = bool(auth.get('requireTwoFactor'))
-            if require_two_factor and (not secret or not auth.get('totpEnrolled')):
-                secret = get_or_create_totp_secret()
-                uri = pyotp.TOTP(secret).provisioning_uri(name='Authentication', issuer_name=issuer)
-                img = qrcode.make(uri)
-                buf = io.BytesIO()
-                img.save(buf, format='PNG')
-                qr_b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
-                flash('Two-factor authentication setup required. Scan the QR and enter OTP.', 'error')
-                return render_template_string(login_template, qr_b64=qr_b64, secret=secret, require_totp=True, enrolled=False, issuer=issuer)
-            if require_two_factor:
-                if not otp:
-                    flash('OTP required. Please enter the 6-digit code.', 'error')
-                    return render_template_string(login_template, qr_b64=None, secret=None, require_totp=True, enrolled=True, issuer=issuer)
-                if not verify_totp_code(secret, str(otp), window=2):
-                    record_failed_login(client_ip)
-                    flash('Invalid OTP. Please try again.', 'error')
-                    return render_template_string(login_template, qr_b64=None, secret=None, require_totp=True, enrolled=True, issuer=issuer)
-            # Successful password + OTP
-            clear_login_attempts(client_ip)
-            session['authenticated'] = True
-            session['otp_verified'] = True if require_two_factor else False
-            session['login_time'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
-            session['login_ip'] = client_ip
-            try:
-                if require_two_factor:
-                    auth['totpEnrolled'] = True
-                s['authentication'] = auth
-                save_settings(s)
-            except Exception:
-                pass
-            return redirect(url_for('dashboard'))
-        else:
-            # Failed login
-            record_failed_login(client_ip)
-            attempts = LOGIN_ATTEMPTS.get(client_ip, (0, None))[0]
-            remaining_attempts = Config.MAX_LOGIN_ATTEMPTS - attempts
-            
-            if remaining_attempts > 0:
-                flash(f'Invalid password. {remaining_attempts} attempts remaining.', 'error')
-            else:
-                flash(f'Too many failed attempts. Please wait {Config.LOGIN_TIMEOUT} seconds.', 'error')
-    
-    return render_template_string(login_template, qr_b64=None, secret=None, require_totp=require_totp, enrolled=enrolled, issuer=issuer)
+# Login route removed in favor of frontend UI
 
 # Logout route
 @app.route('/logout')
@@ -2635,6 +2266,7 @@ def api_login():
         return jsonify({'error': 'JSON payload required'}), 400
     
     password = request.json.get('password')
+    id_token = request.json.get('idToken')
     otp_raw = request.json.get('otp')
     otp = re.sub(r'\D', '', str(otp_raw or ''))[:6]
     if not password:
@@ -2657,6 +2289,8 @@ def api_login():
         cfg = load_settings().get('authentication', {})
         secret = cfg.get('totpSecret')
         require_two_factor = bool(cfg.get('requireTwoFactor'))
+        require_phone = bool(cfg.get('phoneAuthEnabled'))
+        fb = cfg.get('firebase') or {}
         trusted_ok = False
         try:
             token = request.cookies.get('trusted_device')
@@ -2666,7 +2300,17 @@ def api_login():
                 trusted_ok = h in lst
         except Exception:
             trusted_ok = False
-        if require_two_factor:
+        if require_phone and not trusted_ok:
+            api_key = fb.get('apiKey') or ''
+            if not id_token:
+                record_failed_login(client_ip)
+                return jsonify({'error': 'Phone auth required', 'requires_phone': True}), 401
+            ok, _info = verify_firebase_id_token(id_token, api_key) if api_key else (False, {})
+            if not ok:
+                record_failed_login(client_ip)
+                return jsonify({'error': 'Invalid phone verification', 'requires_phone': True}), 401
+            session['phone_verified'] = True
+        if require_two_factor and not require_phone:
             if not secret:
                 return jsonify({'error': 'Two-factor not enrolled', 'requires_totp': True}), 403
             if not otp and not trusted_ok:
@@ -2681,7 +2325,7 @@ def api_login():
         # Set session
         session.permanent = True
         session['authenticated'] = True
-        session['otp_verified'] = True if (require_two_factor and (otp or trusted_ok)) else False        
+        session['otp_verified'] = True if ((require_two_factor and (otp or trusted_ok)) or (require_phone and (id_token or trusted_ok))) else False        
         session['login_time'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
         session['ip'] = client_ip
         
@@ -2727,6 +2371,8 @@ def api_totp_status():
 def api_totp_enroll():
     if not request.is_json:
         return jsonify({'error': 'JSON payload required'}), 400
+    if not TOTP_AVAILABLE or not QR_AVAILABLE:
+        return jsonify({'error': 'TOTP not available'}), 503
     password = request.json.get('password')
     if not password:
         return jsonify({'error': 'Password is required'}), 400
@@ -2751,6 +2397,8 @@ def api_totp_enroll():
 def api_totp_verify():
     if not request.is_json:
         return jsonify({'error': 'JSON payload required'}), 400
+    if not TOTP_AVAILABLE:
+        return jsonify({'error': 'TOTP not available'}), 503
     otp_raw = request.json.get('otp')
     otp = re.sub(r'\D', '', str(otp_raw or ''))[:6]
     if not otp:
@@ -2773,6 +2421,25 @@ def api_totp_verify():
     except Exception:
         pass
     return jsonify({'success': True, 'enrolled': True})
+ 
+@app.route('/api/auth/phone/verify', methods=['POST'])
+def api_phone_verify():
+    if not request.is_json:
+        return jsonify({'error': 'JSON payload required'}), 400
+    id_token = request.json.get('idToken') or ''
+    if not id_token:
+        return jsonify({'error': 'idToken is required'}), 400
+    cfg = load_settings().get('authentication', {})
+    fb = cfg.get('firebase') or {}
+    api_key = fb.get('apiKey') or ''
+    if not api_key:
+        return jsonify({'error': 'Firebase not configured'}), 500
+    ok, info = verify_firebase_id_token(id_token, api_key)
+    if not ok:
+        return jsonify({'error': 'Invalid phone verification'}), 401
+    session['phone_verified'] = True
+    session['otp_verified'] = True
+    return jsonify({'success': True, 'phoneNumber': info.get('phoneNumber')})
 
 @app.route('/api/auth/device/trust-status', methods=['GET'])
 @require_auth

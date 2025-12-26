@@ -14,8 +14,16 @@
     "sessionTimeout": 30,
     "maxLoginAttempts": 3,
     "requireTwoFactor": false,
+    "phoneAuthEnabled": false,
     "apiKeyEnabled": true,
-    "apiKey": ""
+    "apiKey": "",
+    "trustedDevices": [],
+    "firebase": {
+      "apiKey": "",
+      "projectId": "",
+      "authDomain": ""
+    },
+    "totpEnrolled": false
   },
   "email": {
     "enabled": false,
