@@ -475,14 +475,26 @@ def verify_password(password, stored_hash, stored_salt):
 def create_secure_password_hash(password):
     """
     Create a secure hash for a password
-    
+
     Args:
         password (str): The password to hash
-    
+
     Returns:
         tuple: (hash, salt) both base64 encoded
     """
     return hash_password(password)
+
+def verify_admin_or_operator(password: str) -> bool:
+    if verify_password(password, ADMIN_PASSWORD_HASH, ADMIN_PASSWORD_SALT):
+        return True
+    try:
+        s = load_settings()
+        op = (s.get('authentication', {})).get('operatorPassword') or ''
+        if op:
+            return hmac.compare_digest(op, password)
+        return False
+    except Exception:
+        return False
 
 # Generate secure hash for admin password (with error handling)
 try:
@@ -1103,7 +1115,7 @@ def is_authenticated():
                 trusted_ok = h in lst
         except Exception:
             trusted_ok = False
-        if secret or require_two_factor:
+        if require_two_factor:
             if not secret:
                 print("Two-factor required but not enrolled - returning False")
                 return False
@@ -1573,12 +1585,13 @@ def login():
         otp_raw = request.form.get('otp', '') or request.form.get('totp', '')
         otp = re.sub(r'\D', '', str(otp_raw or ''))[:6]
         
-        if verify_password(password, ADMIN_PASSWORD_HASH, ADMIN_PASSWORD_SALT):
+        if verify_admin_or_operator(password):
             s = load_settings()
             auth = s.get('authentication', {})
             secret = auth.get('totpSecret')
             issuer = auth.get('issuer', 'Neural Control Hub')
-            if not secret or not auth.get('totpEnrolled'):
+            require_two_factor = bool(auth.get('requireTwoFactor'))
+            if require_two_factor and (not secret or not auth.get('totpEnrolled')):
                 secret = get_or_create_totp_secret()
                 uri = pyotp.TOTP(secret).provisioning_uri(name='Authentication', issuer_name=issuer)
                 img = qrcode.make(uri)
@@ -1587,21 +1600,23 @@ def login():
                 qr_b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
                 flash('Two-factor authentication setup required. Scan the QR and enter OTP.', 'error')
                 return render_template_string(login_template, qr_b64=qr_b64, secret=secret, require_totp=True, enrolled=False, issuer=issuer)
-            if not otp:
-                flash('OTP required. Please enter the 6-digit code.', 'error')
-                return render_template_string(login_template, qr_b64=None, secret=None, require_totp=True, enrolled=True, issuer=issuer)
-            if not verify_totp_code(secret, str(otp), window=2):
-                record_failed_login(client_ip)
-                flash('Invalid OTP. Please try again.', 'error')
-                return render_template_string(login_template, qr_b64=None, secret=None, require_totp=True, enrolled=True, issuer=issuer)
+            if require_two_factor:
+                if not otp:
+                    flash('OTP required. Please enter the 6-digit code.', 'error')
+                    return render_template_string(login_template, qr_b64=None, secret=None, require_totp=True, enrolled=True, issuer=issuer)
+                if not verify_totp_code(secret, str(otp), window=2):
+                    record_failed_login(client_ip)
+                    flash('Invalid OTP. Please try again.', 'error')
+                    return render_template_string(login_template, qr_b64=None, secret=None, require_totp=True, enrolled=True, issuer=issuer)
             # Successful password + OTP
             clear_login_attempts(client_ip)
             session['authenticated'] = True
-            session['otp_verified'] = True
+            session['otp_verified'] = True if require_two_factor else False
             session['login_time'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
             session['login_ip'] = client_ip
             try:
-                auth['totpEnrolled'] = True
+                if require_two_factor:
+                    auth['totpEnrolled'] = True
                 s['authentication'] = auth
                 save_settings(s)
             except Exception:
@@ -2638,8 +2653,7 @@ def api_login():
             pass
         return jsonify({'error': 'Too many failed attempts. Try again later.'}), 429
     
-    # Verify password
-    if verify_password(password, ADMIN_PASSWORD_HASH, ADMIN_PASSWORD_SALT):
+    if verify_admin_or_operator(password):
         cfg = load_settings().get('authentication', {})
         secret = cfg.get('totpSecret')
         require_two_factor = bool(cfg.get('requireTwoFactor'))
@@ -2652,7 +2666,7 @@ def api_login():
                 trusted_ok = h in lst
         except Exception:
             trusted_ok = False
-        if secret or require_two_factor:
+        if require_two_factor:
             if not secret:
                 return jsonify({'error': 'Two-factor not enrolled', 'requires_totp': True}), 403
             if not otp and not trusted_ok:
@@ -2667,7 +2681,7 @@ def api_login():
         # Set session
         session.permanent = True
         session['authenticated'] = True
-        session['otp_verified'] = True if (cfg.get('requireTwoFactor') and (otp or trusted_ok)) else False
+        session['otp_verified'] = True if (require_two_factor and (otp or trusted_ok)) else False        
         session['login_time'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
         session['ip'] = client_ip
         
