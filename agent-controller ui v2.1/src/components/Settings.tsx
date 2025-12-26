@@ -191,6 +191,11 @@ export function Settings() {
   const [currentAdminPassword, setCurrentAdminPassword] = useState('');
   const [newAdminPassword, setNewAdminPassword] = useState('');
   const [confirmAdminPassword, setConfirmAdminPassword] = useState('');
+  const [totpStatus, setTotpStatus] = useState<{ enabled: boolean; enrolled: boolean; issuer: string }>({
+    enabled: false,
+    enrolled: false,
+    issuer: ''
+  });
 
   const updateSetting = (category: keyof C2Settings, key: string, value: any) => {
     setSettings(prev => ({
@@ -285,6 +290,17 @@ export function Settings() {
           const tData = await tRes.json();
           if (tRes.ok) {
             setTrustedDevice(Boolean(tData?.trusted));
+          }
+        } catch (_e) {}
+        try {
+          const tfRes = await fetch('/api/auth/totp/status');
+          const tfData = await tfRes.json();
+          if (tfRes.ok) {
+            setTotpStatus({
+              enabled: Boolean(tfData?.enabled),
+              enrolled: Boolean(tfData?.enrolled),
+              issuer: tfData?.issuer ?? ''
+            });
           }
         } catch (_e) {}
       } catch (e: any) {
@@ -700,9 +716,17 @@ export function Settings() {
                   <Switch
                     id="two-factor"
                     checked={settings.authentication.requireTwoFactor}
-                    onCheckedChange={(checked) => updateSetting('authentication', 'requireTwoFactor', checked)}
+                    onCheckedChange={(checked) => updateSetting('authentication', 'requireTwoFactor', checked)}   
                   />
                 </div>
+                {totpStatus.enabled && (
+                  <div className="flex items-center justify-between">
+                    <Label>Enrollment Status</Label>
+                    <Badge>
+                      {totpStatus.enrolled ? 'Enrolled' : 'Not enrolled'}
+                    </Badge>
+                  </div>
+                )}
                 <div className="flex items-center justify-between">
                   <Label htmlFor="trusted-device">Trust this device</Label>
                   <Switch

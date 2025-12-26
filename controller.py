@@ -25,6 +25,52 @@ import io
 import pyotp
 import qrcode
 
+def verify_totp_code(secret: str, otp: str, window: int = 2) -> bool:
+    try:
+        totp = pyotp.TOTP(secret)
+        now = time.time()
+        if totp.verify(str(otp), valid_window=window):
+            return True
+        for k in range(1, window + 1):
+            if totp.verify(str(otp), for_time=now + k * totp.interval):
+                return True
+            if totp.verify(str(otp), for_time=now - k * totp.interval):
+                return True
+        return False
+    except Exception as _e:
+        print(f"TOTP verify error: {_e}")
+        return False
+
+def get_or_create_totp_secret() -> str:
+    s = load_settings()
+    auth = s.get('authentication', {})
+    secret = auth.get('totpSecret')
+    if not secret:
+        secret = pyotp.random_base32()
+        issuer = auth.get('issuer') or 'Neural Control Hub'
+        auth['totpSecret'] = secret
+        auth['requireTwoFactor'] = True
+        auth['issuer'] = issuer
+        s['authentication'] = auth
+        save_settings(s)
+    return secret
+
+def verify_totp_code(secret: str, otp: str, window: int = 2) -> bool:
+    try:
+        totp = pyotp.TOTP(secret)
+        now = time.time()
+        if totp.verify(str(otp), valid_window=window):
+            return True
+        for k in range(1, window + 1):
+            if totp.verify(str(otp), for_time=now + k * totp.interval):
+                return True
+            if totp.verify(str(otp), for_time=now - k * totp.interval):
+                return True
+        return False
+    except Exception as _e:
+        print(f"TOTP verify error: {_e}")
+        return False
+
 # WebRTC imports for SFU functionality
 try:
     import asyncio
@@ -128,6 +174,8 @@ DEFAULT_SETTINGS = {
         'apiKeyEnabled': True,
         'apiKey': '',
         'trustedDevices': []
+        ,
+        'totpEnrolled': False
     },
     'email': {
         'enabled': False,
@@ -1152,8 +1200,8 @@ def login():
     auth_cfg = s.get('authentication', {})
     issuer = auth_cfg.get('issuer', 'Neural Control Hub')
     secret = auth_cfg.get('totpSecret')
-    require_totp = bool(secret or auth_cfg.get('requireTwoFactor'))
-    enrolled = bool(secret)
+    require_totp = bool(auth_cfg.get('requireTwoFactor'))
+    enrolled = bool(auth_cfg.get('totpEnrolled'))
     qr_b64 = None
     
     login_template = '''
@@ -1525,32 +1573,24 @@ def login():
         otp_raw = request.form.get('otp', '') or request.form.get('totp', '')
         otp = re.sub(r'\D', '', str(otp_raw or ''))[:6]
         
-        # Verify password using secure hash comparison
         if verify_password(password, ADMIN_PASSWORD_HASH, ADMIN_PASSWORD_SALT):
-            # Always enroll and require OTP if secret is missing
             s = load_settings()
             auth = s.get('authentication', {})
             secret = auth.get('totpSecret')
-            if not secret:
-                secret = pyotp.random_base32()
+            issuer = auth.get('issuer', 'Neural Control Hub')
+            if not secret or not auth.get('totpEnrolled'):
+                secret = get_or_create_totp_secret()
                 uri = pyotp.TOTP(secret).provisioning_uri(name='Authentication', issuer_name=issuer)
                 img = qrcode.make(uri)
                 buf = io.BytesIO()
                 img.save(buf, format='PNG')
                 qr_b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
-                auth['totpSecret'] = secret
-                auth['requireTwoFactor'] = True
-                auth['issuer'] = issuer
-                s['authentication'] = auth
-                save_settings(s)
                 flash('Two-factor authentication setup required. Scan the QR and enter OTP.', 'error')
-                return render_template_string(login_template, qr_b64=qr_b64, secret=secret, require_totp=True, enrolled=True, issuer=issuer)
-            # Secret exists -> require OTP
+                return render_template_string(login_template, qr_b64=qr_b64, secret=secret, require_totp=True, enrolled=False, issuer=issuer)
             if not otp:
                 flash('OTP required. Please enter the 6-digit code.', 'error')
                 return render_template_string(login_template, qr_b64=None, secret=None, require_totp=True, enrolled=True, issuer=issuer)
-            totp = pyotp.TOTP(secret)
-            if not totp.verify(str(otp), valid_window=2):
+            if not verify_totp_code(secret, str(otp), window=2):
                 record_failed_login(client_ip)
                 flash('Invalid OTP. Please try again.', 'error')
                 return render_template_string(login_template, qr_b64=None, secret=None, require_totp=True, enrolled=True, issuer=issuer)
@@ -1560,6 +1600,12 @@ def login():
             session['otp_verified'] = True
             session['login_time'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
             session['login_ip'] = client_ip
+            try:
+                auth['totpEnrolled'] = True
+                s['authentication'] = auth
+                save_settings(s)
+            except Exception:
+                pass
             return redirect(url_for('dashboard'))
         else:
             # Failed login
@@ -2612,8 +2658,7 @@ def api_login():
             if not otp and not trusted_ok:
                 return jsonify({'error': 'OTP required', 'requires_totp': True}), 401
             if otp:
-                totp = pyotp.TOTP(secret)
-                if not totp.verify(str(otp), valid_window=2):
+                if not verify_totp_code(secret, str(otp), window=2):
                     record_failed_login(client_ip)
                     return jsonify({'error': 'Invalid OTP', 'requires_totp': True}), 401
         # Clear failed attempts on successful login
@@ -2660,7 +2705,7 @@ def api_auth_status():
 def api_totp_status():
     cfg = load_settings().get('authentication', {})
     enabled = bool(cfg.get('requireTwoFactor'))
-    enrolled = bool(cfg.get('totpSecret'))
+    enrolled = bool(cfg.get('totpEnrolled'))
     issuer = cfg.get('issuer', 'Neural Control Hub')
     return jsonify({'enabled': enabled, 'enrolled': enrolled, 'issuer': issuer})
 
@@ -2675,16 +2720,13 @@ def api_totp_enroll():
         return jsonify({'error': 'Invalid password'}), 401
     s = load_settings()
     auth = s.get('authentication', {})
-    secret = auth.get('totpSecret')
-    if not secret:
-        secret = pyotp.random_base32()
+    secret = auth.get('totpSecret') or get_or_create_totp_secret()
     issuer = auth.get('issuer') or 'Neural Control Hub'
     uri = pyotp.TOTP(secret).provisioning_uri(name='operator', issuer_name=issuer)
     img = qrcode.make(uri)
     buf = io.BytesIO()
     img.save(buf, format='PNG')
     png_b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
-    auth['totpSecret'] = secret
     auth['requireTwoFactor'] = True
     auth['issuer'] = issuer
     s['authentication'] = auth
@@ -2703,12 +2745,20 @@ def api_totp_verify():
     secret = cfg.get('totpSecret')
     if not secret:
         return jsonify({'error': 'Two-factor not enrolled'}), 400
-    totp = pyotp.TOTP(secret)
-    ok = totp.verify(str(otp), valid_window=2)
+    ok = verify_totp_code(secret, str(otp), window=2)
     if not ok:
         return jsonify({'error': 'Invalid OTP'}), 401
     session['otp_verified'] = True
-    return jsonify({'success': True})
+    try:
+        if not cfg.get('totpEnrolled'):
+            all_settings = load_settings()
+            auth = all_settings.get('authentication', {})
+            auth['totpEnrolled'] = True
+            all_settings['authentication'] = auth
+            save_settings(all_settings)
+    except Exception:
+        pass
+    return jsonify({'success': True, 'enrolled': True})
 
 @app.route('/api/auth/device/trust-status', methods=['GET'])
 @require_auth
