@@ -187,6 +187,7 @@ export function Settings() {
   const [hasChanges, setHasChanges] = useState(false);
   const [saved, setSaved] = useState(false);
   const [activeTab, setActiveTab] = useState("server");
+  const [trustedDevice, setTrustedDevice] = useState(false);
 
   const updateSetting = (category: keyof C2Settings, key: string, value: any) => {
     setSettings(prev => ({
@@ -273,6 +274,13 @@ export function Settings() {
             ...data?.security,
           },
         }));
+        try {
+          const tRes = await fetch('/api/auth/device/trust-status');
+          const tData = await tRes.json();
+          if (tRes.ok) {
+            setTrustedDevice(Boolean(tData?.trusted));
+          }
+        } catch (_e) {}
       } catch (e: any) {
         toast.error(e.message || 'Failed to load settings');
       }
@@ -316,6 +324,22 @@ export function Settings() {
       ...prev,
       [field]: !prev[field]
     }));
+  };
+  
+  const toggleTrustedDevice = async (checked: boolean) => {
+    try {
+      const res = await fetch('/api/auth/device/trust', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ trust: checked })
+      });
+      const data = await res.json();
+      if (!res.ok || data.success === false) throw new Error(data.message || 'Operation failed');
+      setTrustedDevice(Boolean(data?.trusted));
+      toast.success(checked ? 'Device trusted' : 'Device untrusted');
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to update device trust');
+    }
   };
 
   return (
@@ -613,6 +637,14 @@ export function Settings() {
                     id="two-factor"
                     checked={settings.authentication.requireTwoFactor}
                     onCheckedChange={(checked) => updateSetting('authentication', 'requireTwoFactor', checked)}
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="trusted-device">Trust this device</Label>
+                  <Switch
+                    id="trusted-device"
+                    checked={trustedDevice}
+                    onCheckedChange={(checked) => toggleTrustedDevice(checked)}
                   />
                 </div>
                 <div className="flex items-center justify-between">

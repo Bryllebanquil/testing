@@ -144,8 +144,10 @@ export function Login() {
               <Input
                 id="otp"
                 type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
                 value={otp}
-                onChange={(e) => setOtp(e.target.value)}
+                onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
                 placeholder="6-digit code"
                 disabled={isLoading}
               />

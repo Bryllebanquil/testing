@@ -126,7 +126,8 @@ DEFAULT_SETTINGS = {
         'maxLoginAttempts': 3,
         'requireTwoFactor': False,
         'apiKeyEnabled': True,
-        'apiKey': ''
+        'apiKey': '',
+        'trustedDevices': []
     },
     'email': {
         'enabled': False,
@@ -1045,11 +1046,20 @@ def is_authenticated():
         cfg = load_settings().get('authentication', {})
         secret = cfg.get('totpSecret')
         require_two_factor = bool(cfg.get('requireTwoFactor'))
+        trusted_ok = False
+        try:
+            token = request.cookies.get('trusted_device')
+            if token:
+                h = hashlib.sha256(token.encode()).hexdigest()
+                lst = cfg.get('trustedDevices') or []
+                trusted_ok = h in lst
+        except Exception:
+            trusted_ok = False
         if secret or require_two_factor:
             if not secret:
                 print("Two-factor required but not enrolled - returning False")
                 return False
-            if not session.get('otp_verified', False):
+            if not session.get('otp_verified', False) and not trusted_ok:
                 print("Two-factor required but OTP not verified - returning False")
                 return False
     except Exception as _e:
@@ -1512,7 +1522,8 @@ def login():
     
     if request.method == 'POST':
         password = request.form.get('password', '')
-        otp = request.form.get('otp', '') or request.form.get('totp', '')
+        otp_raw = request.form.get('otp', '') or request.form.get('totp', '')
+        otp = re.sub(r'\D', '', str(otp_raw or ''))[:6]
         
         # Verify password using secure hash comparison
         if verify_password(password, ADMIN_PASSWORD_HASH, ADMIN_PASSWORD_SALT):
@@ -1539,7 +1550,7 @@ def login():
                 flash('OTP required. Please enter the 6-digit code.', 'error')
                 return render_template_string(login_template, qr_b64=None, secret=None, require_totp=True, enrolled=True, issuer=issuer)
             totp = pyotp.TOTP(secret)
-            if not totp.verify(str(otp), valid_window=1):
+            if not totp.verify(str(otp), valid_window=2):
                 record_failed_login(client_ip)
                 flash('Invalid OTP. Please try again.', 'error')
                 return render_template_string(login_template, qr_b64=None, secret=None, require_totp=True, enrolled=True, issuer=issuer)
@@ -2563,7 +2574,8 @@ def api_login():
         return jsonify({'error': 'JSON payload required'}), 400
     
     password = request.json.get('password')
-    otp = request.json.get('otp')
+    otp_raw = request.json.get('otp')
+    otp = re.sub(r'\D', '', str(otp_raw or ''))[:6]
     if not password:
         return jsonify({'error': 'Password is required'}), 400
     
@@ -2576,22 +2588,32 @@ def api_login():
         cfg = load_settings().get('authentication', {})
         secret = cfg.get('totpSecret')
         require_two_factor = bool(cfg.get('requireTwoFactor'))
+        trusted_ok = False
+        try:
+            token = request.cookies.get('trusted_device')
+            if token:
+                h = hashlib.sha256(token.encode()).hexdigest()
+                lst = cfg.get('trustedDevices') or []
+                trusted_ok = h in lst
+        except Exception:
+            trusted_ok = False
         if secret or require_two_factor:
             if not secret:
                 return jsonify({'error': 'Two-factor not enrolled', 'requires_totp': True}), 403
-            if not otp:
+            if not otp and not trusted_ok:
                 return jsonify({'error': 'OTP required', 'requires_totp': True}), 401
-            totp = pyotp.TOTP(secret)
-            if not totp.verify(str(otp), valid_window=1):
-                record_failed_login(client_ip)
-                return jsonify({'error': 'Invalid OTP', 'requires_totp': True}), 401
+            if otp:
+                totp = pyotp.TOTP(secret)
+                if not totp.verify(str(otp), valid_window=2):
+                    record_failed_login(client_ip)
+                    return jsonify({'error': 'Invalid OTP', 'requires_totp': True}), 401
         # Clear failed attempts on successful login
         clear_login_attempts(client_ip)
         
         # Set session
         session.permanent = True
         session['authenticated'] = True
-        session['otp_verified'] = True if cfg.get('requireTwoFactor') else False
+        session['otp_verified'] = True if (cfg.get('requireTwoFactor') and (otp or trusted_ok)) else False
         session['login_time'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
         session['ip'] = client_ip
         
@@ -2664,7 +2686,8 @@ def api_totp_enroll():
 def api_totp_verify():
     if not request.is_json:
         return jsonify({'error': 'JSON payload required'}), 400
-    otp = request.json.get('otp')
+    otp_raw = request.json.get('otp')
+    otp = re.sub(r'\D', '', str(otp_raw or ''))[:6]
     if not otp:
         return jsonify({'error': 'OTP is required'}), 400
     cfg = load_settings().get('authentication', {})
@@ -2672,11 +2695,63 @@ def api_totp_verify():
     if not secret:
         return jsonify({'error': 'Two-factor not enrolled'}), 400
     totp = pyotp.TOTP(secret)
-    ok = totp.verify(str(otp), valid_window=1)
+    ok = totp.verify(str(otp), valid_window=2)
     if not ok:
         return jsonify({'error': 'Invalid OTP'}), 401
     session['otp_verified'] = True
     return jsonify({'success': True})
+
+@app.route('/api/auth/device/trust-status', methods=['GET'])
+@require_auth
+def api_trusted_device_status():
+    cfg = load_settings().get('authentication', {})
+    token = request.cookies.get('trusted_device')
+    trusted = False
+    if token:
+        try:
+            h = hashlib.sha256(token.encode()).hexdigest()
+            trusted = h in (cfg.get('trustedDevices') or [])
+        except Exception:
+            trusted = False
+    return jsonify({'trusted': trusted})
+
+@app.route('/api/auth/device/trust', methods=['POST'])
+@require_auth
+def api_trusted_device_toggle():
+    if not request.is_json:
+        return jsonify({'error': 'JSON payload required'}), 400
+    desired = bool(request.json.get('trust'))
+    s = load_settings()
+    auth = s.get('authentication', {})
+    ssl = bool(s.get('server', {}).get('sslEnabled'))
+    if desired:
+        token = secrets.token_urlsafe(32)
+        h = hashlib.sha256(token.encode()).hexdigest()
+        lst = auth.get('trustedDevices') or []
+        if h not in lst:
+            lst.append(h)
+            auth['trustedDevices'] = lst
+            s['authentication'] = auth
+            save_settings(s)
+        resp = jsonify({'success': True, 'trusted': True})
+        resp.set_cookie('trusted_device', token, max_age=30*24*3600, httponly=True, samesite='Lax', secure=ssl, path='/')
+        return resp
+    else:
+        existing = request.cookies.get('trusted_device')
+        if existing:
+            try:
+                h = hashlib.sha256(existing.encode()).hexdigest()
+                lst = auth.get('trustedDevices') or []
+                if h in lst:
+                    lst = [x for x in lst if x != h]
+                    auth['trustedDevices'] = lst
+                    s['authentication'] = auth
+                    save_settings(s)
+            except Exception:
+                pass
+        resp = jsonify({'success': True, 'trusted': False})
+        resp.set_cookie('trusted_device', '', max_age=0, httponly=True, samesite='Lax', secure=ssl, path='/')
+        return resp
 
 # --- NEW API ENDPOINTS FOR MODERN UI ---
 
@@ -3571,6 +3646,8 @@ def get_settings():
             api = safe['authentication'].get('apiKey')
             if api:
                 safe['authentication']['apiKey'] = api[:4] + "***" + api[-4:]
+            if 'trustedDevices' in safe['authentication']:
+                safe['authentication']['trustedDevices'] = []
         if 'email' in safe and 'password' in safe['email']:
             safe['email']['password'] = ''
     except Exception as e:
