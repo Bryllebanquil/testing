@@ -275,7 +275,7 @@ export function AgentCodeEditor({ open, onOpenChange, defaultAgentId = null }: A
             <TabsContent value="editor" className="space-y-2">
               <div className="border rounded">
                 <MonacoEditor
-                  height="520px"
+                  height="50vh"
                   defaultLanguage="python"
                   theme={monacoTheme}
                   value={code}
@@ -289,7 +289,7 @@ export function AgentCodeEditor({ open, onOpenChange, defaultAgentId = null }: A
                   }}
                 />
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap sticky bottom-0 bg-background/80 backdrop-blur px-2 py-2 rounded border">
                 <Button size="sm" variant="secondary" onClick={handleDebug} disabled={!agentId || debugRunning}>
                   Run Debugger
                 </Button>
