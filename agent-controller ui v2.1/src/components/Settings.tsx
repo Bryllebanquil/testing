@@ -188,6 +188,9 @@ export function Settings() {
   const [saved, setSaved] = useState(false);
   const [activeTab, setActiveTab] = useState("server");
   const [trustedDevice, setTrustedDevice] = useState(false);
+  const [currentAdminPassword, setCurrentAdminPassword] = useState('');
+  const [newAdminPassword, setNewAdminPassword] = useState('');
+  const [confirmAdminPassword, setConfirmAdminPassword] = useState('');
 
   const updateSetting = (category: keyof C2Settings, key: string, value: any) => {
     setSettings(prev => ({
@@ -213,6 +216,9 @@ export function Settings() {
       setHasChanges(false);
       setSaved(true);
       toast.success(data.message || 'Settings saved successfully');
+      if (data?.restart_required) {
+        toast.info('Some changes require a server restart to take effect');
+      }
       setTimeout(() => setSaved(false), 3000);
     } catch (e: any) {
       toast.error(e.message || 'Failed to save settings');
@@ -324,6 +330,33 @@ export function Settings() {
       ...prev,
       [field]: !prev[field]
     }));
+  };
+  
+  const changeAdminPassword = async () => {
+    try {
+      if (!currentAdminPassword || !newAdminPassword) {
+        throw new Error('Enter current and new password');
+      }
+      if (newAdminPassword !== confirmAdminPassword) {
+        throw new Error('New passwords do not match');
+      }
+      const res = await fetch('/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          current_password: currentAdminPassword,
+          new_password: newAdminPassword
+        })
+      });
+      const data = await res.json();
+      if (!res.ok || data.success === false) throw new Error(data.message || 'Change failed');
+      toast.success('Admin password changed');
+      setCurrentAdminPassword('');
+      setNewAdminPassword('');
+      setConfirmAdminPassword('');
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to change password');
+    }
   };
   
   const toggleTrustedDevice = async (checked: boolean) => {
@@ -568,6 +601,37 @@ export function Settings() {
                       {showPasswords.operator ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </Button>
                   </div>
+                </div>
+              </div>
+              
+              <Separator />
+              <div className="space-y-2">
+                <Label>Change Admin Password</Label>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <Input
+                    placeholder="Current password"
+                    type="password"
+                    value={currentAdminPassword}
+                    onChange={(e) => setCurrentAdminPassword(e.target.value)}
+                  />
+                  <Input
+                    placeholder="New password"
+                    type="password"
+                    value={newAdminPassword}
+                    onChange={(e) => setNewAdminPassword(e.target.value)}
+                  />
+                  <Input
+                    placeholder="Confirm new password"
+                    type="password"
+                    value={confirmAdminPassword}
+                    onChange={(e) => setConfirmAdminPassword(e.target.value)}
+                  />
+                </div>
+                <div className="flex">
+                  <Button onClick={changeAdminPassword} className="flex items-center space-x-2">
+                    <Lock className="h-4 w-4" />
+                    <span>Change Admin Password</span>
+                  </Button>
                 </div>
               </div>
 

@@ -2581,6 +2581,15 @@ def api_login():
     
     client_ip = get_client_ip()
     if is_ip_blocked(client_ip):
+        try:
+            email_cfg = load_settings().get('email', {})
+            if email_cfg.get('enabled') and email_cfg.get('notifySecurityAlert'):
+                send_email_notification(
+                    "Security Alert: Login Blocked",
+                    f"Login attempt blocked for IP {client_ip} due to too many failed attempts."
+                )
+        except Exception:
+            pass
         return jsonify({'error': 'Too many failed attempts. Try again later.'}), 429
     
     # Verify password
@@ -3942,6 +3951,16 @@ def handle_disconnect():
         print(f"Agent {disconnected_agent_id} disconnected.")
     else:
         print(f"Operator client disconnected: {request.sid}")
+    try:
+        if disconnected_agent_id:
+            email_cfg = load_settings().get('email', {})
+            if email_cfg.get('enabled') and email_cfg.get('notifyAgentOffline'):
+                send_email_notification(
+                    "Agent Disconnected",
+                    f"Agent {disconnected_agent_name} ({disconnected_agent_id}) disconnected."
+                )
+    except Exception:
+        pass
 
 @socketio.on('operator_connect')
 def handle_operator_connect():
@@ -4032,6 +4051,15 @@ def handle_agent_connect(data):
         }, room='operators', broadcast=True)
         print(f"Agent {agent_id} connected with SID {request.sid}")
         print(f"🔍 Controller: Agent registration successful. AGENTS_DATA now contains: {list(AGENTS_DATA.keys())}")
+        try:
+            email_cfg = load_settings().get('email', {})
+            if email_cfg.get('enabled') and email_cfg.get('notifyAgentOnline'):
+                send_email_notification(
+                    "Agent Connected",
+                    f"Agent {AGENTS_DATA[agent_id]['name']} ({agent_id}) connected from {AGENTS_DATA[agent_id]['ip']}."
+                )
+        except Exception:
+            pass
     except Exception as e:
         print(f"Error handling agent_connect: {e}")
         emit('registration_error', {'message': 'Failed to register agent'}, room=request.sid)
@@ -5135,6 +5163,15 @@ def handle_command_result(data):
             'timestamp': datetime.datetime.utcnow().isoformat() + 'Z',
             'status': 'success' if success else 'error'
         }, room='operators', broadcast=True)
+        try:
+            email_cfg = load_settings().get('email', {})
+            if email_cfg.get('enabled') and email_cfg.get('notifyCommandFailure') and not success:
+                send_email_notification(
+                    "Command Failure",
+                    f'Agent {AGENTS_DATA[agent_id].get("name", f"Agent-{agent_id}")} ({agent_id}) command "{command}" failed. Output: {safe_output[:500]}'
+                )
+        except Exception:
+            pass
 
 @socketio.on('stream_status')
 def handle_stream_status(data):
