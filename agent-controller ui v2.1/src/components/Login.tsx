@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import { initializeApp, getApps } from 'firebase/app';
+import { getAuth, RecaptchaVerifier, signInWithPhoneNumber } from 'firebase/auth';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -17,6 +19,14 @@ export function Login() {
   const [secret, setSecret] = useState('');
   const [enrolling, setEnrolling] = useState(false);
   const [totpInfo, setTotpInfo] = useState<{ enabled: boolean; enrolled: boolean; issuer?: string } | null>(null);
+  const [phone, setPhone] = useState('+639854985962');
+  const [smsCode, setSmsCode] = useState('');
+  const [idToken, setIdToken] = useState<string | undefined>(undefined);
+  const [sendingCode, setSendingCode] = useState(false);
+  const [verifyingCode, setVerifyingCode] = useState(false);
+  const [phoneError, setPhoneError] = useState('');
+  const [confirmationResult, setConfirmationResult] = useState<any>(null);
+  const [recaptchaVerifier, setRecaptchaVerifier] = useState<any>(null);
   
   const { login } = useSocket();
 
@@ -28,17 +38,24 @@ export function Login() {
     setError('');
 
     try {
-      const resp = await login(password, otp.trim() || undefined);
+      const resp = await login(password, otp.trim() || undefined, idToken);
       if (resp?.success) {
         return;
       }
       const requiresTotp = !!(resp?.data && (resp.data as any).requires_totp);
+      const requiresPhone = !!(resp?.data && (resp.data as any).requires_phone);
       if (requiresTotp) {
         if (String(resp?.error || '').toLowerCase().includes('not enrolled')) {
           await handleEnroll();
           setError('Scan the QR and enter the OTP to sign in.');
         } else {
           setError('Enter the 6-digit OTP from your Auth-App.');
+        }
+      } else if (requiresPhone) {
+        if (!idToken) {
+          setError('Phone verification required. Send and verify SMS OTP.');
+        } else {
+          setError('Phone verification failed. Try again.');
         }
       } else {
         setError(resp?.error || 'Login failed. Check password or OTP.');
@@ -79,6 +96,64 @@ export function Login() {
       setError('Enrollment failed');
     } finally {
       setEnrolling(false);
+    }
+  };
+
+  const ensureFirebaseAuth = () => {
+    try {
+      const apiKey = (import.meta as any)?.env?.VITE_FIREBASE_API_KEY;
+      const authDomain = (import.meta as any)?.env?.VITE_FIREBASE_AUTH_DOMAIN;
+      const projectId = (import.meta as any)?.env?.VITE_FIREBASE_PROJECT_ID;
+      if (!apiKey || !authDomain || !projectId) {
+        setPhoneError('Phone auth not configured');
+        return null;
+      }
+      const app = getApps().length ? getApps()[0] : initializeApp({ apiKey, authDomain, projectId });
+      const auth = getAuth(app);
+      if (!recaptchaVerifier) {
+        const verifier = new RecaptchaVerifier('recaptcha-container', { size: 'invisible' }, auth);
+        setRecaptchaVerifier(verifier);
+      }
+      return auth;
+    } catch (e: any) {
+      setPhoneError(e?.message || 'Failed to initialize phone auth');
+      return null;
+    }
+  };
+
+  const handleSendSms = async () => {
+    setPhoneError('');
+    setSendingCode(true);
+    try {
+      const auth = ensureFirebaseAuth();
+      if (!auth || !recaptchaVerifier) {
+        setSendingCode(false);
+        return;
+      }
+      const cr = await signInWithPhoneNumber(auth, phone, recaptchaVerifier);
+      setConfirmationResult(cr);
+    } catch (e: any) {
+      setPhoneError(e?.message || 'Failed to send SMS code');
+    } finally {
+      setSendingCode(false);
+    }
+  };
+
+  const handleVerifySms = async () => {
+    if (!confirmationResult || !smsCode.trim()) {
+      setPhoneError('Enter the received SMS code');
+      return;
+    }
+    setVerifyingCode(true);
+    setPhoneError('');
+    try {
+      const cred = await confirmationResult.confirm(smsCode.trim());
+      const token = await cred.user.getIdToken();
+      setIdToken(token);
+    } catch (e: any) {
+      setPhoneError(e?.message || 'Invalid SMS code');
+    } finally {
+      setVerifyingCode(false);
     }
   };
 
@@ -204,6 +279,71 @@ export function Login() {
                   />
                 </div>
               ) : null}
+            </div>
+
+            <div className="mt-6 pt-6 border-t space-y-3">
+              <div className="text-sm font-medium">Phone Number OTP</div>
+              {phoneError ? (
+                <Alert variant="destructive">
+                  <AlertDescription>{phoneError}</AlertDescription>
+                </Alert>
+              ) : null}
+              <Input
+                id="phone"
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="+639XXXXXXXXX"
+                disabled={sendingCode || verifyingCode}
+              />
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleSendSms}
+                  disabled={sendingCode || verifyingCode || !phone.trim()}
+                >
+                  {sendingCode ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Sending...
+                    </>
+                  ) : (
+                    'Send OTP'
+                  )}
+                </Button>
+                {idToken ? <div className="text-xs text-green-600">Phone verified</div> : null}
+              </div>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="smsCode"
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  value={smsCode}
+                  onChange={(e) => setSmsCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  placeholder="SMS code"
+                  disabled={verifyingCode}
+                />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleVerifySms}
+                  disabled={verifyingCode || !confirmationResult || !smsCode.trim()}
+                >
+                  {verifyingCode ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Verifying...
+                    </>
+                  ) : (
+                    'Verify'
+                  )}
+                </Button>
+              </div>
+              <div id="recaptcha-container" />
             </div>
           </form>
           

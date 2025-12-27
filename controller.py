@@ -1270,7 +1270,7 @@ def require_auth(f):
 @app.route('/logout')
 def logout():
     session.clear()
-    return redirect(url_for('login'))
+    return jsonify({'success': True})
 
 # Video storage configuration
 VIDEO_STORAGE_PROVIDER = os.environ.get('VIDEO_STORAGE_PROVIDER')
@@ -1993,7 +1993,7 @@ def index():
     if is_authenticated():
         # Serve a single unified dashboard to avoid confusion between two UIs
         return redirect(url_for('dashboard'))
-    return redirect(url_for('login'))
+    return jsonify({'status': 'ok', 'authenticated': False}), 200
 
 @app.route("/dashboard")
 @require_auth
