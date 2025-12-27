@@ -14768,7 +14768,12 @@ def agent_main():
                         log_message(f"[WARN] Controller may not be reachable: {e}")
                         log_message(f"[INFO] Will retry in {retry_delay} seconds...")
             
-                sio.connect(SERVER_URL, transports=['websocket', 'polling'], wait_timeout=10)
+                _transports = ['websocket', 'polling']
+                try:
+                    import websocket  # type: ignore
+                except Exception:
+                    _transports = ['polling']
+                sio.connect(SERVER_URL, transports=_transports, wait_timeout=10)
                 log_message("[OK] Connected to server successfully!")
                 
                 # Reset connection attempts and state on successful connection

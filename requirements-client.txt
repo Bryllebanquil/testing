@@ -7,6 +7,7 @@
 
 # WebSocket and real-time communication
 python-socketio>=5.13.0
+websocket-client>=1.7.0
 websockets>=10.4
 requests>=2.32.4
 urllib3>=2.0.0

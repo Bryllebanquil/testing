@@ -26,7 +26,7 @@
     "totpEnrolled": true,
     "totpState": "2FA_ENABLED",
     "qrIssued": false,
-    "totpSecretEnc": "DYMEAUG7TOE6WOH7AR3ONMSQWI4K7ZP4",
+    "totpSecretEnc": "IJ3J7GCPSZRQNG573Q24PE7ACOKJ7TUA",
     "backupCodes": [],
     "backupCodesIssued": false,
     "issuer": "Neural Control Hub"
