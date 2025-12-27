@@ -7,6 +7,7 @@ import { Badge } from './ui/badge';
 import { ScrollArea } from './ui/scroll-area';
 import { Progress } from './ui/progress';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
+import { API_BASE_URL } from '../services/api';
 import { 
   Files, 
   Folder, 
@@ -189,16 +190,16 @@ export function FileManager({ agentId }: FileManagerProps) {
 
   const makeStreamUrl = (path: string) => {
     if (!agentId) return '';
-    return `/api/agents/${agentId}/files/stream?path=${encodeURIComponent(path)}`;
+    return `${API_BASE_URL}/api/agents/${agentId}/files/stream?path=${encodeURIComponent(path)}`;
   };
   const makeStreamFastUrl = (path: string) => {
     if (!agentId) return '';
-    return `/api/agents/${agentId}/files/stream_faststart?path=${encodeURIComponent(path)}`;
+    return `${API_BASE_URL}/api/agents/${agentId}/files/stream_faststart?path=${encodeURIComponent(path)}`;
   };
 
   const makeThumbUrl = (path: string) => {
     if (!agentId) return '';
-    return `/api/agents/${agentId}/files/thumbnail?path=${encodeURIComponent(path)}&size=64`;
+    return `${API_BASE_URL}/api/agents/${agentId}/files/thumbnail?path=${encodeURIComponent(path)}&size=64`;
   };
 
   const handlePreview = () => {

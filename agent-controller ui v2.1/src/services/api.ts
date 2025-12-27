@@ -4,14 +4,24 @@
  */
 
 // API Configuration
-// Prefer same-origin or backend-injected override, then env, then localhost
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const runtimeApiUrl = (globalThis as any)?.__API_URL__ as string | undefined;
-const API_BASE_URL =
-  runtimeApiUrl ||
-  (typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.host}` : '') ||
-  (import.meta as any)?.env?.VITE_API_URL ||
-  'http://localhost:8080';
+
+function resolveApiBaseUrl(): string {
+  if (runtimeApiUrl) return runtimeApiUrl;
+
+  if (typeof window !== 'undefined') {
+    const host = window.location.hostname;
+    const isLocalhost = host === 'localhost' || host === '127.0.0.1';
+    if (!isLocalhost) {
+      return `${window.location.protocol}//${window.location.host}`;
+    }
+  }
+
+  return (import.meta as any)?.env?.VITE_API_URL || 'http://localhost:8080';
+}
+
+export const API_BASE_URL = resolveApiBaseUrl();
 const API_ENDPOINTS = {
   // Authentication
   auth: {
