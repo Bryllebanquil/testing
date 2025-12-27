@@ -1990,13 +1990,10 @@ def _adjust_stream_chunk_size(agent_id: str, elapsed_s: float, success: bool):
 
 @app.route("/")
 def index():
-    if is_authenticated():
-        # Serve a single unified dashboard to avoid confusion between two UIs
-        return redirect(url_for('dashboard'))
-    return jsonify({'status': 'ok', 'authenticated': False}), 200
+    # Always serve the unified frontend app. It shows Login when unauthenticated.
+    return redirect(url_for('dashboard'))
 
 @app.route("/dashboard")
-@require_auth
 def dashboard():
     try:
         base_dir = os.path.dirname(__file__)
