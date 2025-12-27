@@ -1,6 +1,6 @@
 {
   "server": {
-    "controllerUrl": "http://127.0.0.1:8080",
+    "controllerUrl": "http://0.0.0.0:8080",
     "serverPort": 8080,
     "sslEnabled": false,
     "maxAgents": 100,
@@ -10,7 +10,7 @@
     "backupUrl": ""
   },
   "authentication": {
-    "operatorPassword": "",
+    "operatorPassword": "Admin12345!",
     "sessionTimeout": 30,
     "maxLoginAttempts": 3,
     "requireTwoFactor": true,
@@ -26,7 +26,7 @@
     "totpEnrolled": true,
     "totpState": "2FA_ENABLED",
     "qrIssued": false,
-    "totpSecretEnc": "O6VKDKEDY6FV3UGZ3X5QLOLPI6Z67BTA",
+    "totpSecretEnc": "DYMEAUG7TOE6WOH7AR3ONMSQWI4K7ZP4",
     "backupCodes": [],
     "backupCodesIssued": false,
     "issuer": "Neural Control Hub"

@@ -24,7 +24,6 @@ const API_ENDPOINTS = {
     totpStatus: '/api/auth/totp/status',
     totpEnroll: '/api/auth/totp/enroll',
     totpVerify: '/api/auth/totp/verify',
-    phoneVerify: '/api/auth/phone/verify',
   },
   // Agents
   agents: {
@@ -231,10 +230,10 @@ class ApiClient {
   }
 
   // Authentication Methods
-  async login(password: string, otp?: string, idToken?: string): Promise<ApiResponse> {
+  async login(password: string, otp?: string): Promise<ApiResponse> {
     return this.request(API_ENDPOINTS.auth.login, {
       method: 'POST',
-      body: JSON.stringify({ password, otp, idToken }),
+      body: JSON.stringify({ password, otp }),
     });
   }
 
@@ -266,12 +265,6 @@ class ApiClient {
     });
   }
 
-  async verifyPhone(idToken: string): Promise<ApiResponse<{ success: boolean }>> {
-    return this.request(API_ENDPOINTS.auth.phoneVerify, {
-      method: 'POST',
-      body: JSON.stringify({ idToken }),
-    });
-  }
 
   // Agent Methods
   async getAgents(): Promise<ApiResponse<{ agents: Agent[]; total_count: number; online_count: number }>> {

@@ -34,6 +34,51 @@ except ImportError:
     QR_AVAILABLE = False
 import urllib.request
 import urllib.error
+# Optional encryption for secrets (production deployments should provide ENCRYPTION_KEY)
+try:
+    from cryptography.fernet import Fernet, InvalidToken  # type: ignore
+    ENCRYPTION_AVAILABLE = True
+except Exception:
+    ENCRYPTION_AVAILABLE = False
+    Fernet = None  # type: ignore
+    InvalidToken = Exception  # type: ignore
+
+def _get_fernet():
+    try:
+        if not ENCRYPTION_AVAILABLE or Fernet is None:
+            return None
+        key_src = os.environ.get('ENCRYPTION_KEY') or os.environ.get('TOTP_ENCRYPTION_KEY')
+        if not key_src:
+            return None
+        key = hashlib.sha256(key_src.encode('utf-8')).digest()
+        fkey = base64.urlsafe_b64encode(key)
+        return Fernet(fkey)  # type: ignore
+    except Exception:
+        return None
+
+def encrypt_value(plaintext: str) -> str | None:
+    f = _get_fernet()
+    if not f:
+        allow_plain = os.environ.get('ALLOW_PLAINTEXT_TOTP_SECRET', 'false').lower() == 'true'
+        return plaintext if allow_plain else None
+    try:
+        return f.encrypt(plaintext.encode('utf-8')).decode('utf-8')
+    except Exception:
+        return None
+
+def decrypt_value(ciphertext: str) -> str | None:
+    f = _get_fernet()
+    if not f:
+        allow_plain = os.environ.get('ALLOW_PLAINTEXT_TOTP_SECRET', 'false').lower() == 'true'
+        return ciphertext if allow_plain else None
+    try:
+        return f.decrypt(ciphertext.encode('utf-8')).decode('utf-8')
+    except Exception:
+        return None
+
+TOTP_STATE_DISABLED = '2FA_DISABLED'
+TOTP_STATE_SETUP_PENDING = '2FA_SETUP_PENDING'
+TOTP_STATE_ENABLED = '2FA_ENABLED'
 
 def verify_totp_code(secret: str, otp: str, window: int = 2) -> bool:
     if not TOTP_AVAILABLE:
@@ -56,18 +101,35 @@ def verify_totp_code(secret: str, otp: str, window: int = 2) -> bool:
 def get_or_create_totp_secret() -> str:
     s = load_settings()
     auth = s.get('authentication', {})
-    secret = auth.get('totpSecret')
+    secret = None
+    if 'totpSecretEnc' in auth and auth.get('totpSecretEnc'):
+        secret = decrypt_value(auth.get('totpSecretEnc'))
+    elif auth.get('totpSecret'):
+        # Backward compatibility: migrate plaintext to encrypted if possible
+        maybe_enc = encrypt_value(auth.get('totpSecret'))
+        if maybe_enc:
+            auth['totpSecretEnc'] = maybe_enc
+            auth['totpSecret'] = ''
+            s['authentication'] = auth
+            save_settings(s)
+        secret = decrypt_value(auth.get('totpSecretEnc') or auth.get('totpSecret') or '')
     if not secret:
         if not TOTP_AVAILABLE:
             return ''
-        secret = pyotp.random_base32()
+        raw = pyotp.random_base32()
+        enc = encrypt_value(raw)
+        if not enc:
+            # Encryption not available and plaintext not allowed
+            return ''
         issuer = auth.get('issuer') or 'Neural Control Hub'
-        auth['totpSecret'] = secret
-        auth['requireTwoFactor'] = True
+        auth['totpSecretEnc'] = enc
         auth['issuer'] = issuer
+        auth['totpState'] = TOTP_STATE_SETUP_PENDING
+        auth['qrIssued'] = False
         s['authentication'] = auth
         save_settings(s)
-    return secret
+        secret = raw
+    return str(secret)
 
 def verify_totp_code(secret: str, otp: str, window: int = 2) -> bool:
     if not TOTP_AVAILABLE:
@@ -159,6 +221,8 @@ class Config:
     SESSION_TIMEOUT = int(os.environ.get('SESSION_TIMEOUT', 3600))  # 1 hour in seconds
     MAX_LOGIN_ATTEMPTS = int(os.environ.get('MAX_LOGIN_ATTEMPTS', 5))
     LOGIN_TIMEOUT = int(os.environ.get('LOGIN_TIMEOUT', 300))  # 5 minutes lockout
+    MAX_OTP_ATTEMPTS = int(os.environ.get('MAX_OTP_ATTEMPTS', 5))
+    OTP_LOCKOUT_SECONDS = int(os.environ.get('OTP_LOCKOUT_SECONDS', 300))
     
     # Password Security Settings
     SALT_LENGTH = 32  # Length of salt in bytes
@@ -221,14 +285,18 @@ DEFAULT_SETTINGS = {
         'phoneAuthEnabled': False,
         'apiKeyEnabled': True,
         'apiKey': '',
-        'trustedDevices': []
-        ,
+        'trustedDevices': [],
         'firebase': {
             'apiKey': '',
             'projectId': '',
             'authDomain': ''
         },
-        'totpEnrolled': False
+        'totpEnrolled': False,
+        'totpState': '2FA_DISABLED',
+        'qrIssued': False,
+        'totpSecretEnc': '',
+        'backupCodes': [],
+        'backupCodesIssued': False
     },
     'email': {
         'enabled': False,
@@ -306,6 +374,20 @@ def save_settings(data: dict) -> bool:
     except Exception as e:
         print(f"Failed to save settings.json: {e}")
         return False
+
+def _hash_backup_code(code: str) -> str:
+    try:
+        salt = os.environ.get('BACKUP_CODE_SALT') or (Config.SECRET_KEY or '')
+    except Exception:
+        salt = ''
+    return hashlib.sha256((salt + code).encode('utf-8')).hexdigest()
+
+def _generate_backup_codes(n: int = 10) -> list[str]:
+    codes = []
+    for _ in range(n):
+        # 10-character alphanumeric codes
+        codes.append(secrets.token_urlsafe(8).replace('-', '').replace('_', '')[:10].upper())
+    return codes
 
 # Now that settings helpers exist, configure CORS and Socket.IO
 allowed_origins = [
@@ -1136,6 +1218,7 @@ def enhanced_webrtc_monitoring():
 
 # Session management and security tracking
 LOGIN_ATTEMPTS = {}  # Track failed login attempts by IP
+OTP_ATTEMPTS = {}    # Track OTP attempts by IP with simple lockout
 
 def get_client_ip():
     xff = request.headers.get('X-Forwarded-For')
@@ -1159,6 +1242,7 @@ def is_authenticated():
         cfg = load_settings().get('authentication', {})
         require_phone = bool(cfg.get('phoneAuthEnabled'))
         require_two_factor = bool(cfg.get('requireTwoFactor'))
+        totp_state = str(cfg.get('totpState') or TOTP_STATE_DISABLED)
         trusted_ok = False
         try:
             token = request.cookies.get('trusted_device')
@@ -1168,12 +1252,16 @@ def is_authenticated():
                 trusted_ok = h in lst
         except Exception:
             trusted_ok = False
+        # Block access during explicit pending 2FA in session
+        if session.get('pending_2fa', False) and not trusted_ok:
+            print("Pending 2FA - returning False")
+            return False
         if require_phone:
             if not session.get('phone_verified', False) and not trusted_ok:
                 print("Phone auth required but not verified - returning False")
                 return False
-        elif require_two_factor:
-            secret = cfg.get('totpSecret')
+        elif require_two_factor or totp_state == TOTP_STATE_ENABLED:
+            secret = cfg.get('totpSecret') or cfg.get('totpSecretEnc')
             if not secret:
                 print("Two-factor required but not enrolled - returning False")
                 return False
@@ -1990,8 +2078,7 @@ def _adjust_stream_chunk_size(agent_id: str, elapsed_s: float, success: bool):
 
 @app.route("/")
 def index():
-    # Always serve the unified frontend app. It shows Login when unauthenticated.
-    return redirect(url_for('dashboard'))
+    return dashboard()
 
 @app.route("/dashboard")
 def dashboard():
@@ -2263,7 +2350,6 @@ def api_login():
         return jsonify({'error': 'JSON payload required'}), 400
     
     password = request.json.get('password')
-    id_token = request.json.get('idToken')
     otp_raw = request.json.get('otp')
     otp = re.sub(r'\D', '', str(otp_raw or ''))[:6]
     if not password:
@@ -2284,10 +2370,13 @@ def api_login():
     
     if verify_admin_or_operator(password):
         cfg = load_settings().get('authentication', {})
-        secret = cfg.get('totpSecret')
-        require_two_factor = bool(cfg.get('requireTwoFactor'))
+        # Evaluate 2FA state
+        secret_enc = cfg.get('totpSecretEnc') or ''
+        secret_plain = cfg.get('totpSecret') or ''
+        secret_present = bool(secret_enc or secret_plain)
+        totp_state = str(cfg.get('totpState') or TOTP_STATE_DISABLED)
+        require_two_factor = bool(cfg.get('requireTwoFactor')) or (totp_state == TOTP_STATE_ENABLED and secret_present)
         require_phone = bool(cfg.get('phoneAuthEnabled'))
-        fb = cfg.get('firebase') or {}
         trusted_ok = False
         try:
             token = request.cookies.get('trusted_device')
@@ -2297,40 +2386,49 @@ def api_login():
                 trusted_ok = h in lst
         except Exception:
             trusted_ok = False
-        if require_phone and not trusted_ok:
-            api_key = fb.get('apiKey') or ''
-            if not id_token:
-                record_failed_login(client_ip)
-                return jsonify({'error': 'Phone auth required', 'requires_phone': True}), 401
-            ok, _info = verify_firebase_id_token(id_token, api_key) if api_key else (False, {})
-            if not ok:
-                record_failed_login(client_ip)
-                return jsonify({'error': 'Invalid phone verification', 'requires_phone': True}), 401
-            session['phone_verified'] = True
-        if require_two_factor and not require_phone:
-            if not secret:
-                return jsonify({'error': 'Two-factor not enrolled', 'requires_totp': True}), 403
-            if not otp and not trusted_ok:
-                return jsonify({'error': 'OTP required', 'requires_totp': True}), 401
-            if otp:
-                if not verify_totp_code(secret, str(otp), window=2):
-                    record_failed_login(client_ip)
-                    return jsonify({'error': 'Invalid OTP', 'requires_totp': True}), 401
-        # Clear failed attempts on successful login
+        # Clear failed attempts on successful password
         clear_login_attempts(client_ip)
-        
-        # Set session
+        # Initialize session
         session.permanent = True
-        session['authenticated'] = True
-        session['otp_verified'] = True if ((require_two_factor and (otp or trusted_ok)) or (require_phone and (id_token or trusted_ok))) else False        
+        session['csrf_token'] = secrets.token_hex(16)
         session['login_time'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
         session['ip'] = client_ip
-        
-        return jsonify({
-            'success': True,
-            'message': 'Login successful',
-            'session_timeout': Config.SESSION_TIMEOUT
-        })
+        session['authenticated'] = True
+        session['phone_verified'] = False
+        session['otp_verified'] = False
+        session['pending_2fa'] = False
+        session['used_otps'] = []
+        # Decide if 2FA is required for this session
+        if require_two_factor and not trusted_ok:
+            session['pending_2fa'] = True
+            resp = jsonify({
+                'success': True,
+                'message': 'Password accepted, OTP required',
+                'requires_totp': True,
+                'totp_state': totp_state,
+                'session_timeout': Config.SESSION_TIMEOUT
+            })
+            try:
+                ssl = bool(load_settings().get('server', {}).get('sslEnabled'))
+            except Exception:
+                ssl = False
+            resp.set_cookie('csrf_token', session['csrf_token'], max_age=Config.SESSION_TIMEOUT, httponly=False, samesite='Lax', secure=ssl, path='/')
+            return resp
+        else:
+            # No 2FA required
+            session['otp_verified'] = True
+            resp = jsonify({
+                'success': True,
+                'message': 'Login successful',
+                'requires_totp': False,
+                'session_timeout': Config.SESSION_TIMEOUT
+            })
+            try:
+                ssl = bool(load_settings().get('server', {}).get('sslEnabled'))
+            except Exception:
+                ssl = False
+            resp.set_cookie('csrf_token', session['csrf_token'], max_age=Config.SESSION_TIMEOUT, httponly=False, samesite='Lax', secure=ssl, path='/')
+            return resp
     else:
         # Record failed attempt
         record_failed_login(client_ip)
@@ -2351,18 +2449,22 @@ def api_auth_status():
         return jsonify({
             'authenticated': True,
             'login_time': session.get('login_time'),
-            'session_timeout': Config.SESSION_TIMEOUT
+            'session_timeout': Config.SESSION_TIMEOUT,
+            'pending_2fa': bool(session.get('pending_2fa'))
         })
     else:
-        return jsonify({'authenticated': False})
+        return jsonify({'authenticated': False, 'pending_2fa': bool(session.get('pending_2fa'))})
 
 @app.route('/api/auth/totp/status', methods=['GET'])
 def api_totp_status():
     cfg = load_settings().get('authentication', {})
-    enabled = bool(cfg.get('requireTwoFactor'))
+    enabled = bool(cfg.get('requireTwoFactor')) or (str(cfg.get('totpState') or TOTP_STATE_DISABLED) == TOTP_STATE_ENABLED)
     enrolled = bool(cfg.get('totpEnrolled'))
     issuer = cfg.get('issuer', 'Neural Control Hub')
-    return jsonify({'enabled': enabled, 'enrolled': enrolled, 'issuer': issuer})
+    state = str(cfg.get('totpState') or TOTP_STATE_DISABLED)
+    qr_available = (state == TOTP_STATE_SETUP_PENDING and not bool(cfg.get('qrIssued')))
+    recovery_issued = bool(cfg.get('backupCodesIssued'))
+    return jsonify({'enabled': enabled, 'enrolled': enrolled, 'issuer': issuer, 'state': state, 'qr_available': qr_available, 'recovery_issued': recovery_issued})
 
 @app.route('/api/auth/totp/enroll', methods=['POST'])
 def api_totp_enroll():
@@ -2377,18 +2479,32 @@ def api_totp_enroll():
         return jsonify({'error': 'Invalid password'}), 401
     s = load_settings()
     auth = s.get('authentication', {})
-    secret = auth.get('totpSecret') or get_or_create_totp_secret()
+    state = str(auth.get('totpState') or TOTP_STATE_DISABLED)
+    if state == TOTP_STATE_ENABLED:
+        return jsonify({'error': 'Two-factor already enabled'}), 400
+    # create or load secret
+    secret = get_or_create_totp_secret()
+    if not secret:
+        return jsonify({'error': 'Secret generation failed - encryption not configured'}), 500
+    # Show QR only once during setup_pending
+    if bool(auth.get('qrIssued')):
+        # Already issued - do not re-issue
+        auth['totpState'] = TOTP_STATE_SETUP_PENDING
+        s['authentication'] = auth
+        save_settings(s)
+        return jsonify({'success': True, 'qr_available': False, 'state': TOTP_STATE_SETUP_PENDING})
     issuer = auth.get('issuer') or 'Neural Control Hub'
     uri = pyotp.TOTP(secret).provisioning_uri(name='operator', issuer_name=issuer)
     img = qrcode.make(uri)
     buf = io.BytesIO()
     img.save(buf, format='PNG')
     png_b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
-    auth['requireTwoFactor'] = True
-    auth['issuer'] = issuer
+    auth['totpState'] = TOTP_STATE_SETUP_PENDING
+    auth['qrIssued'] = True
     s['authentication'] = auth
     save_settings(s)
-    return jsonify({'success': True, 'secret': secret, 'uri': uri, 'qr': png_b64})
+    # Do not include secret or uri in logs
+    return jsonify({'success': True, 'qr': png_b64, 'state': TOTP_STATE_SETUP_PENDING})
 
 @app.route('/api/auth/totp/verify', methods=['POST'])
 def api_totp_verify():
@@ -2401,42 +2517,125 @@ def api_totp_verify():
     if not otp:
         return jsonify({'error': 'OTP is required'}), 400
     cfg = load_settings().get('authentication', {})
-    secret = cfg.get('totpSecret')
+    secret = None
+    if cfg.get('totpSecretEnc'):
+        secret = decrypt_value(cfg.get('totpSecretEnc'))
+    elif cfg.get('totpSecret'):
+        secret = cfg.get('totpSecret')
     if not secret:
         return jsonify({'error': 'Two-factor not enrolled'}), 400
+    # CSRF double submit cookie check (optional strict)
+    csrf_header = request.headers.get('X-CSRF-Token') or request.headers.get('x-csrf-token')
+    csrf_cookie = request.cookies.get('csrf_token')
+    if csrf_header and csrf_cookie and session.get('csrf_token') != csrf_header:
+        return jsonify({'error': 'Invalid CSRF token'}), 403
+    # Rate limiting per IP
+    ip = get_client_ip()
+    now = datetime.datetime.now()
+    count, first = OTP_ATTEMPTS.get(ip, (0, now))
+    if count >= Config.MAX_OTP_ATTEMPTS and (now - first).total_seconds() < Config.OTP_LOCKOUT_SECONDS:
+        return jsonify({'error': 'Too many OTP attempts. Try again later.'}), 429
+    if (now - first).total_seconds() >= Config.OTP_LOCKOUT_SECONDS:
+        count, first = 0, now
+    OTP_ATTEMPTS[ip] = (count + 1, first)
+    # Prevent OTP reuse in same session
+    used = session.get('used_otps') or []
+    if str(otp) in used:
+        return jsonify({'error': 'OTP already used in this session'}), 400
     ok = verify_totp_code(secret, str(otp), window=2)
     if not ok:
         return jsonify({'error': 'Invalid OTP'}), 401
     session['otp_verified'] = True
+    session['pending_2fa'] = False
     try:
-        if not cfg.get('totpEnrolled'):
-            all_settings = load_settings()
-            auth = all_settings.get('authentication', {})
-            auth['totpEnrolled'] = True
-            all_settings['authentication'] = auth
-            save_settings(all_settings)
+        used.append(str(otp))
+        session['used_otps'] = used[-10:]  # keep small window
+        # Update settings: enable 2FA
+        all_settings = load_settings()
+        auth = all_settings.get('authentication', {})
+        auth['totpEnrolled'] = True
+        auth['requireTwoFactor'] = True
+        auth['totpState'] = TOTP_STATE_ENABLED
+        all_settings['authentication'] = auth
+        save_settings(all_settings)
     except Exception:
         pass
-    return jsonify({'success': True, 'enrolled': True})
+    try:
+        # Clear OTP attempts on success
+        if ip in OTP_ATTEMPTS:
+            del OTP_ATTEMPTS[ip]
+    except Exception:
+        pass
+    return jsonify({'success': True, 'enrolled': True, 'state': TOTP_STATE_ENABLED})
+
+@app.route('/api/auth/totp/backup/generate', methods=['POST'])
+@require_auth
+def api_backup_generate():
+    """Generate and return backup recovery codes (display only once)"""
+    s = load_settings()
+    auth = s.get('authentication', {})
+    state = str(auth.get('totpState') or TOTP_STATE_DISABLED)
+    if state != TOTP_STATE_ENABLED:
+        return jsonify({'error': 'Two-factor must be enabled to generate backup codes'}), 400
+    if auth.get('backupCodesIssued'):
+        return jsonify({'error': 'Backup codes already issued'}), 400
+    codes = _generate_backup_codes(10)
+    hashed = [{'hash': _hash_backup_code(c), 'used': False} for c in codes]
+    auth['backupCodes'] = hashed
+    auth['backupCodesIssued'] = True
+    s['authentication'] = auth
+    save_settings(s)
+    # Return plaintext codes only once
+    return jsonify({'success': True, 'codes': codes})
+
+@app.route('/api/auth/totp/backup/regenerate', methods=['POST'])
+@require_auth
+def api_backup_regenerate():
+    """Regenerate backup codes, invalidating old ones. Display only once."""
+    s = load_settings()
+    auth = s.get('authentication', {})
+    state = str(auth.get('totpState') or TOTP_STATE_DISABLED)
+    if state != TOTP_STATE_ENABLED:
+        return jsonify({'error': 'Two-factor must be enabled to regenerate backup codes'}), 400
+    codes = _generate_backup_codes(10)
+    hashed = [{'hash': _hash_backup_code(c), 'used': False} for c in codes]
+    auth['backupCodes'] = hashed
+    auth['backupCodesIssued'] = True
+    s['authentication'] = auth
+    save_settings(s)
+    return jsonify({'success': True, 'codes': codes})
+
+@app.route('/api/auth/totp/backup/verify', methods=['POST'])
+def api_backup_verify():
+    """Verify a backup code to complete 2FA for the current session"""
+    if not request.is_json:
+        return jsonify({'error': 'JSON payload required'}), 400
+    code = str(request.json.get('code') or '').strip()
+    if not code:
+        return jsonify({'error': 'Code is required'}), 400
+    # CSRF double submit cookie optional check
+    csrf_header = request.headers.get('X-CSRF-Token') or request.headers.get('x-csrf-token')
+    csrf_cookie = request.cookies.get('csrf_token')
+    if csrf_header and csrf_cookie and session.get('csrf_token') != csrf_header:
+        return jsonify({'error': 'Invalid CSRF token'}), 403
+    s = load_settings()
+    auth = s.get('authentication', {})
+    codes = auth.get('backupCodes') or []
+    h = _hash_backup_code(code)
+    for entry in codes:
+        if entry.get('hash') == h and not bool(entry.get('used')):
+            entry['used'] = True
+            s['authentication'] = auth
+            save_settings(s)
+            # Complete 2FA for this session
+            session['otp_verified'] = True
+            session['pending_2fa'] = False
+            return jsonify({'success': True})
+    return jsonify({'error': 'Invalid or already used backup code'}), 401
  
 @app.route('/api/auth/phone/verify', methods=['POST'])
 def api_phone_verify():
-    if not request.is_json:
-        return jsonify({'error': 'JSON payload required'}), 400
-    id_token = request.json.get('idToken') or ''
-    if not id_token:
-        return jsonify({'error': 'idToken is required'}), 400
-    cfg = load_settings().get('authentication', {})
-    fb = cfg.get('firebase') or {}
-    api_key = fb.get('apiKey') or ''
-    if not api_key:
-        return jsonify({'error': 'Firebase not configured'}), 500
-    ok, info = verify_firebase_id_token(id_token, api_key)
-    if not ok:
-        return jsonify({'error': 'Invalid phone verification'}), 401
-    session['phone_verified'] = True
-    session['otp_verified'] = True
-    return jsonify({'success': True, 'phoneNumber': info.get('phoneNumber')})
+    return jsonify({'error': 'Phone verification disabled'}), 404
 
 @app.route('/api/auth/device/trust-status', methods=['GET'])
 @require_auth
@@ -2450,7 +2649,7 @@ def api_trusted_device_status():
             trusted = h in (cfg.get('trustedDevices') or [])
         except Exception:
             trusted = False
-    return jsonify({'trusted': trusted})
+    return jsonify({'trusted': trusted, 'pending_2fa': bool(session.get('pending_2fa', False))})
 
 @app.route('/api/auth/device/trust', methods=['POST'])
 @require_auth
