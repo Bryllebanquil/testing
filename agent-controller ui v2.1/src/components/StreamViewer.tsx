@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useSocket } from './SocketProvider';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { cn } from './ui/utils';
 import { toast } from 'sonner';
+import apiClient from '../services/api';
 
 interface StreamViewerProps {
   agentId: string | null;
@@ -38,11 +39,13 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
   const [bandwidth, setBandwidth] = useState(0);
   const [hasError, setHasError] = useState(false);
   const [isWebRTCActive, setIsWebRTCActive] = useState(false);
-  const [transportMode, setTransportMode] = useState<'auto' | 'webrtc' | 'fallback'>('auto');
+  const [transportMode, setTransportMode] = useState<'auto' | 'webrtc' | 'fallback'>('fallback');
+  const [webrtcIceServers, setWebrtcIceServers] = useState<RTCIceServer[]>([]);
   
   const imgRef = useRef<HTMLImageElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const rtcPcRef = useRef<RTCPeerConnection | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioQueueRef = useRef<Float32Array[]>([]);
@@ -51,6 +54,8 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
   const fallbackTriggeredRef = useRef(false);
   const fpsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const frameCountRef = useRef(0);
+  const lastMouseEmitRef = useRef<number>(0);
+  const lastKeyEmitRef = useRef<number>(0);
 
   const getStreamIcon = () => {
     switch (type) {
@@ -184,6 +189,19 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
     };
   }, [isStreaming]);
 
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      const s = await apiClient.getSettings();
+      const arr = (s?.data?.webrtc?.iceServers || []) as string[];
+      const servers: RTCIceServer[] = Array.isArray(arr)
+        ? arr.map((u: any) => typeof u === 'string' ? ({ urls: u }) : u)
+        : [];
+      if (active) setWebrtcIceServers(servers);
+    })();
+    return () => { active = false; };
+  }, []);
+
   // WebRTC viewer: signaling and media attachment
   useEffect(() => {
     if (!socket || !isStreaming || !agentId) return;
@@ -195,7 +213,7 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
           webrtcTimeoutRef.current = null;
         }
         const pc = new RTCPeerConnection({
-          iceServers: [
+          iceServers: webrtcIceServers.length > 0 ? webrtcIceServers : [
             { urls: 'stun:stun.l.google.com:19302' },
             { urls: 'stun:stun1.l.google.com:19302' },
             { urls: 'stun:stun2.l.google.com:19302' },
@@ -255,7 +273,6 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
               if (type === 'screen') cmd = 'start-stream';
               else if (type === 'camera') cmd = 'start-camera';
               else cmd = 'start-audio';
-              sendCommand(agentId, 'stop-webrtc');
               sendCommand(agentId, cmd);
             }
           }
@@ -287,7 +304,7 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
       socket.off('webrtc_viewer_offer', handleViewerOffer);
       socket.off('webrtc_ice_candidate', handleServerIce);
     };
-  }, [socket, isStreaming, agentId, transportMode]);
+  }, [socket, isStreaming, agentId, transportMode, webrtcIceServers]);
 
   // Listen for frame events
   useEffect(() => {
@@ -495,10 +512,9 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
             if (type === 'screen') cmd = 'start-stream';
             else if (type === 'camera') cmd = 'start-camera';
             else cmd = 'start-audio';
-            sendCommand(agentId, 'stop-webrtc');
             sendCommand(agentId, cmd);
           }
-        }, 5000);
+        }, 8000);
       }
       toast.success(`${type.charAt(0).toUpperCase() + type.slice(1)} stream started`);
     }
@@ -517,6 +533,66 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
 
   const toggleFullscreen = () => {
     setIsFullscreen(!isFullscreen);
+  };
+
+  const emitMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!socket || !agentId) return;
+    if (!isStreaming || !(type === 'screen' || type === 'camera')) return;
+    const now = Date.now();
+    if (now - (lastMouseEmitRef.current || 0) < 15) return;
+    lastMouseEmitRef.current = now;
+    const el = containerRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const nx = Math.max(0, Math.min(1, x / rect.width));
+    const ny = Math.max(0, Math.min(1, y / rect.height));
+    socket.emit('live_mouse_move', {
+      agent_id: agentId,
+      x: nx,
+      y: ny,
+      buttons: e.buttons || 0,
+      width: Math.round(rect.width),
+      height: Math.round(rect.height)
+    });
+  };
+
+  const emitMouseClick = (action: 'down' | 'up', e: React.MouseEvent<HTMLDivElement>) => {
+    if (!socket || !agentId) return;
+    if (!isStreaming || !(type === 'screen' || type === 'camera')) return;
+    const el = containerRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const nx = Math.max(0, Math.min(1, x / rect.width));
+    const ny = Math.max(0, Math.min(1, y / rect.height));
+    socket.emit('live_mouse_click', {
+      agent_id: agentId,
+      type: action,
+      button: e.button,
+      x: nx,
+      y: ny
+    });
+  };
+
+  const emitKey = (action: 'down' | 'up', e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!socket || !agentId) return;
+    if (!isStreaming || !(type === 'screen' || type === 'camera')) return;
+    const now = Date.now();
+    if (now - (lastKeyEmitRef.current || 0) < 10) return;
+    lastKeyEmitRef.current = now;
+    socket.emit('live_key_press', {
+      agent_id: agentId,
+      type: action,
+      key: e.key,
+      code: e.code,
+      altKey: e.altKey,
+      ctrlKey: e.ctrlKey,
+      shiftKey: e.shiftKey,
+      metaKey: e.metaKey
+    });
   };
 
   // Reset streaming state when agent changes
@@ -549,6 +625,35 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
       }
     }
   }, [agentId]);
+
+  useEffect(() => {
+    if (!socket || !agentId) return;
+    if (!isStreaming || !(transportMode === 'webrtc' || (transportMode === 'auto' && isWebRTCActive))) return;
+    let t: any = null;
+    let lastUpdate = 0;
+    t = setInterval(() => {
+      const now = Date.now();
+      if (now - lastUpdate < 3000) return;
+      lastUpdate = now;
+      const stats = { fps, bandwidth };
+      if (fps < 20 && (quality === 'high' || quality === 'medium' || quality === 'ultra')) {
+        setQuality('low');
+        socket.emit('webrtc_quality_change', { agent_id: agentId, quality: 'low', bandwidth_stats: stats });
+      } else if (fps < 35 && (quality === 'high' || quality === 'ultra')) {
+        setQuality('medium');
+        socket.emit('webrtc_quality_change', { agent_id: agentId, quality: 'medium', bandwidth_stats: stats });
+      } else if (fps > 55 && quality === 'low') {
+        setQuality('medium');
+        socket.emit('webrtc_quality_change', { agent_id: agentId, quality: 'medium', bandwidth_stats: stats });
+      } else if (fps > 55 && quality === 'medium') {
+        setQuality('high');
+        socket.emit('webrtc_quality_change', { agent_id: agentId, quality: 'high', bandwidth_stats: stats });
+      }
+    }, 1500);
+    return () => {
+      if (t) clearInterval(t);
+    };
+  }, [socket, agentId, isStreaming, transportMode, isWebRTCActive, fps, bandwidth, quality]);
 
   return (
     <Card className={cn("transition-all", isFullscreen && "fixed inset-4 z-50")}>
@@ -674,7 +779,16 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
       </CardHeader>
       
       <CardContent>
-        <div className="aspect-video bg-black rounded-lg flex items-center justify-center relative overflow-hidden">
+        <div
+          ref={containerRef}
+          tabIndex={0}
+          onMouseMove={emitMouseMove}
+          onMouseDown={(e) => emitMouseClick('down', e)}
+          onMouseUp={(e) => emitMouseClick('up', e)}
+          onKeyDown={(e) => emitKey('down', e)}
+          onKeyUp={(e) => emitKey('up', e)}
+          className="aspect-video bg-black rounded-lg flex items-center justify-center relative overflow-hidden outline-none"
+        >
           {!agentId ? (
             <div className="text-center text-muted-foreground">
               <StreamIcon className="h-12 w-12 mx-auto mb-2 opacity-50" />

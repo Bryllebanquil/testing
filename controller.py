@@ -4774,10 +4774,13 @@ def handle_webrtc_set_quality(data):
         return
     
     try:
-        # Forward quality setting to agent
-        emit('set_webrtc_quality', {'quality': quality}, room=request.sid)
-        print(f"WebRTC quality set to {quality} for {agent_id}")
-        
+        agent_sid = AGENTS_DATA.get(agent_id, {}).get('sid')
+        if agent_sid:
+            emit('set_webrtc_quality', {'quality': quality}, room=agent_sid)
+            print(f"WebRTC quality set to {quality} for {agent_id}")
+        else:
+            emit('webrtc_error', {'message': f'Agent {agent_id} not connected'}, room=request.sid)
+    
     except Exception as e:
         print(f"Error setting WebRTC quality for {agent_id}: {e}")
         emit('webrtc_error', {'message': f'Error setting quality: {str(e)}'}, room=request.sid)
