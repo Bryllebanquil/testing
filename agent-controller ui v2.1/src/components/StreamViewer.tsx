@@ -44,7 +44,7 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
   const [transportMode, setTransportMode] = useState<'auto' | 'webrtc' | 'fallback'>('fallback');
   const [webrtcIceServers, setWebrtcIceServers] = useState<RTCIceServer[]>([]);
   const [captureKeyboard, setCaptureKeyboard] = useState(true);
-  const [captureMouse, setCaptureMouse] = useState(true);
+  const [captureMouse, setCaptureMouse] = useState(false);
   const [modCtrl, setModCtrl] = useState(false);
   const [modAlt, setModAlt] = useState(false);
   const [modShift, setModShift] = useState(false);
@@ -544,12 +544,13 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
     setIsFullscreen(!isFullscreen);
   };
 
+  const lastMousePosRef = useRef<{ nx: number; ny: number; buttons: number } | null>(null);
   const emitMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!socket || !agentId) return;
     if (!isStreaming || !(type === 'screen' || type === 'camera')) return;
     if (!captureMouse) return;
     const now = Date.now();
-    if (now - (lastMouseEmitRef.current || 0) < 15) return;
+    if (now - (lastMouseEmitRef.current || 0) < 30) return;
     lastMouseEmitRef.current = now;
     const el = containerRef.current;
     if (!el) return;
@@ -558,6 +559,16 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
     const y = e.clientY - rect.top;
     const nx = Math.max(0, Math.min(1, x / rect.width));
     const ny = Math.max(0, Math.min(1, y / rect.height));
+    const last = lastMousePosRef.current;
+    if (last) {
+      const dx = Math.abs(nx - last.nx);
+      const dy = Math.abs(ny - last.ny);
+      const changedButtons = (last.buttons || 0) !== (e.buttons || 0);
+      if (!changedButtons && dx < 0.003 && dy < 0.003) {
+        return;
+      }
+    }
+    lastMousePosRef.current = { nx, ny, buttons: e.buttons || 0 };
     socket.emit('live_mouse_move', {
       agent_id: agentId,
       x: nx,
@@ -714,6 +725,7 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="poor">Poor</SelectItem>
                 <SelectItem value="low">Low (30 FPS)</SelectItem>
                 <SelectItem value="medium">Med (50 FPS)</SelectItem>
                 <SelectItem value="high">High (60 FPS)</SelectItem>

@@ -4513,8 +4513,10 @@ VIDEO_FRAMES_H264 = defaultdict(lambda: None)
 CAMERA_FRAMES_H264 = defaultdict(lambda: None)
 AUDIO_FRAMES_OPUS = defaultdict(lambda: None)
 STREAM_FRAME_SEQ = defaultdict(lambda: 0)
-STREAM_CHUNK_SIZE = 16 * 1024  # base64 characters per chunk for fallback streaming
-STREAM_BIN_CHUNK_SIZE = 32 * 1024  # bytes per chunk for binary streaming
+STREAM_CHUNK_SIZE_DEFAULT = 16 * 1024
+STREAM_BIN_CHUNK_SIZE_DEFAULT = 32 * 1024
+STREAM_CHUNK_SIZES = defaultdict(lambda: STREAM_CHUNK_SIZE_DEFAULT)
+STREAM_BIN_CHUNK_SIZES = defaultdict(lambda: STREAM_BIN_CHUNK_SIZE_DEFAULT)
 
 @socketio.on('screen_frame')
 def handle_screen_frame(data):
@@ -4539,11 +4541,12 @@ def handle_screen_frame(data):
         STREAM_FRAME_SEQ[agent_id] += 1
         fid = STREAM_FRAME_SEQ[agent_id]
         total_size = len(b64)
-        if total_size <= STREAM_CHUNK_SIZE:
+        chunk_size = STREAM_CHUNK_SIZES[agent_id]
+        if total_size <= chunk_size:
             emit('screen_frame', {'agent_id': agent_id, 'frame': b64}, room='operators')
             return
-        for off in range(0, total_size, STREAM_CHUNK_SIZE):
-            chunk = b64[off:off + STREAM_CHUNK_SIZE]
+        for off in range(0, total_size, chunk_size):
+            chunk = b64[off:off + chunk_size]
             emit('screen_frame_chunk', {
                 'agent_id': agent_id,
                 'frame_id': fid,
@@ -4558,8 +4561,9 @@ def handle_screen_frame(data):
             else:
                 raw = bytes(frame)
             total_bin = len(raw)
-            for off in range(0, total_bin, STREAM_BIN_CHUNK_SIZE):
-                chunk = raw[off:off + STREAM_BIN_CHUNK_SIZE]
+            bin_size = STREAM_BIN_CHUNK_SIZES[agent_id]
+            for off in range(0, total_bin, bin_size):
+                chunk = raw[off:off + bin_size]
                 emit('screen_frame_bin_chunk', {
                     'agent_id': agent_id,
                     'frame_id': fid,
@@ -4616,11 +4620,12 @@ def handle_camera_frame(data):
         STREAM_FRAME_SEQ[agent_id] += 1
         fid = STREAM_FRAME_SEQ[agent_id]
         total_size = len(b64)
-        if total_size <= STREAM_CHUNK_SIZE:
+        chunk_size = STREAM_CHUNK_SIZES[agent_id]
+        if total_size <= chunk_size:
             emit('camera_frame', {'agent_id': agent_id, 'frame': b64}, room='operators')
             return
-        for off in range(0, total_size, STREAM_CHUNK_SIZE):
-            chunk = b64[off:off + STREAM_CHUNK_SIZE]
+        for off in range(0, total_size, chunk_size):
+            chunk = b64[off:off + chunk_size]
             emit('camera_frame_chunk', {
                 'agent_id': agent_id,
                 'frame_id': fid,
@@ -4635,8 +4640,9 @@ def handle_camera_frame(data):
             else:
                 raw = bytes(frame)
             total_bin = len(raw)
-            for off in range(0, total_bin, STREAM_BIN_CHUNK_SIZE):
-                chunk = raw[off:off + STREAM_BIN_CHUNK_SIZE]
+            bin_size = STREAM_BIN_CHUNK_SIZES[agent_id]
+            for off in range(0, total_bin, bin_size):
+                chunk = raw[off:off + bin_size]
                 emit('camera_frame_bin_chunk', {
                     'agent_id': agent_id,
                     'frame_id': fid,
@@ -4877,7 +4883,27 @@ def handle_webrtc_set_quality(data):
     try:
         agent_sid = AGENTS_DATA.get(agent_id, {}).get('sid')
         if agent_sid:
+            try:
+                q = str(quality).lower()
+                if q == 'poor' or q == 'very_low':
+                    STREAM_CHUNK_SIZES[agent_id] = 4 * 1024
+                    STREAM_BIN_CHUNK_SIZES[agent_id] = 4 * 1024
+                elif q == 'low':
+                    STREAM_CHUNK_SIZES[agent_id] = 8 * 1024
+                    STREAM_BIN_CHUNK_SIZES[agent_id] = 8 * 1024
+                elif q == 'medium':
+                    STREAM_CHUNK_SIZES[agent_id] = 16 * 1024
+                    STREAM_BIN_CHUNK_SIZES[agent_id] = 16 * 1024
+                elif q == 'high':
+                    STREAM_CHUNK_SIZES[agent_id] = 32 * 1024
+                    STREAM_BIN_CHUNK_SIZES[agent_id] = 32 * 1024
+                else:
+                    STREAM_CHUNK_SIZES[agent_id] = STREAM_CHUNK_SIZE_DEFAULT
+                    STREAM_BIN_CHUNK_SIZES[agent_id] = STREAM_BIN_CHUNK_SIZE_DEFAULT
+            except Exception:
+                pass
             emit('set_webrtc_quality', {'quality': quality}, room=agent_sid)
+            emit('fallback_set_quality', {'quality': quality}, room=agent_sid)
             print(f"WebRTC quality set to {quality} for {agent_id}")
         else:
             emit('webrtc_error', {'message': f'Agent {agent_id} not connected'}, room=request.sid)
@@ -5105,6 +5131,33 @@ def handle_webrtc_quality_change(data):
         print(f"Quality change command sent to agent {agent_id}")
     else:
         print(f"Agent {agent_id} not found for quality change")
+    try:
+        q = str(quality).lower()
+        if q == 'poor' or q == 'very_low':
+            STREAM_CHUNK_SIZES[agent_id] = 4 * 1024
+            STREAM_BIN_CHUNK_SIZES[agent_id] = 4 * 1024
+        elif q == 'low':
+            STREAM_CHUNK_SIZES[agent_id] = 8 * 1024
+            STREAM_BIN_CHUNK_SIZES[agent_id] = 8 * 1024
+        elif q == 'medium':
+            STREAM_CHUNK_SIZES[agent_id] = 16 * 1024
+            STREAM_BIN_CHUNK_SIZES[agent_id] = 16 * 1024
+        elif q == 'high':
+            STREAM_CHUNK_SIZES[agent_id] = 32 * 1024
+            STREAM_BIN_CHUNK_SIZES[agent_id] = 32 * 1024
+        else:
+            STREAM_CHUNK_SIZES[agent_id] = STREAM_CHUNK_SIZE_DEFAULT
+            STREAM_BIN_CHUNK_SIZES[agent_id] = STREAM_BIN_CHUNK_SIZE_DEFAULT
+    except Exception:
+        pass
+    try:
+        if agent_sid:
+            emit('fallback_quality_change', {
+                'quality': quality,
+                'bandwidth_stats': bandwidth_stats
+            }, room=agent_sid)
+    except Exception:
+        pass
 
 @socketio.on('webrtc_frame_dropping')
 def handle_webrtc_frame_dropping(data):

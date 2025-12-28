@@ -389,17 +389,22 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
 
     // File transfer events - Download chunks
     const downloadBuffers: Record<string, { chunksByOffset: Record<number, Uint8Array>, receivedSize: number, totalSize: number }> = {};
-    const streamBuffers: Record<string, { chunksByOffset: Record<number, string>, receivedSize: number, totalSize: number }> = {};
-    const binStreamBuffers: Record<string, { chunksByOffset: Record<number, Uint8Array>, receivedSize: number, totalSize: number }> = {};
+    const streamBuffers: Record<string, { chunksByOffset: Record<number, string>, receivedSize: number, totalSize: number, startedAt: number, lastChunkAt: number }> = {};
+    const binStreamBuffers: Record<string, { chunksByOffset: Record<number, Uint8Array>, receivedSize: number, totalSize: number, startedAt: number, lastChunkAt: number }> = {};
+    const latestFrameSeq: Record<string, number> = {};
     
     socketInstance.on('screen_frame_chunk', (data: any) => {
       try {
-        const key = `${data.agent_id || 'unknown'}:screen:${data.frame_id || '0'}`;
+        const base = `${data.agent_id || 'unknown'}:screen`;
+        const seq = typeof data?.frame_id === 'number' ? data.frame_id : Number(data?.frame_id || 0);
+        if (!latestFrameSeq[base] || seq > latestFrameSeq[base]) latestFrameSeq[base] = seq;
+        if (seq < latestFrameSeq[base]) return;
+        const key = `${base}:${seq}`;
         const chunk = typeof data?.chunk === 'string' ? data.chunk : '';
         const off = typeof data?.offset === 'number' ? data.offset : Number(data?.offset);
         const total = typeof data?.total_size === 'number' ? data.total_size : Number(data?.total_size);
         if (!streamBuffers[key]) {
-          streamBuffers[key] = { chunksByOffset: {}, receivedSize: 0, totalSize: total || 0 };
+          streamBuffers[key] = { chunksByOffset: {}, receivedSize: 0, totalSize: total || 0, startedAt: Date.now(), lastChunkAt: Date.now() };
         }
         if (Number.isFinite(off) && off >= 0 && chunk) {
           if (!streamBuffers[key].chunksByOffset[off]) {
@@ -408,6 +413,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
           }
         }
         if (total) streamBuffers[key].totalSize = total;
+        streamBuffers[key].lastChunkAt = Date.now();
         const buf = streamBuffers[key];
         if (buf.totalSize > 0 && buf.receivedSize >= buf.totalSize) {
           const ordered = Object.entries(buf.chunksByOffset).map(([k, v]) => [Number(k), v] as const).sort((a, b) => a[0] - b[0]);
@@ -416,18 +422,27 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
           delete streamBuffers[key];
           const event = new CustomEvent('screen_frame', { detail: { agent_id: data.agent_id, frame: base64 } });
           window.dispatchEvent(event);
+        } else {
+          const age = Date.now() - buf.startedAt;
+          if (buf.totalSize > 0 && age > 800) {
+            delete streamBuffers[key];
+          }
         }
       } catch {}
     });
     
     socketInstance.on('camera_frame_chunk', (data: any) => {
       try {
-        const key = `${data.agent_id || 'unknown'}:camera:${data.frame_id || '0'}`;
+        const base = `${data.agent_id || 'unknown'}:camera`;
+        const seq = typeof data?.frame_id === 'number' ? data.frame_id : Number(data?.frame_id || 0);
+        if (!latestFrameSeq[base] || seq > latestFrameSeq[base]) latestFrameSeq[base] = seq;
+        if (seq < latestFrameSeq[base]) return;
+        const key = `${base}:${seq}`;
         const chunk = typeof data?.chunk === 'string' ? data.chunk : '';
         const off = typeof data?.offset === 'number' ? data.offset : Number(data?.offset);
         const total = typeof data?.total_size === 'number' ? data.total_size : Number(data?.total_size);
         if (!streamBuffers[key]) {
-          streamBuffers[key] = { chunksByOffset: {}, receivedSize: 0, totalSize: total || 0 };
+          streamBuffers[key] = { chunksByOffset: {}, receivedSize: 0, totalSize: total || 0, startedAt: Date.now(), lastChunkAt: Date.now() };
         }
         if (Number.isFinite(off) && off >= 0 && chunk) {
           if (!streamBuffers[key].chunksByOffset[off]) {
@@ -436,6 +451,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
           }
         }
         if (total) streamBuffers[key].totalSize = total;
+        streamBuffers[key].lastChunkAt = Date.now();
         const buf = streamBuffers[key];
         if (buf.totalSize > 0 && buf.receivedSize >= buf.totalSize) {
           const ordered = Object.entries(buf.chunksByOffset).map(([k, v]) => [Number(k), v] as const).sort((a, b) => a[0] - b[0]);
@@ -444,18 +460,27 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
           delete streamBuffers[key];
           const event = new CustomEvent('camera_frame', { detail: { agent_id: data.agent_id, frame: base64 } });
           window.dispatchEvent(event);
+        } else {
+          const age = Date.now() - buf.startedAt;
+          if (buf.totalSize > 0 && age > 800) {
+            delete streamBuffers[key];
+          }
         }
       } catch {}
     });
     
     socketInstance.on('screen_frame_bin_chunk', (data: any) => {
       try {
-        const key = `${data.agent_id || 'unknown'}:screen:${data.frame_id || '0'}:bin`;
+        const base = `${data.agent_id || 'unknown'}:screen`;
+        const seq = typeof data?.frame_id === 'number' ? data.frame_id : Number(data?.frame_id || 0);
+        if (!latestFrameSeq[base] || seq > latestFrameSeq[base]) latestFrameSeq[base] = seq;
+        if (seq < latestFrameSeq[base]) return;
+        const key = `${base}:${seq}:bin`;
         const chunkAny = data?.chunk as any;
         const off = typeof data?.offset === 'number' ? data.offset : Number(data?.offset);
         const total = typeof data?.total_size === 'number' ? data.total_size : Number(data?.total_size);
         if (!binStreamBuffers[key]) {
-          binStreamBuffers[key] = { chunksByOffset: {}, receivedSize: 0, totalSize: total || 0 };
+          binStreamBuffers[key] = { chunksByOffset: {}, receivedSize: 0, totalSize: total || 0, startedAt: Date.now(), lastChunkAt: Date.now() };
         }
         let bytes: Uint8Array | null = null;
         if (chunkAny instanceof Uint8Array) bytes = chunkAny;
@@ -468,6 +493,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
           }
         }
         if (total) binStreamBuffers[key].totalSize = total;
+        binStreamBuffers[key].lastChunkAt = Date.now();
         const buf = binStreamBuffers[key];
         if (buf.totalSize > 0 && buf.receivedSize >= buf.totalSize) {
           const ordered = Object.entries(buf.chunksByOffset).map(([k, v]) => [Number(k), v] as const).sort((a, b) => a[0] - b[0]);
@@ -480,18 +506,27 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
           delete binStreamBuffers[key];
           const event = new CustomEvent('screen_frame', { detail: { agent_id: data.agent_id, frame: combined } });
           window.dispatchEvent(event);
+        } else {
+          const age = Date.now() - buf.startedAt;
+          if (buf.totalSize > 0 && age > 800) {
+            delete binStreamBuffers[key];
+          }
         }
       } catch {}
     });
     
     socketInstance.on('camera_frame_bin_chunk', (data: any) => {
       try {
-        const key = `${data.agent_id || 'unknown'}:camera:${data.frame_id || '0'}:bin`;
+        const base = `${data.agent_id || 'unknown'}:camera`;
+        const seq = typeof data?.frame_id === 'number' ? data.frame_id : Number(data?.frame_id || 0);
+        if (!latestFrameSeq[base] || seq > latestFrameSeq[base]) latestFrameSeq[base] = seq;
+        if (seq < latestFrameSeq[base]) return;
+        const key = `${base}:${seq}:bin`;
         const chunkAny = data?.chunk as any;
         const off = typeof data?.offset === 'number' ? data.offset : Number(data?.offset);
         const total = typeof data?.total_size === 'number' ? data.total_size : Number(data?.total_size);
         if (!binStreamBuffers[key]) {
-          binStreamBuffers[key] = { chunksByOffset: {}, receivedSize: 0, totalSize: total || 0 };
+          binStreamBuffers[key] = { chunksByOffset: {}, receivedSize: 0, totalSize: total || 0, startedAt: Date.now(), lastChunkAt: Date.now() };
         }
         let bytes: Uint8Array | null = null;
         if (chunkAny instanceof Uint8Array) bytes = chunkAny;
@@ -504,6 +539,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
           }
         }
         if (total) binStreamBuffers[key].totalSize = total;
+        binStreamBuffers[key].lastChunkAt = Date.now();
         const buf = binStreamBuffers[key];
         if (buf.totalSize > 0 && buf.receivedSize >= buf.totalSize) {
           const ordered = Object.entries(buf.chunksByOffset).map(([k, v]) => [Number(k), v] as const).sort((a, b) => a[0] - b[0]);
@@ -516,6 +552,11 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
           delete binStreamBuffers[key];
           const event = new CustomEvent('camera_frame', { detail: { agent_id: data.agent_id, frame: combined } });
           window.dispatchEvent(event);
+        } else {
+          const age = Date.now() - buf.startedAt;
+          if (buf.totalSize > 0 && age > 800) {
+            delete binStreamBuffers[key];
+          }
         }
       } catch {}
     });
