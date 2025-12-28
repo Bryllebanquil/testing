@@ -204,7 +204,12 @@ DEFAULT_SETTINGS = {
         'enabled': True,
         'iceServers': [
             'stun:stun.l.google.com:19302',
-            'stun:stun1.l.google.com:19302'
+            'stun:stun1.l.google.com:19302',
+            {
+                'urls': 'turn:turn.example.com:3478',
+                'username': '',
+                'credential': ''
+            }
         ],
         'maxBitrate': 5000000,
         'adaptiveBitrate': True,
@@ -271,6 +276,11 @@ try:
     for origin in _loaded.get('security', {}).get('frontendOrigins', []) or []:
         if isinstance(origin, str) and origin not in allowed_origins:
             allowed_origins.append(origin)
+    _webrtc = _loaded.get('webrtc', {})
+    if 'iceServers' in _webrtc and _webrtc.get('iceServers') is not None:
+        WEBRTC_CONFIG['ice_servers'] = _webrtc['iceServers']
+    if 'enabled' in _webrtc:
+        WEBRTC_CONFIG['enabled'] = bool(_webrtc['enabled'])
 except Exception as _e:
     print(f"Warning loading dynamic CORS origins: {_e}")
 
@@ -357,7 +367,7 @@ WEBRTC_CONFIG = {
         {'urls': 'stun:stun4.l.google.com:19302'}
     ],
     'codecs': {
-        'video': ['VP8', 'VP9', 'H.264'],
+        'video': ['H.264', 'VP9', 'VP8'],
         'audio': ['Opus', 'PCM']
     },
     'simulcast': True,
@@ -4502,16 +4512,65 @@ WEBRTC_VIEWER_CONNECTIONS = {}
 VIDEO_FRAMES_H264 = defaultdict(lambda: None)
 CAMERA_FRAMES_H264 = defaultdict(lambda: None)
 AUDIO_FRAMES_OPUS = defaultdict(lambda: None)
+STREAM_FRAME_SEQ = defaultdict(lambda: 0)
+STREAM_CHUNK_SIZE = 16 * 1024  # base64 characters per chunk for fallback streaming
+STREAM_BIN_CHUNK_SIZE = 32 * 1024  # bytes per chunk for binary streaming
 
 @socketio.on('screen_frame')
 def handle_screen_frame(data):
-    """Accept H.264 (or JPEG for fallback) binary frames from agent via socket.io."""
+    """Accept H.264 (or JPEG for fallback) frames from agent and forward to operators.
+    In fallback mode, split large base64 frames into small chunks to improve delivery on low bandwidth."""
     agent_id = data.get('agent_id')
     frame = data.get('frame')
-    if agent_id and frame:
-        VIDEO_FRAMES_H264[agent_id] = frame  # Store latest frame for this agent
-        # Forward frame to operators room for real-time streaming
-        emit('screen_frame', data, room='operators')
+    if not agent_id or frame is None:
+        return
+    try:
+        # Store latest (raw) frame for server-side APIs
+        VIDEO_FRAMES_H264[agent_id] = frame
+        # Normalize to base64 string for browser fallback
+        if isinstance(frame, (bytes, bytearray)):
+            b64 = base64.b64encode(frame).decode('utf-8')
+        elif isinstance(frame, str):
+            s = frame.strip()
+            b64 = s.split(',', 1)[1] if s.startswith('data:') and ',' in s else s
+        else:
+            return
+        # Chunk and emit small packets (base64)
+        STREAM_FRAME_SEQ[agent_id] += 1
+        fid = STREAM_FRAME_SEQ[agent_id]
+        total_size = len(b64)
+        if total_size <= STREAM_CHUNK_SIZE:
+            emit('screen_frame', {'agent_id': agent_id, 'frame': b64}, room='operators')
+            return
+        for off in range(0, total_size, STREAM_CHUNK_SIZE):
+            chunk = b64[off:off + STREAM_CHUNK_SIZE]
+            emit('screen_frame_chunk', {
+                'agent_id': agent_id,
+                'frame_id': fid,
+                'chunk': chunk,
+                'offset': off,
+                'total_size': total_size
+            }, room='operators')
+        # Also emit binary chunks (preferred on modern clients)
+        try:
+            if isinstance(frame, str):
+                raw = base64.b64decode(b64)
+            else:
+                raw = bytes(frame)
+            total_bin = len(raw)
+            for off in range(0, total_bin, STREAM_BIN_CHUNK_SIZE):
+                chunk = raw[off:off + STREAM_BIN_CHUNK_SIZE]
+                emit('screen_frame_bin_chunk', {
+                    'agent_id': agent_id,
+                    'frame_id': fid,
+                    'chunk': chunk,
+                    'offset': off,
+                    'total_size': total_bin
+                }, room='operators')
+        except Exception as _e:
+            pass
+    except Exception as e:
+        print(f"Error handling screen_frame for {agent_id}: {e}")
 
 @socketio.on('request_video_frame')
 def handle_request_video_frame(data):
@@ -4543,10 +4602,52 @@ def handle_request_camera_frame(data):
 def handle_camera_frame(data):
     agent_id = data.get('agent_id')
     frame = data.get('frame')
-    if agent_id and frame:
+    if not agent_id or frame is None:
+        return
+    try:
         CAMERA_FRAMES_H264[agent_id] = frame
-        # Forward frame to operators room for real-time streaming
-        emit('camera_frame', data, room='operators')
+        if isinstance(frame, (bytes, bytearray)):
+            b64 = base64.b64encode(frame).decode('utf-8')
+        elif isinstance(frame, str):
+            s = frame.strip()
+            b64 = s.split(',', 1)[1] if s.startswith('data:') and ',' in s else s
+        else:
+            return
+        STREAM_FRAME_SEQ[agent_id] += 1
+        fid = STREAM_FRAME_SEQ[agent_id]
+        total_size = len(b64)
+        if total_size <= STREAM_CHUNK_SIZE:
+            emit('camera_frame', {'agent_id': agent_id, 'frame': b64}, room='operators')
+            return
+        for off in range(0, total_size, STREAM_CHUNK_SIZE):
+            chunk = b64[off:off + STREAM_CHUNK_SIZE]
+            emit('camera_frame_chunk', {
+                'agent_id': agent_id,
+                'frame_id': fid,
+                'chunk': chunk,
+                'offset': off,
+                'total_size': total_size
+            }, room='operators')
+        # Also emit binary chunks (preferred on modern clients)
+        try:
+            if isinstance(frame, str):
+                raw = base64.b64decode(b64)
+            else:
+                raw = bytes(frame)
+            total_bin = len(raw)
+            for off in range(0, total_bin, STREAM_BIN_CHUNK_SIZE):
+                chunk = raw[off:off + STREAM_BIN_CHUNK_SIZE]
+                emit('camera_frame_bin_chunk', {
+                    'agent_id': agent_id,
+                    'frame_id': fid,
+                    'chunk': chunk,
+                    'offset': off,
+                    'total_size': total_bin
+                }, room='operators')
+        except Exception as _e:
+            pass
+    except Exception as e:
+        print(f"Error handling camera_frame for {agent_id}: {e}")
 
 @socketio.on('audio_frame')
 def handle_audio_frame(data):

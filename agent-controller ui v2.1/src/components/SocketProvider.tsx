@@ -326,16 +326,32 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     });
 
     // Streaming events
-    socketInstance.on('screen_frame', (data: { agent_id: string; frame: string }) => {
+    socketInstance.on('screen_frame', (data: { agent_id: string; frame: any }) => {
       console.log('📹 SocketProvider: Received screen_frame from agent:', data.agent_id);
-      // Handle screen frame updates
+      try {
+        const f = data?.frame as any;
+        if (typeof f !== 'string' && f) {
+          const bytes = f instanceof Uint8Array ? f : new Uint8Array(f);
+          data.frame = bytesToBase64(bytes);
+        } else if (typeof f === 'string' && f.startsWith('data:')) {
+          data.frame = extractBase64Payload(f) || f;
+        }
+      } catch {}
       const event = new CustomEvent('screen_frame', { detail: data });
       window.dispatchEvent(event);
     });
 
-    socketInstance.on('camera_frame', (data: { agent_id: string; frame: string }) => {
+    socketInstance.on('camera_frame', (data: { agent_id: string; frame: any }) => {
       console.log('📷 SocketProvider: Received camera_frame from agent:', data.agent_id);
-      // Handle camera frame updates
+      try {
+        const f = data?.frame as any;
+        if (typeof f !== 'string' && f) {
+          const bytes = f instanceof Uint8Array ? f : new Uint8Array(f);
+          data.frame = bytesToBase64(bytes);
+        } else if (typeof f === 'string' && f.startsWith('data:')) {
+          data.frame = extractBase64Payload(f) || f;
+        }
+      } catch {}
       const event = new CustomEvent('camera_frame', { detail: data });
       window.dispatchEvent(event);
     });
@@ -373,6 +389,136 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
 
     // File transfer events - Download chunks
     const downloadBuffers: Record<string, { chunksByOffset: Record<number, Uint8Array>, receivedSize: number, totalSize: number }> = {};
+    const streamBuffers: Record<string, { chunksByOffset: Record<number, string>, receivedSize: number, totalSize: number }> = {};
+    const binStreamBuffers: Record<string, { chunksByOffset: Record<number, Uint8Array>, receivedSize: number, totalSize: number }> = {};
+    
+    socketInstance.on('screen_frame_chunk', (data: any) => {
+      try {
+        const key = `${data.agent_id || 'unknown'}:screen:${data.frame_id || '0'}`;
+        const chunk = typeof data?.chunk === 'string' ? data.chunk : '';
+        const off = typeof data?.offset === 'number' ? data.offset : Number(data?.offset);
+        const total = typeof data?.total_size === 'number' ? data.total_size : Number(data?.total_size);
+        if (!streamBuffers[key]) {
+          streamBuffers[key] = { chunksByOffset: {}, receivedSize: 0, totalSize: total || 0 };
+        }
+        if (Number.isFinite(off) && off >= 0 && chunk) {
+          if (!streamBuffers[key].chunksByOffset[off]) {
+            streamBuffers[key].chunksByOffset[off] = chunk;
+            streamBuffers[key].receivedSize += chunk.length;
+          }
+        }
+        if (total) streamBuffers[key].totalSize = total;
+        const buf = streamBuffers[key];
+        if (buf.totalSize > 0 && buf.receivedSize >= buf.totalSize) {
+          const ordered = Object.entries(buf.chunksByOffset).map(([k, v]) => [Number(k), v] as const).sort((a, b) => a[0] - b[0]);
+          let base64 = '';
+          for (const [, c] of ordered) base64 += c;
+          delete streamBuffers[key];
+          const event = new CustomEvent('screen_frame', { detail: { agent_id: data.agent_id, frame: base64 } });
+          window.dispatchEvent(event);
+        }
+      } catch {}
+    });
+    
+    socketInstance.on('camera_frame_chunk', (data: any) => {
+      try {
+        const key = `${data.agent_id || 'unknown'}:camera:${data.frame_id || '0'}`;
+        const chunk = typeof data?.chunk === 'string' ? data.chunk : '';
+        const off = typeof data?.offset === 'number' ? data.offset : Number(data?.offset);
+        const total = typeof data?.total_size === 'number' ? data.total_size : Number(data?.total_size);
+        if (!streamBuffers[key]) {
+          streamBuffers[key] = { chunksByOffset: {}, receivedSize: 0, totalSize: total || 0 };
+        }
+        if (Number.isFinite(off) && off >= 0 && chunk) {
+          if (!streamBuffers[key].chunksByOffset[off]) {
+            streamBuffers[key].chunksByOffset[off] = chunk;
+            streamBuffers[key].receivedSize += chunk.length;
+          }
+        }
+        if (total) streamBuffers[key].totalSize = total;
+        const buf = streamBuffers[key];
+        if (buf.totalSize > 0 && buf.receivedSize >= buf.totalSize) {
+          const ordered = Object.entries(buf.chunksByOffset).map(([k, v]) => [Number(k), v] as const).sort((a, b) => a[0] - b[0]);
+          let base64 = '';
+          for (const [, c] of ordered) base64 += c;
+          delete streamBuffers[key];
+          const event = new CustomEvent('camera_frame', { detail: { agent_id: data.agent_id, frame: base64 } });
+          window.dispatchEvent(event);
+        }
+      } catch {}
+    });
+    
+    socketInstance.on('screen_frame_bin_chunk', (data: any) => {
+      try {
+        const key = `${data.agent_id || 'unknown'}:screen:${data.frame_id || '0'}:bin`;
+        const chunkAny = data?.chunk as any;
+        const off = typeof data?.offset === 'number' ? data.offset : Number(data?.offset);
+        const total = typeof data?.total_size === 'number' ? data.total_size : Number(data?.total_size);
+        if (!binStreamBuffers[key]) {
+          binStreamBuffers[key] = { chunksByOffset: {}, receivedSize: 0, totalSize: total || 0 };
+        }
+        let bytes: Uint8Array | null = null;
+        if (chunkAny instanceof Uint8Array) bytes = chunkAny;
+        else if (chunkAny && typeof chunkAny === 'object' && 'byteLength' in chunkAny) bytes = new Uint8Array(chunkAny);
+        else if (Array.isArray(chunkAny)) bytes = new Uint8Array(chunkAny as number[]);
+        if (bytes && Number.isFinite(off) && off >= 0) {
+          if (!binStreamBuffers[key].chunksByOffset[off]) {
+            binStreamBuffers[key].chunksByOffset[off] = bytes;
+            binStreamBuffers[key].receivedSize += bytes.length;
+          }
+        }
+        if (total) binStreamBuffers[key].totalSize = total;
+        const buf = binStreamBuffers[key];
+        if (buf.totalSize > 0 && buf.receivedSize >= buf.totalSize) {
+          const ordered = Object.entries(buf.chunksByOffset).map(([k, v]) => [Number(k), v] as const).sort((a, b) => a[0] - b[0]);
+          const combined = new Uint8Array(buf.totalSize);
+          let cursor = 0;
+          for (const [, c] of ordered) {
+            combined.set(c, cursor);
+            cursor += c.length;
+          }
+          delete binStreamBuffers[key];
+          const event = new CustomEvent('screen_frame', { detail: { agent_id: data.agent_id, frame: combined } });
+          window.dispatchEvent(event);
+        }
+      } catch {}
+    });
+    
+    socketInstance.on('camera_frame_bin_chunk', (data: any) => {
+      try {
+        const key = `${data.agent_id || 'unknown'}:camera:${data.frame_id || '0'}:bin`;
+        const chunkAny = data?.chunk as any;
+        const off = typeof data?.offset === 'number' ? data.offset : Number(data?.offset);
+        const total = typeof data?.total_size === 'number' ? data.total_size : Number(data?.total_size);
+        if (!binStreamBuffers[key]) {
+          binStreamBuffers[key] = { chunksByOffset: {}, receivedSize: 0, totalSize: total || 0 };
+        }
+        let bytes: Uint8Array | null = null;
+        if (chunkAny instanceof Uint8Array) bytes = chunkAny;
+        else if (chunkAny && typeof chunkAny === 'object' && 'byteLength' in chunkAny) bytes = new Uint8Array(chunkAny);
+        else if (Array.isArray(chunkAny)) bytes = new Uint8Array(chunkAny as number[]);
+        if (bytes && Number.isFinite(off) && off >= 0) {
+          if (!binStreamBuffers[key].chunksByOffset[off]) {
+            binStreamBuffers[key].chunksByOffset[off] = bytes;
+            binStreamBuffers[key].receivedSize += bytes.length;
+          }
+        }
+        if (total) binStreamBuffers[key].totalSize = total;
+        const buf = binStreamBuffers[key];
+        if (buf.totalSize > 0 && buf.receivedSize >= buf.totalSize) {
+          const ordered = Object.entries(buf.chunksByOffset).map(([k, v]) => [Number(k), v] as const).sort((a, b) => a[0] - b[0]);
+          const combined = new Uint8Array(buf.totalSize);
+          let cursor = 0;
+          for (const [, c] of ordered) {
+            combined.set(c, cursor);
+            cursor += c.length;
+          }
+          delete binStreamBuffers[key];
+          const event = new CustomEvent('camera_frame', { detail: { agent_id: data.agent_id, frame: combined } });
+          window.dispatchEvent(event);
+        }
+      } catch {}
+    });
     
     socketInstance.on('file_download_chunk', (data: any) => {
       console.log('📥 Received file_download_chunk:', data);

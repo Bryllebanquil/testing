@@ -15,11 +15,13 @@ import {
   Monitor,
   Camera,
   Mic,
-  AlertCircle
+  AlertCircle,
+  Keyboard
 } from 'lucide-react';
 import { cn } from './ui/utils';
 import { toast } from 'sonner';
 import apiClient from '../services/api';
+import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 
 interface StreamViewerProps {
   agentId: string | null;
@@ -41,6 +43,13 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
   const [isWebRTCActive, setIsWebRTCActive] = useState(false);
   const [transportMode, setTransportMode] = useState<'auto' | 'webrtc' | 'fallback'>('fallback');
   const [webrtcIceServers, setWebrtcIceServers] = useState<RTCIceServer[]>([]);
+  const [captureKeyboard, setCaptureKeyboard] = useState(true);
+  const [captureMouse, setCaptureMouse] = useState(true);
+  const [modCtrl, setModCtrl] = useState(false);
+  const [modAlt, setModAlt] = useState(false);
+  const [modShift, setModShift] = useState(false);
+  const [modMeta, setModMeta] = useState(false);
+  const [textToSend, setTextToSend] = useState('');
   
   const imgRef = useRef<HTMLImageElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -538,6 +547,7 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
   const emitMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!socket || !agentId) return;
     if (!isStreaming || !(type === 'screen' || type === 'camera')) return;
+    if (!captureMouse) return;
     const now = Date.now();
     if (now - (lastMouseEmitRef.current || 0) < 15) return;
     lastMouseEmitRef.current = now;
@@ -561,6 +571,7 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
   const emitMouseClick = (action: 'down' | 'up', e: React.MouseEvent<HTMLDivElement>) => {
     if (!socket || !agentId) return;
     if (!isStreaming || !(type === 'screen' || type === 'camera')) return;
+    if (!captureMouse) return;
     const el = containerRef.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
@@ -580,6 +591,7 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
   const emitKey = (action: 'down' | 'up', e: React.KeyboardEvent<HTMLDivElement>) => {
     if (!socket || !agentId) return;
     if (!isStreaming || !(type === 'screen' || type === 'camera')) return;
+    if (!captureKeyboard) return;
     const now = Date.now();
     if (now - (lastKeyEmitRef.current || 0) < 10) return;
     lastKeyEmitRef.current = now;
@@ -588,11 +600,38 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
       type: action,
       key: e.key,
       code: e.code,
-      altKey: e.altKey,
-      ctrlKey: e.ctrlKey,
-      shiftKey: e.shiftKey,
-      metaKey: e.metaKey
+      altKey: e.altKey || modAlt,
+      ctrlKey: e.ctrlKey || modCtrl,
+      shiftKey: e.shiftKey || modShift,
+      metaKey: e.metaKey || modMeta
     });
+  };
+  
+  const sendKey = (key: string, code?: string) => {
+    if (!socket || !agentId) return;
+    if (!isStreaming || !(type === 'screen' || type === 'camera')) return;
+    if (!captureKeyboard) return;
+    const payload: any = {
+      agent_id: agentId,
+      type: 'down',
+      key,
+      code: code || key,
+      altKey: modAlt,
+      ctrlKey: modCtrl,
+      shiftKey: modShift,
+      metaKey: modMeta
+    };
+    socket.emit('live_key_press', payload);
+    socket.emit('live_key_press', { ...payload, type: 'up' });
+  };
+  
+  const sendText = (text: string) => {
+    if (!socket || !agentId) return;
+    if (!isStreaming || !(type === 'screen' || type === 'camera')) return;
+    if (!captureKeyboard) return;
+    for (const ch of text) {
+      sendKey(ch);
+    }
   };
 
   // Reset streaming state when agent changes
@@ -691,6 +730,63 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
                 <SelectItem value="fallback">Fallback</SelectItem>
               </SelectContent>
             </Select>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" disabled={!isStreaming || !(type === 'screen' || type === 'camera')}>
+                  <Keyboard className="h-4 w-4 mr-1" />
+                  Controls
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-80" align="end">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs">Keyboard</span>
+                    <Button
+                      size="sm"
+                      variant={captureKeyboard ? "default" : "secondary"}
+                      onClick={() => setCaptureKeyboard(v => !v)}
+                    >
+                      {captureKeyboard ? 'On' : 'Off'}
+                    </Button>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs">Mouse</span>
+                    <Button
+                      size="sm"
+                      variant={captureMouse ? "default" : "secondary"}
+                      onClick={() => setCaptureMouse(v => !v)}
+                    >
+                      {captureMouse ? 'On' : 'Off'}
+                    </Button>
+                  </div>
+                  <div className="grid grid-cols-4 gap-2">
+                    <Button size="sm" variant={modCtrl ? "default" : "outline"} onClick={() => setModCtrl(v => !v)}>Ctrl</Button>
+                    <Button size="sm" variant={modAlt ? "default" : "outline"} onClick={() => setModAlt(v => !v)}>Alt</Button>
+                    <Button size="sm" variant={modShift ? "default" : "outline"} onClick={() => setModShift(v => !v)}>Shift</Button>
+                    <Button size="sm" variant={modMeta ? "default" : "outline"} onClick={() => setModMeta(v => !v)}>Meta</Button>
+                  </div>
+                  <div className="grid grid-cols-4 gap-2">
+                    <Button size="sm" variant="outline" onClick={() => sendKey('Escape', 'Escape')}>Esc</Button>
+                    <Button size="sm" variant="outline" onClick={() => sendKey('Tab', 'Tab')}>Tab</Button>
+                    <Button size="sm" variant="outline" onClick={() => sendKey('Enter', 'Enter')}>Enter</Button>
+                    <Button size="sm" variant="outline" onClick={() => sendKey('Backspace', 'Backspace')}>Backspace</Button>
+                    <Button size="sm" variant="outline" onClick={() => sendKey('ArrowUp', 'ArrowUp')}>Up</Button>
+                    <Button size="sm" variant="outline" onClick={() => sendKey('ArrowDown', 'ArrowDown')}>Down</Button>
+                    <Button size="sm" variant="outline" onClick={() => sendKey('ArrowLeft', 'ArrowLeft')}>Left</Button>
+                    <Button size="sm" variant="outline" onClick={() => sendKey('ArrowRight', 'ArrowRight')}>Right</Button>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <input
+                      className="flex-1 h-8 px-2 rounded border border-input bg-background text-sm"
+                      placeholder="Type text to send"
+                      value={textToSend}
+                      onChange={(e) => setTextToSend(e.target.value)}
+                    />
+                    <Button size="sm" onClick={() => { if (textToSend.trim()) { sendText(textToSend); setTextToSend(''); } }}>Send</Button>
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
             {isStreaming && (
               <Badge variant={isWebRTCActive ? "default" : "secondary"} className="text-xs">
                 {transportMode === 'auto'
