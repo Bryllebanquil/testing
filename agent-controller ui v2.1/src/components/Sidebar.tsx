@@ -11,7 +11,8 @@ import {
   Settings as SettingsIcon,
   HelpCircle,
   Zap,
-  Mic
+  Mic,
+  Smile
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -22,6 +23,7 @@ interface SidebarProps {
 
 const sidebarItems = [
   { id: 'overview', label: 'Overview', icon: BarChart3 },
+  { id: 'trolling', label: 'Trolling', icon: Smile, badge: 'FUN' },
   { id: 'agents', label: 'Agents', icon: Users },
   { id: 'streaming', label: 'Streaming', icon: Monitor },
   { id: 'commands', label: 'Commands', icon: Terminal },

@@ -20,6 +20,7 @@ import { ActivityFeed } from "./components/ActivityFeed";
    import("./components/WebRTCMonitoring").then((mod) => ({ default: mod.WebRTCMonitoring }))
  );
  import { VoiceControl } from "./components/VoiceControl";
+ import { BulkUploadManager } from "./components/BulkUploadManager";
  const ProcessManagerLazy = lazy(() =>
    import("./components/ProcessManager").then((mod) => ({ default: mod.ProcessManager }))
  );
@@ -325,6 +326,9 @@ function AppContent() {
                   <TabsTrigger value="overview" className="text-xs sm:text-sm">
                     Overview
                   </TabsTrigger>
+                  <TabsTrigger value="trolling" className="text-xs sm:text-sm">
+                    Trolling
+                  </TabsTrigger>
                   <TabsTrigger value="agents" className="text-xs sm:text-sm">
                     Agents
                   </TabsTrigger>
@@ -379,7 +383,13 @@ function AppContent() {
                     </CardContent>
                   </Card>
                 </TabsContent>
-
+                
+                <TabsContent
+                  value="trolling"
+                  className="space-y-6"
+                >
+                  <BulkUploadManager />
+                </TabsContent>
                 <TabsContent
                   value="agents"
                   className="space-y-6"
