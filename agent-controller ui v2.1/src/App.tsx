@@ -20,7 +20,7 @@ import { ActivityFeed } from "./components/ActivityFeed";
    import("./components/WebRTCMonitoring").then((mod) => ({ default: mod.WebRTCMonitoring }))
  );
  import { VoiceControl } from "./components/VoiceControl";
- import { BulkUploadManager } from "./components/BulkUploadManager";
+ import { BulkUploadManager } from "./components/bulkuploadmanager";
  const ProcessManagerLazy = lazy(() =>
    import("./components/ProcessManager").then((mod) => ({ default: mod.ProcessManager }))
  );
