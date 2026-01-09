@@ -132,6 +132,9 @@ export function FileManager({ agentId }: FileManagerProps) {
     setSelectedFiles([]);
     if (agentId && socket) {
       const reqPath = nextPath || '/';
+      try {
+        localStorage.setItem(`fm:lastPath:${agentId}`, reqPath);
+      } catch {}
       socket.emit('execute_command', { agent_id: agentId, command: `list-dir:${reqPath}` });
     }
   };
@@ -288,6 +291,9 @@ export function FileManager({ agentId }: FileManagerProps) {
       currentPathRef.current = nextPath;
       setCurrentPath(nextPath);
       setPathInput(nextPath);
+      try {
+        localStorage.setItem(`fm:lastPath:${agentId}`, nextPath);
+      } catch {}
       const mapped = (data.files || []).map((f: any) => ({
         name: f.name,
         type: f.type,
@@ -326,7 +332,14 @@ export function FileManager({ agentId }: FileManagerProps) {
 
   useEffect(() => {
     if (!agentId || !socket) return;
-    const reqPath = currentPathRef.current || '/';
+    let reqPath = currentPathRef.current || '/';
+    try {
+      const saved = localStorage.getItem(`fm:lastPath:${agentId}`) || '';
+      if (saved && saved.trim()) reqPath = saved;
+    } catch {}
+    currentPathRef.current = reqPath;
+    setCurrentPath(reqPath);
+    setPathInput(reqPath);
     socket.emit('execute_command', { agent_id: agentId, command: `list-dir:${reqPath}` });
   }, [agentId, socket]);
 

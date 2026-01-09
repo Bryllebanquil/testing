@@ -68,6 +68,14 @@ const API_ENDPOINTS = {
     list: '/api/videos',
     streamSource: (id: string) => `/api/videos/${id}/stream-source`,
   },
+  // WebRTC
+  webrtc: {
+    config: '/api/webrtc/config',
+    viewerConnect: '/api/webrtc/viewer/connect',
+    viewerAnswer: '/api/webrtc/viewer/answer',
+    viewerIce: '/api/webrtc/viewer/ice',
+    viewerDisconnect: '/api/webrtc/viewer/disconnect',
+  },
 } as const;
 
 // Types
@@ -394,6 +402,38 @@ class ApiClient {
 
   async getStreamSource(videoId: string): Promise<ApiResponse<StreamSource>> {
     return this.request(API_ENDPOINTS.videos.streamSource(videoId));
+  }
+
+  // WebRTC Methods
+  async getWebrtcConfig(): Promise<ApiResponse> {
+    return this.request(API_ENDPOINTS.webrtc.config);
+  }
+
+  async webrtcViewerConnect(agentId: string): Promise<ApiResponse<{ offer: string; type: string }>> {
+    return this.request(API_ENDPOINTS.webrtc.viewerConnect, {
+      method: 'POST',
+      body: JSON.stringify({ agent_id: agentId }),
+    });
+  }
+
+  async webrtcViewerAnswer(answer: string): Promise<ApiResponse> {
+    return this.request(API_ENDPOINTS.webrtc.viewerAnswer, {
+      method: 'POST',
+      body: JSON.stringify({ answer }),
+    });
+  }
+
+  async webrtcViewerIce(candidate: any): Promise<ApiResponse> {
+    return this.request(API_ENDPOINTS.webrtc.viewerIce, {
+      method: 'POST',
+      body: JSON.stringify({ candidate }),
+    });
+  }
+
+  async webrtcViewerDisconnect(): Promise<ApiResponse> {
+    return this.request(API_ENDPOINTS.webrtc.viewerDisconnect, {
+      method: 'POST',
+    });
   }
 }
 

