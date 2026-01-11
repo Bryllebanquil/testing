@@ -233,6 +233,23 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       addCommandOutput(`Reconnection Error: ${error.message || 'Unknown error'}`);
     });
 
+    socketInstance.on('config_update', (data: any) => {
+      try {
+        const agentId = typeof data?.agent?.id === 'string' ? data.agent.id : (typeof data?.agent_id === 'string' ? data.agent_id : '');
+        const bypassesEnabled = typeof data?.bypasses?.enabled === 'boolean' ? data.bypasses.enabled : '';
+        const registryEnabled = typeof data?.registry?.enabled === 'boolean' ? data.registry.enabled : '';
+        const msg = [
+          'CONFIG UPDATE',
+          agentId ? `agent=${agentId}` : '',
+          bypassesEnabled !== '' ? `bypasses=${bypassesEnabled}` : '',
+          registryEnabled !== '' ? `registry=${registryEnabled}` : '',
+        ].filter(Boolean).join(' | ');
+        addCommandOutput(msg);
+      } catch (e) {
+        addCommandOutput('CONFIG UPDATE');
+      }
+    });
+
     // Agent management events
     socketInstance.on('agent_list_update', (agentData: Record<string, any>) => {
       try {

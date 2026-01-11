@@ -266,7 +266,24 @@ DEFAULT_SETTINGS = {
     },
     'registry': {
         'enabled': True,
-        'notificationsEnabled': True
+        'notificationsEnabled': True,
+        'actions': {
+            'policy_push_notifications': True,
+            'policy_windows_update': True,
+            'context_runas_cmd': True,
+            'context_powershell_admin': True,
+            'notify_center_hkcu': True,
+            'notify_center_hklm': True,
+            'defender_ux_suppress': True,
+            'toast_global_above_lock': True,
+            'toast_global_critical_above_lock': True,
+            'toast_windows_update': True,
+            'toast_security_maintenance': True,
+            'toast_windows_security': True,
+            'toast_sec_health_ui': True,
+            'explorer_balloon_tips': True,
+            'explorer_info_tip': True
+        }
     },
     'webrtc': {
         'enabled': True,

