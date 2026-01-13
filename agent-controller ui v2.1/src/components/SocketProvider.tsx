@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
 import apiClient from '../services/api';
-import { toast } from 'sonner';
 
 interface Agent {
   id: string;
@@ -460,14 +459,6 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
           category: String(data?.category ?? 'agent') as Notification['category'],
         };
         setNotifications(prev => [...prev.slice(-99), n]);
-        try {
-          const t = String(data?.type ?? 'info');
-          const text = n.title ? `${n.title}: ${n.message}` : n.message;
-          if (t === 'success') toast.success(text, { position: 'top-left' });
-          else if (t === 'error') toast.error(text, { position: 'top-left' });
-          else if (t === 'warning') toast.warning(text, { position: 'top-left' } as any);
-          else toast.info(text, { position: 'top-left' });
-        } catch {}
       } catch (e) {
         console.error('Error processing agent_notification:', e, data);
       }
