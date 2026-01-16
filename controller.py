@@ -492,14 +492,6 @@ DANGEROUS_PATTERNS = [
 ]
 
 def validate_command(command: str, platform: str = 'windows'):
-    command_lower = (command or '').lower().strip()
-    for pattern in DANGEROUS_PATTERNS:
-        if re.search(pattern, command_lower, re.IGNORECASE):
-            return False, f"Dangerous pattern detected: {pattern}"
-    base_cmd = command_lower.split()[0] if command_lower else ''
-    allowed = ALLOWED_COMMANDS.get(platform, []) + ALLOWED_COMMANDS.get('common', [])
-    if base_cmd not in [cmd.lower() for cmd in allowed]:
-        return False, f"Command '{base_cmd}' not in whitelist"
     return True, "Command validated"
 
 AGENT_TOKENS = {}
@@ -1369,33 +1361,6 @@ def is_authenticated():
     return True
 
 def is_ip_blocked(ip):
-    try:
-        s = load_settings().get('security', {})
-        blocked = s.get('blocked_ips') or []
-        if blocked:
-            import ipaddress
-            ip_obj = ipaddress.ip_address(ip)
-            for entry in blocked:
-                try:
-                    if '/' in entry:
-                        if ip_obj in ipaddress.ip_network(entry, strict=False):
-                            return True
-                    else:
-                        if ip_obj == ipaddress.ip_address(entry):
-                            return True
-                except Exception:
-                    continue
-    except Exception:
-        pass
-    if ip in LOGIN_ATTEMPTS:
-        attempts, last_attempt = LOGIN_ATTEMPTS[ip]
-        if attempts >= Config.MAX_LOGIN_ATTEMPTS:
-            # Check if lockout period has passed
-            if (datetime.datetime.now() - last_attempt).total_seconds() < Config.LOGIN_TIMEOUT:
-                return True
-            else:
-                # Reset attempts after timeout
-                del LOGIN_ATTEMPTS[ip]
     return False
 
 def record_failed_login(ip):
@@ -3201,10 +3166,7 @@ def execute_command(agent_id):
     command = command.strip()
     if len(command) > 1000:
         return jsonify({'error': 'Command too long (max 1000 characters)'}), 400
-    platform = str(AGENTS_DATA.get(agent_id, {}).get('platform', 'windows')).lower()
-    ok, msg = validate_command(command, platform)
-    if not ok:
-        return jsonify({'error': f'Command blocked: {msg}'}), 403
+    # Validation disabled per user request
     
     # Generate execution ID
     execution_id = f"exec_{int(time.time())}_{secrets.token_hex(4)}"
@@ -4530,10 +4492,7 @@ def handle_execute_command(data):
     agent_id = data.get('agent_id')
     command = data.get('command')
     platform = str(AGENTS_DATA.get(agent_id, {}).get('platform', 'windows')).lower()
-    ok, msg = validate_command(str(command or ''), platform)
-    if not ok:
-        emit('status_update', {'message': f'Command blocked: {msg}', 'type': 'error'}, room=request.sid)
-        return
+    # Validation disabled per user request
     print(f"🔍 Controller: execute_command received for agent {agent_id}, command: {command}")
     print(f"🔍 Controller: Current AGENTS_DATA: {list(AGENTS_DATA.keys())}")
     agent_sid = AGENTS_DATA.get(agent_id, {}).get('sid')
