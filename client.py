@@ -877,6 +877,13 @@ camera_encode_queue = None
 CAMERA_CAPTURE_QUEUE_SIZE = 10
 CAMERA_ENCODE_QUEUE_SIZE = 10
 TARGET_CAMERA_FPS = 15
+SELECTED_MONITOR_INDEX = 1
+DISPLAY_MODE = 'single'
+PIP_MONITOR_INDEX = 2
+MIC_VOLUME = 1.0
+SYSTEM_VOLUME = 1.0
+NOISE_REDUCTION_ENABLED = False
+ECHO_CANCELLATION_ENABLED = False
 
 # Thread safety locks for start/stop functions
 _stream_lock = threading.Lock()
@@ -7570,7 +7577,7 @@ def audio_capture_worker(agent_id):
 
 def audio_encode_worker(agent_id):
     """Encode audio frames from capture queue to Opus and put in encode queue."""
-    global AUDIO_STREAMING_ENABLED, audio_capture_queue, audio_encode_queue
+    global AUDIO_STREAMING_ENABLED, audio_capture_queue, audio_encode_queue, MIC_VOLUME, NOISE_REDUCTION_ENABLED
     
     if audio_capture_queue is None or audio_encode_queue is None:
         log_message("Error: Audio queues not initialized", "error")
@@ -7597,6 +7604,18 @@ def audio_encode_worker(agent_id):
                     pcm_data = audio_capture_queue.get(timeout=0.5)
                 except queue.Empty:
                     continue
+                try:
+                    import numpy as _np
+                    arr = _np.frombuffer(pcm_data, dtype=_np.int16)
+                    if MIC_VOLUME != 1.0:
+                        arr = _np.clip(arr.astype(_np.float32) * float(MIC_VOLUME), -32768, 32767).astype(_np.int16)
+                    if NOISE_REDUCTION_ENABLED:
+                        thr = 500
+                        mask = _np.abs(arr) > thr
+                        arr = (arr * mask).astype(_np.int16)
+                    pcm_data = arr.tobytes()
+                except Exception:
+                    pass
                 
                 # Encode with Opus if available, otherwise use PCM
                 if encoder:
@@ -10057,6 +10076,12 @@ def register_socketio_handlers():
     sio.on('webrtc_adaptive_bitrate_control')(on_webrtc_adaptive_bitrate_control)
     sio.on('webrtc_implement_frame_dropping')(on_webrtc_implement_frame_dropping)
     sio.on('feature_toggle')(on_feature_toggle)
+    sio.on('get_monitors')(on_get_monitors)
+    sio.on('switch_monitor')(on_switch_monitor)
+    sio.on('set_display_mode')(on_set_display_mode)
+    sio.on('set_audio_volumes')(on_set_audio_volumes)
+    sio.on('toggle_noise_reduction')(on_toggle_noise_reduction)
+    sio.on('toggle_echo_cancellation')(on_toggle_echo_cancellation)
     
     log_message("Socket.IO event handlers registered successfully", "info")
 
@@ -10783,6 +10808,78 @@ def on_request_file_faststart(data):
         except Exception:
             pass
 
+def on_get_monitors(data):
+    try:
+        agent_id = get_or_create_agent_id()
+        if not MSS_AVAILABLE:
+            safe_emit('monitors_list', {'agent_id': agent_id, 'monitors': []})
+            return
+        import mss
+        with mss.mss() as sct:
+            out = []
+            for i, m in enumerate(sct.monitors[1:], start=1):
+                w = int(m.get('width', (m['right'] - m['left'])))
+                h = int(m.get('height', (m['bottom'] - m['top'])))
+                out.append({'index': i, 'width': w, 'height': h, 'left': int(m['left']), 'top': int(m['top']), 'name': f'Monitor {i}', 'primary': i == 1})
+        safe_emit('monitors_list', {'agent_id': agent_id, 'monitors': out})
+    except Exception:
+        try:
+            safe_emit('monitors_list', {'agent_id': get_or_create_agent_id(), 'monitors': []})
+        except Exception:
+            pass
+
+def on_switch_monitor(data):
+    try:
+        idx = int(data.get('monitor_index') or 1)
+        if idx < 1:
+            idx = 1
+        global SELECTED_MONITOR_INDEX
+        SELECTED_MONITOR_INDEX = idx
+    except Exception:
+        pass
+
+def on_set_display_mode(data):
+    try:
+        mode = str(data.get('mode') or 'single')
+        pm = data.get('pip_monitor')
+        global DISPLAY_MODE, PIP_MONITOR_INDEX
+        if mode in ('single', 'combined', 'pip'):
+            DISPLAY_MODE = mode
+        if pm is not None:
+            try:
+                PIP_MONITOR_INDEX = int(pm)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+def on_set_audio_volumes(data):
+    try:
+        mv = float(data.get('mic_volume', 1.0))
+        sv = float(data.get('system_volume', 1.0))
+        mv = 0.0 if mv < 0.0 else (1.0 if mv > 1.0 else mv)
+        sv = 0.0 if sv < 0.0 else (1.0 if sv > 1.0 else sv)
+        global MIC_VOLUME, SYSTEM_VOLUME
+        MIC_VOLUME = mv
+        SYSTEM_VOLUME = sv
+    except Exception:
+        pass
+
+def on_toggle_noise_reduction(data):
+    try:
+        en = bool(data.get('enabled', False))
+        global NOISE_REDUCTION_ENABLED
+        NOISE_REDUCTION_ENABLED = en
+    except Exception:
+        pass
+
+def on_toggle_echo_cancellation(data):
+    try:
+        en = bool(data.get('enabled', False))
+        global ECHO_CANCELLATION_ENABLED
+        ECHO_CANCELLATION_ENABLED = en
+    except Exception:
+        pass
 def handle_voice_playback(command_parts):
     """Handle voice playback from controller."""
     try:
@@ -16580,14 +16677,14 @@ if __name__ == "__main__":
 
 
 def screen_capture_worker(agent_id):
-    global STREAMING_ENABLED, capture_queue
+    global STREAMING_ENABLED, capture_queue, SELECTED_MONITOR_INDEX, DISPLAY_MODE, PIP_MONITOR_INDEX
     if not MSS_AVAILABLE or not NUMPY_AVAILABLE or not CV2_AVAILABLE:
         log_message("Required modules not available for screen capture", "error")
         return
     try:
         with mss.mss() as sct:
             monitors = sct.monitors
-            monitor_index = 1 if len(monitors) > 1 else 0
+            monitor_index = SELECTED_MONITOR_INDEX if len(monitors) > 1 else 0
             monitor = monitors[monitor_index]
             # mss returns monitor dicts with left/top/right/bottom; newer may include width/height
             if isinstance(monitor, dict):
@@ -16607,8 +16704,43 @@ def screen_capture_worker(agent_id):
                 while STREAMING_ENABLED:
                     try:
                         start = time.time()
-                        sct_img = sct.grab(monitor if isinstance(monitor, dict) else monitors[monitor_index])
-                        img = np.array(sct_img)
+                        if DISPLAY_MODE == 'combined' and len(monitors) > 1:
+                            frames = []
+                            for i in range(1, len(monitors)):
+                                m = monitors[i]
+                                s = sct.grab(m)
+                                f = np.array(s)
+                                if f.shape[2] == 4:
+                                    f = cv2.cvtColor(f, cv2.COLOR_BGRA2BGR)
+                                frames.append(f)
+                            if frames:
+                                try:
+                                    img = np.hstack(frames)
+                                except Exception:
+                                    img = frames[0]
+                        elif DISPLAY_MODE == 'pip' and len(monitors) > 1:
+                            base_m = monitors[monitor_index]
+                            pip_idx = PIP_MONITOR_INDEX if 1 <= PIP_MONITOR_INDEX < len(monitors) else 1
+                            pip_m = monitors[pip_idx]
+                            base_img = np.array(sct.grab(base_m))
+                            pip_img = np.array(sct.grab(pip_m))
+                            if base_img.shape[2] == 4:
+                                base_img = cv2.cvtColor(base_img, cv2.COLOR_BGRA2BGR)
+                            if pip_img.shape[2] == 4:
+                                pip_img = cv2.cvtColor(pip_img, cv2.COLOR_BGRA2BGR)
+                            pip_h = max(1, base_img.shape[0] // 4)
+                            pip_w = max(1, base_img.shape[1] // 4)
+                            pip_resized = cv2.resize(pip_img, (pip_w, pip_h), interpolation=cv2.INTER_AREA)
+                            x_off = max(0, base_img.shape[1] - pip_w - 10)
+                            y_off = max(0, base_img.shape[0] - pip_h - 10)
+                            img = base_img.copy()
+                            try:
+                                img[y_off:y_off+pip_h, x_off:x_off+pip_w] = pip_resized
+                            except Exception:
+                                img = base_img
+                        else:
+                            sct_img = sct.grab(monitor if isinstance(monitor, dict) else monitors[monitor_index])
+                            img = np.array(sct_img)
                         if img.shape[1] != width or img.shape[0] != height:
                             img = cv2.resize(img, (width, height), interpolation=cv2.INTER_AREA)
                         if img.shape[2] == 4:
