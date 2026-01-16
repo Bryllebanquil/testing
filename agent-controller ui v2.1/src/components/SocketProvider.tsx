@@ -38,6 +38,8 @@ interface SocketContextType {
   setSelectedAgent: (agentId: string | null) => void;
   lastActivity?: { type: string; details?: string; agentId?: string | null; timestamp?: number };
   setLastActivity: (type: string, details?: string, agentId?: string | null) => void;
+  getLastFilePath: (agentId: string | null) => string;
+  setLastFilePath: (agentId: string | null, path: string) => void;
   sendCommand: (agentId: string, command: string) => void;
   startStream: (agentId: string, type: 'screen' | 'camera' | 'audio') => void;
   stopStream: (agentId: string, type: 'screen' | 'camera' | 'audio') => void;
@@ -167,6 +169,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       return { type: 'idle', details: '', agentId: null, timestamp: Date.now() };
     }
   });
+  const lastFilePathsRef = useRef<Record<string, string>>({});
   const [agentConfig, setAgentConfig] = useState<Record<string, {
     agent?: {
       id?: string;
@@ -210,6 +213,24 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     _setLastActivity(entry);
     try { localStorage.setItem('nch:lastActivity', JSON.stringify(entry)); } catch {}
   }, []);
+  
+  const getLastFilePath = useCallback((agentId: string | null) => {
+    const key = agentId ? `fm:lastPath:${agentId}` : 'fm:lastPath:';
+    try {
+      const mem = agentId ? (lastFilePathsRef.current[agentId] || '') : '';
+      const ls = localStorage.getItem(key) || '';
+      return (mem || ls || '/');
+    } catch {
+      return '/';
+    }
+  }, []);
+  
+  const setLastFilePath = useCallback((agentId: string | null, path: string) => {
+    const key = agentId ? `fm:lastPath:${agentId}` : 'fm:lastPath:';
+    if (agentId) lastFilePathsRef.current[agentId] = path;
+    try { localStorage.setItem(key, path || '/'); } catch {}
+    setLastActivity('files', path || '/', agentId || null);
+  }, [setLastActivity]);
 
   useEffect(() => {
     // Connect to Socket.IO server
@@ -1158,6 +1179,8 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     installedSoftware,
     lastProcessOperation,
     lastProcessDetails,
+    getLastFilePath,
+    setLastFilePath,
   };
 
   return (

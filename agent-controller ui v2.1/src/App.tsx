@@ -27,7 +27,9 @@ import ToggleControlPanel from "./components/ToggleControlPanel";
  const ProcessManagerLazy = lazy(() =>
    import("./components/ProcessManager").then((mod) => ({ default: mod.ProcessManager }))
  );
- 
+ const VirtualDesktopLazy = lazy(() =>
+   import("./components/VirtualDesktop").then((mod) => ({ default: mod.VirtualDesktop }))
+ );
 import { ThemeProvider } from "./components/ThemeProvider";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Login } from "./components/Login";
@@ -360,6 +362,9 @@ function AppContent() {
                   <TabsTrigger value="streaming" className="text-xs sm:text-sm">
                     Streaming
                   </TabsTrigger>
+                  <TabsTrigger value="virtual" className="text-xs sm:text-sm">
+                    Virtual Desktop
+                  </TabsTrigger>
                   <TabsTrigger value="commands" className="text-xs sm:text-sm">
                     Commands
                   </TabsTrigger>
@@ -630,6 +635,12 @@ function AppContent() {
                   </Suspense>
                 </TabsContent>
 
+                <TabsContent value="virtual" className="space-y-6">
+                  <Suspense fallback={<div className="text-sm text-muted-foreground p-4">Loading virtual desktop…</div>}>
+                    <VirtualDesktopLazy agentId={selectedAgent} />
+                  </Suspense>
+                </TabsContent>
+ 
                 <TabsContent
                   value="commands"
                   className="space-y-6"

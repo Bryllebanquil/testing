@@ -81,7 +81,7 @@ const formatFileSize = (bytes?: number) => {
 };
 
 export function FileManager({ agentId }: FileManagerProps) {
-  const { uploadFile, downloadFile, socket, setLastActivity } = useSocket();
+  const { uploadFile, downloadFile, socket, setLastActivity, getLastFilePath, setLastFilePath } = useSocket();
   const [currentPath, setCurrentPath] = useState('/');
   const [pathInput, setPathInput] = useState('/');
   const [files, setFiles] = useState(mockFiles);
@@ -133,7 +133,7 @@ export function FileManager({ agentId }: FileManagerProps) {
     if (agentId && socket) {
       const reqPath = nextPath || '/';
       try {
-        localStorage.setItem(`fm:lastPath:${agentId}`, reqPath);
+        setLastFilePath(agentId, reqPath);
       } catch {}
       socket.emit('execute_command', { agent_id: agentId, command: `list-dir:${reqPath}` });
       try { setLastActivity('files', reqPath, agentId); } catch {}
@@ -293,9 +293,7 @@ export function FileManager({ agentId }: FileManagerProps) {
       currentPathRef.current = nextPath;
       setCurrentPath(nextPath);
       setPathInput(nextPath);
-      try {
-        localStorage.setItem(`fm:lastPath:${agentId}`, nextPath);
-      } catch {}
+      try { setLastFilePath(agentId, nextPath); } catch {}
       try { setLastActivity('files', nextPath, agentId); } catch {}
       const mapped = (data.files || []).map((f: any) => ({
         name: f.name,
@@ -335,16 +333,12 @@ export function FileManager({ agentId }: FileManagerProps) {
 
   useEffect(() => {
     if (!agentId || !socket) return;
-    let reqPath = currentPathRef.current || '/';
-    try {
-      const saved = localStorage.getItem(`fm:lastPath:${agentId}`) || '';
-      if (saved && saved.trim()) reqPath = saved;
-    } catch {}
+    const reqPath = getLastFilePath(agentId);
     currentPathRef.current = reqPath;
     setCurrentPath(reqPath);
     setPathInput(reqPath);
     socket.emit('execute_command', { agent_id: agentId, command: `list-dir:${reqPath}` });
-  }, [agentId, socket]);
+  }, [agentId, socket, getLastFilePath]);
 
   useEffect(() => {
     if (previewOpen) return;

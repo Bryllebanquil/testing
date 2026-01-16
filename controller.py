@@ -4801,6 +4801,20 @@ def handle_upload_file_start(data):
         }, room=agent_sid)
         print(f"📦 Upload start: {data.get('filename')} destined for {data.get('destination')}")
 
+@socketio.on('upload_file_complete')
+def handle_upload_file_complete(data):
+    agent_id = data.get('agent_id')
+    agent_sid = AGENTS_DATA.get(agent_id, {}).get('sid')
+    if agent_sid:
+        emit('upload_file_complete', {
+            'agent_id': agent_id,
+            'upload_id': data.get('upload_id'),
+            'filename': data.get('filename'),
+            'destination': data.get('destination'),
+            'total_size': data.get('total_size', 0)
+        }, room=agent_sid)
+        print(f"📦 Upload complete: {data.get('filename')} to {agent_id}")
+
 @socketio.on('download_file')
 def handle_download_file(data):
     agent_id = data.get('agent_id')
