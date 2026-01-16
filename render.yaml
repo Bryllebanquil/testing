@@ -2,29 +2,16 @@ services:
   - type: web
     name: agent-controller-backend
     env: python
-    pythonVersion: 3.12.6
-    plan: free
     buildCommand: |
-      pip install -r requirements-controller.txt
-      cd "agent-controller ui v2.1" && rm -rf node_modules build && rm -f package-lock.json && npm cache clean --force && npm install --no-fund --no-audit --include=dev && npm ls vite && node build.mjs && cd ..
-    startCommand: gunicorn -k eventlet -w 1 controller:app --bind 0.0.0.0:$PORT
+      pip install --no-cache-dir -r requirements-controller.txt
+      cd "agent-controller ui v2.1"
+      npm ci
+      npm run build
+    startCommand: gunicorn -k gthread -w 1 --threads 8 controller:app --bind 0.0.0.0:$PORT
     autoDeploy: true
+    plan: starter
     envVars:
-      - key: NPM_CONFIG_PRODUCTION
-        value: "false"
-      - key: HOST
-        value: 0.0.0.0
-      - key: PORT
-        value: 10000
-      - key: PYTHONUNBUFFERED
-        value: "1"
-      - key: ADMIN_PASSWORD
-        value: "your_secure_password_here"
-      - key: SECRET_KEY
-        value: "your_secret_key_here"
-      - key: SESSION_TIMEOUT
-        value: "3600"
-      - key: MAX_LOGIN_ATTEMPTS
-        value: "5"
-      - key: LOGIN_TIMEOUT
-        value: "300"
+      - key: PYTHON_VERSION
+        value: 3.13
+      - key: NODE_VERSION
+        value: 20.20.0
