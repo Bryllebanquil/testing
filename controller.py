@@ -4380,6 +4380,8 @@ def _emit_agent_config(agent_id: str):
             emit('config_update', ops_payload, room='operators', broadcast=True)
         except Exception:
             pass
+    except Exception:
+        pass
 
 @socketio.on('operator_toggle_feature')
 @require_socket_auth
