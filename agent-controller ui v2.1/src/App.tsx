@@ -10,6 +10,7 @@ import { Sidebar } from "./components/Sidebar";
 import { SearchAndFilter } from "./components/SearchAndFilter";
 import { ActivityFeed } from "./components/ActivityFeed";
  import { QuickActions } from "./components/QuickActions";
+import ToggleControlPanel from "./components/ToggleControlPanel";
  const SettingsLazy = lazy(() =>
    import("./components/Settings").then((mod) => ({ default: mod.Settings }))
  );
@@ -751,6 +752,7 @@ function AppContent() {
                       </CardContent>
                     </Card>
                   </div>
+                  <ToggleControlPanel />
                 </TabsContent>
 
                 <TabsContent value="webrtc" className="space-y-6">

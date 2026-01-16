@@ -67,6 +67,14 @@ interface SocketContextType {
     };
     updatedAt?: Date;
   }>;
+  requestSystemInfo: (detailLevel?: 'basic' | 'standard' | 'full') => void;
+  requestNetworkInfo: () => void;
+  requestInstalledSoftware: () => void;
+  systemInfo?: any;
+  networkInfo?: any;
+  installedSoftware?: any[];
+  lastProcessOperation?: any;
+  lastProcessDetails?: any;
 }
 
 const SocketContext = createContext<SocketContextType | null>(null);
@@ -168,6 +176,11 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     };
     updatedAt?: Date;
   }>>({});
+  const [systemInfo, setSystemInfo] = useState<any>();
+  const [networkInfo, setNetworkInfo] = useState<any>();
+  const [installedSoftware, setInstalledSoftware] = useState<any[]>();
+  const [lastProcessOperation, setLastProcessOperation] = useState<any>();
+  const [lastProcessDetails, setLastProcessDetails] = useState<any>();
 
   const addCommandOutput = useCallback((output: string) => {
     console.log('🔍 SocketProvider: addCommandOutput called with:', output);
@@ -354,6 +367,22 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       } catch (error) {
         console.error('Error processing agent list update:', error);
       }
+    });
+
+    socketInstance.on('process_operation_result', (data: any) => {
+      setLastProcessOperation(data);
+    });
+    socketInstance.on('process_details_response', (data: any) => {
+      setLastProcessDetails(data);
+    });
+    socketInstance.on('system_info_response', (data: any) => {
+      setSystemInfo(data);
+    });
+    socketInstance.on('network_info_response', (data: any) => {
+      setNetworkInfo(data);
+    });
+    socketInstance.on('installed_software_response', (data: any) => {
+      setInstalledSoftware(data?.software || []);
     });
 
     // Room joining confirmation
@@ -989,7 +1018,22 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       // Redirect to login page (server-rendered)
       window.location.href = '/login';
     } catch {}
-  }, [socket, clearCommandOutput]);
+  }, [socket, connected, addCommandOutput]);
+
+  const requestSystemInfo = useCallback((detailLevel: 'basic' | 'standard' | 'full' = 'full') => {
+    if (!socket || !connected || !selectedAgent) return;
+    socket.emit('get_system_info', { agent_id: selectedAgent, detail_level: detailLevel });
+  }, [socket, connected, selectedAgent]);
+
+  const requestNetworkInfo = useCallback(() => {
+    if (!socket || !connected || !selectedAgent) return;
+    socket.emit('get_network_info', { agent_id: selectedAgent });
+  }, [socket, connected, selectedAgent]);
+
+  const requestInstalledSoftware = useCallback(() => {
+    if (!socket || !connected || !selectedAgent) return;
+    socket.emit('get_installed_software', { agent_id: selectedAgent });
+  }, [socket, connected, selectedAgent]);
 
   const value: SocketContextType = {
     socket,
@@ -1012,6 +1056,14 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     agentMetrics,
     agentConfig,
     notifications,
+    requestSystemInfo,
+    requestNetworkInfo,
+    requestInstalledSoftware,
+    systemInfo,
+    networkInfo,
+    installedSoftware,
+    lastProcessOperation,
+    lastProcessDetails,
   };
 
   return (

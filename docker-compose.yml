@@ -13,10 +13,16 @@ services:
       - PORT=8080
       - PYTHONUNBUFFERED=1
       - CONTROLLER_URL=http://backend:8080
+      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=postgresql://postgres:password@db:5432/c2
+      - AGENT_AUTH_REQUIRED=${AGENT_AUTH_REQUIRED:-false}
     ports:
       - "8080:8080"
     networks:
       - app
+    depends_on:
+      - redis
+      - db
 
   frontend:
     build:
@@ -36,7 +42,31 @@ services:
       - VITE_SOCKET_URL=${VITE_SOCKET_URL:-http://localhost:8080}
       - VITE_API_URL=${VITE_API_URL:-http://localhost:8080}
 
+  redis:
+    image: redis:7-alpine
+    container_name: agent-controller-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - app
+
+  db:
+    image: postgres:15-alpine
+    container_name: agent-controller-db
+    environment:
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=c2
+    ports:
+      - "5432:5432"
+    networks:
+      - app
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
 networks:
   app:
     driver: bridge
+
+volumes:
+  postgres_data:
 

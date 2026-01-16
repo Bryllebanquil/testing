@@ -286,6 +286,34 @@ export function ProcessManager({ agentId, isConnected }: ProcessManagerProps) {
     return () => { socket.off('process_list', handler); };
   }, [socket, agentId]);
 
+  useEffect(() => {
+    if (!socket) return;
+    const handler = (data: any) => {
+      if (!agentId || data.agent_id !== agentId) return;
+      const ok = Boolean(data.success);
+      const pid = data.pid;
+      const op = data.operation;
+      if (ok) {
+        toast.success(`${op} PID ${pid}: ${data.message || 'success'}`);
+      } else {
+        toast.error(`${op} PID ${pid}: ${data.error || 'failed'}`);
+      }
+    };
+    socket.on('process_operation_result', handler);
+    return () => { socket.off('process_operation_result', handler); };
+  }, [socket, agentId]);
+
+  useEffect(() => {
+    if (!socket) return;
+    const handler = (data: any) => {
+      if (!agentId || data.agent_id !== agentId) return;
+      const pid = data.pid;
+      toast.info(`Details ready for PID ${pid}`);
+    };
+    socket.on('process_details_response', handler);
+    return () => { socket.off('process_details_response', handler); };
+  }, [socket, agentId]);
+
   const getStatusBadge = (status: Process["status"]) => {
     switch (status) {
       case "running":

