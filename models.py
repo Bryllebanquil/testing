@@ -17,7 +17,7 @@ class Agent(Base):
     ip = Column(String)
     last_seen = Column(DateTime)
     capabilities = Column(JSON)
-    metadata = Column(JSON)
+    metadata_json = Column('metadata', JSON)
 
 class CommandHistory(Base):
     __tablename__ = "command_history"
@@ -60,4 +60,3 @@ class AuditLog(Base):
     severity = Column(String)
     timestamp = Column(DateTime, default=datetime.utcnow)
     ip_address = Column(String, nullable=True)
-

@@ -4475,7 +4475,7 @@ def handle_agent_connect(data):
                     ip=AGENTS_DATA[agent_id]["ip"],
                     last_seen=datetime.datetime.utcnow(),
                     capabilities=AGENTS_DATA[agent_id]["capabilities"],
-                    metadata=AGENTS_DATA[agent_id].get("system_info", {})
+                    metadata_json=AGENTS_DATA[agent_id].get("system_info", {})
                 )
                 db.add(a)
             else:
@@ -4484,7 +4484,7 @@ def handle_agent_connect(data):
                 existing.ip = AGENTS_DATA[agent_id]["ip"]
                 existing.last_seen = datetime.datetime.utcnow()
                 existing.capabilities = AGENTS_DATA[agent_id]["capabilities"]
-                existing.metadata = AGENTS_DATA[agent_id].get("system_info", {})
+                existing.metadata_json = AGENTS_DATA[agent_id].get("system_info", {})
             db.commit()
             db.close()
         except Exception:
