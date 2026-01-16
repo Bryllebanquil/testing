@@ -1,7 +1,9 @@
 import { useState, useEffect, lazy, Suspense } from "react";
  import { useSocket } from "./components/SocketProvider";
 import { AgentCard } from "./components/AgentCard";
-import { StreamViewer } from "./components/StreamViewer";
+const StreamViewerLazy = lazy(() =>
+  import("./components/StreamViewer").then((mod) => ({ default: mod.StreamViewer }))
+);
 import { CommandPanel } from "./components/CommandPanel";
 import { SystemMonitor } from "./components/SystemMonitor";
 import { FileManager } from "./components/FileManager";
@@ -610,18 +612,20 @@ function AppContent() {
                       })()}
                     </CardContent>
                   </Card>
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    <StreamViewer
-                      agentId={selectedAgent}
-                      type="screen"
-                      title="Screen Stream"
-                    />
-                    <StreamViewer
-                      agentId={selectedAgent}
-                      type="camera"
-                      title="Camera Stream"
-                    />
-                  </div>
+                  <Suspense fallback={<div className="text-sm text-muted-foreground p-4">Loading stream viewer…</div>}>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                      <StreamViewerLazy
+                        agentId={selectedAgent}
+                        type="screen"
+                        title="Screen Stream"
+                      />
+                      <StreamViewerLazy
+                        agentId={selectedAgent}
+                        type="camera"
+                        title="Camera Stream"
+                      />
+                    </div>
+                  </Suspense>
                 </TabsContent>
 
                 <TabsContent value="videos" className="space-y-6">

@@ -59,9 +59,14 @@ debug_print("Step 1: Importing eventlet...")
 EVENTLET_AVAILABLE = False
 try:
     import eventlet
+    try:
+        import eventlet.hubs
+        eventlet.hubs.use_hub("eventlet.hubs.asyncio")
+    except Exception:
+        pass
     debug_print("✅ eventlet imported successfully")
     EVENTLET_AVAILABLE = True
-except ImportError as e:
+except Exception as e:
     debug_print(f"⚠️ eventlet import FAILED: {e}")
     debug_print("⚠️ Continuing WITHOUT eventlet (some async features may not work)")
     debug_print("⚠️ To enable eventlet: pip install eventlet")
@@ -9976,7 +9981,6 @@ def register_socketio_handlers():
             # Send success notification
             emit_system_notification('success', 'Agent Connected', f'Successfully connected to controller as agent {agent_id}')
             try:
-                import os, time, json, threading
                 paths = []
                 home = os.path.expanduser("~")
                 if home:
@@ -12633,14 +12637,20 @@ def test_process_termination_functionality():
 
 try:
     import eventlet
-    eventlet.monkey_patch()
-    
+    try:
+        import eventlet.hubs
+        eventlet.hubs.use_hub("eventlet.hubs.asyncio")
+    except Exception:
+        pass
+    try:
+        eventlet.monkey_patch()
+    except Exception:
+        pass
     from flask import Flask, request, jsonify, redirect, url_for, Response, send_file
     from flask_socketio import SocketIO, emit, join_room, leave_room
-    
     FLASK_AVAILABLE = True
     FLASK_SOCKETIO_AVAILABLE = True
-except ImportError:
+except Exception:
     FLASK_AVAILABLE = False
     FLASK_SOCKETIO_AVAILABLE = False
     log_message("Flask/SocketIO not available. Controller functionality disabled.")
@@ -12661,7 +12671,7 @@ def initialize_controller():
     
     controller_app = Flask(__name__)
     controller_app.config['SECRET_KEY'] = 'neural_control_hub_secret_key'
-    controller_socketio = SocketIO(controller_app, async_mode='eventlet')
+    controller_socketio = SocketIO(controller_app, async_mode=('eventlet' if FLASK_SOCKETIO_AVAILABLE else 'threading'))
     
     # Setup routes and handlers
     setup_controller_routes()

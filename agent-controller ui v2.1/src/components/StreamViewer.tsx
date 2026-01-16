@@ -30,7 +30,7 @@ interface StreamViewerProps {
 }
 
 export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
-  const { sendCommand, socket } = useSocket();
+  const { sendCommand, socket, setLastActivity } = useSocket();
   const [isStreaming, setIsStreaming] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [quality, setQuality] = useState('high');
@@ -631,6 +631,13 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
       
       sendCommand(agentId, command);
       setIsStreaming(false);
+      try {
+        const key = `stream:last:${agentId}`;
+        const raw = localStorage.getItem(key);
+        const prev = raw ? JSON.parse(raw) : {};
+        localStorage.setItem(key, JSON.stringify({ ...prev, [type]: false }));
+      } catch {}
+      try { setLastActivity(`stream:${type}`, 'stopped', agentId); } catch {}
       setFrameCount(0);
       setFps(0);
       setBandwidth(0);
@@ -705,6 +712,13 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
       
       sendCommand(agentId, command);
       setIsStreaming(true);
+      try {
+        const key = `stream:last:${agentId}`;
+        const raw = localStorage.getItem(key);
+        const prev = raw ? JSON.parse(raw) : {};
+        localStorage.setItem(key, JSON.stringify({ ...prev, [type]: true }));
+      } catch {}
+      try { setLastActivity(`stream:${type}`, 'started', agentId); } catch {}
       setIsWebRTCActive(false);
       setHasError(false);
       fallbackTriggeredRef.current = false;
@@ -883,6 +897,34 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
         videoRef.current.srcObject = null;
       }
     }
+  }, [agentId]);
+  
+  useEffect(() => {
+    if (!agentId) return;
+    try {
+      const raw = localStorage.getItem(`stream:last:${agentId}`);
+      const saved = raw ? JSON.parse(raw) : {};
+      if (saved && saved[type]) {
+        let command = '';
+        if (transportMode === 'fallback') {
+          switch (type) {
+            case 'screen': command = 'start-stream'; break;
+            case 'camera': command = 'start-camera'; break;
+            case 'audio': command = 'start-audio'; break;
+          }
+        } else {
+          switch (type) {
+            case 'screen': command = 'start-webrtc-screen'; break;
+            case 'camera': command = 'start-webrtc-camera'; break;
+            case 'audio': command = 'start-webrtc-audio'; break;
+          }
+        }
+        if (command) {
+          sendCommand(agentId, command);
+          setIsStreaming(true);
+        }
+      }
+    } catch {}
   }, [agentId]);
 
   useEffect(() => {

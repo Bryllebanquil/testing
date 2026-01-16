@@ -19,7 +19,7 @@ interface HeaderProps {
 
 export function Header({ activeTab, onTabChange, onAgentSelect, onAgentDeselect, agentCount = 0 }: HeaderProps) {
   const { theme, setTheme } = useTheme();
-  const { logout } = useSocket();
+  const { logout, lastActivity } = useSocket();
 
   const handleLogout = async () => {
     try {
@@ -50,7 +50,15 @@ export function Header({ activeTab, onTabChange, onAgentSelect, onAgentDeselect,
             <Shield className="h-6 w-6 sm:h-8 sm:w-8 text-primary flex-shrink-0" />
             <div className="min-w-0">
               <h1 className="text-sm sm:text-lg font-semibold truncate">Neural Control Hub</h1>
-              <p className="text-xs text-muted-foreground hidden sm:block">Advanced Agent Management</p>
+              <p className="text-xs text-muted-foreground hidden sm:block">
+                {lastActivity?.type ? (
+                  lastActivity.type.startsWith('files')
+                    ? `Last: Files ${lastActivity.details || ''}`
+                    : lastActivity.type.startsWith('stream:')
+                      ? `Last: ${lastActivity.type.replace('stream:', '').toUpperCase()} stream ${lastActivity.details || ''}`
+                      : 'Advanced Agent Management'
+                ) : 'Advanced Agent Management'}
+              </p>
             </div>
           </div>
         </div>

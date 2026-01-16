@@ -81,7 +81,7 @@ const formatFileSize = (bytes?: number) => {
 };
 
 export function FileManager({ agentId }: FileManagerProps) {
-  const { uploadFile, downloadFile, socket } = useSocket();
+  const { uploadFile, downloadFile, socket, setLastActivity } = useSocket();
   const [currentPath, setCurrentPath] = useState('/');
   const [pathInput, setPathInput] = useState('/');
   const [files, setFiles] = useState(mockFiles);
@@ -136,6 +136,7 @@ export function FileManager({ agentId }: FileManagerProps) {
         localStorage.setItem(`fm:lastPath:${agentId}`, reqPath);
       } catch {}
       socket.emit('execute_command', { agent_id: agentId, command: `list-dir:${reqPath}` });
+      try { setLastActivity('files', reqPath, agentId); } catch {}
     }
   };
 
@@ -150,6 +151,7 @@ export function FileManager({ agentId }: FileManagerProps) {
     }
     setIsLoading(true);
     socket.emit('execute_command', { agent_id: agentId, command: `list-dir:${trimmed}` });
+    try { setLastActivity('files', trimmed, agentId); } catch {}
   };
 
   const getExtension = (name: string) => {
@@ -294,6 +296,7 @@ export function FileManager({ agentId }: FileManagerProps) {
       try {
         localStorage.setItem(`fm:lastPath:${agentId}`, nextPath);
       } catch {}
+      try { setLastActivity('files', nextPath, agentId); } catch {}
       const mapped = (data.files || []).map((f: any) => ({
         name: f.name,
         type: f.type,

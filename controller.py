@@ -185,7 +185,7 @@ logger.addHandler(logHandler)
 logger.setLevel(logging.INFO)
 
 REDIS_URL = os.environ.get("REDIS_URL", "")
-limiter = Limiter(app=app, key_func=get_remote_address, storage_uri=REDIS_URL if REDIS_URL else "memory://", default_limits=["200 per day", "50 per hour"])
+limiter = Limiter(app=app, key_func=get_remote_address, storage_uri=REDIS_URL if REDIS_URL else "memory://", default_limits=[])
 cache = Cache(app, config={'CACHE_TYPE': 'redis' if REDIS_URL else 'simple', 'CACHE_REDIS_URL': REDIS_URL})
 metrics = PrometheusMetrics(app)
 Base.metadata.create_all(bind=engine)
@@ -2817,7 +2817,6 @@ def debug_assets():
 
 # Authentication API for frontend
 @app.route('/api/auth/login', methods=['POST'])
-@limiter.limit("5 per minute")
 def api_login():
     """API endpoint for frontend authentication"""
     if not request.is_json:
