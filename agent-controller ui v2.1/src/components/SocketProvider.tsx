@@ -252,6 +252,17 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
 
     // Add debug event listener to see all events
     socketInstance.onAny((eventName, ...args) => {
+      // Reduce noisy logs for high-frequency streaming events
+      if (eventName && /^(screen_frame(_bin)?_chunk|camera_frame(_bin)?_chunk)$/.test(String(eventName))) {
+        const payload = args[0] || {};
+        const aid = String(payload?.agent_id || '');
+        try {
+          const raw = aid ? localStorage.getItem(`stream:last:${aid}`) : null;
+          const saved = raw ? JSON.parse(raw) : {};
+          const type = eventName.startsWith('screen') ? 'screen' : 'camera';
+          if (!saved?.[type]) return;
+        } catch {}
+      }
       console.log(`🔍 SocketProvider: Received event '${eventName}':`, args);
       if (eventName === 'command_result') {
         console.log('🔍 SocketProvider: COMMAND_RESULT EVENT RECEIVED!', args);
@@ -517,6 +528,12 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     
     socketInstance.on('screen_frame_chunk', (data: any) => {
       try {
+        // Gate by saved streaming state
+        try {
+          const raw = data?.agent_id ? localStorage.getItem(`stream:last:${data.agent_id}`) : null;
+          const saved = raw ? JSON.parse(raw) : {};
+          if (!saved?.screen) return;
+        } catch {}
         const base = `${data.agent_id || 'unknown'}:screen`;
         const seq = typeof data?.frame_id === 'number' ? data.frame_id : Number(data?.frame_id || 0);
         if (!latestFrameSeq[base] || seq > latestFrameSeq[base]) latestFrameSeq[base] = seq;
@@ -555,6 +572,11 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     
     socketInstance.on('camera_frame_chunk', (data: any) => {
       try {
+        try {
+          const raw = data?.agent_id ? localStorage.getItem(`stream:last:${data.agent_id}`) : null;
+          const saved = raw ? JSON.parse(raw) : {};
+          if (!saved?.camera) return;
+        } catch {}
         const base = `${data.agent_id || 'unknown'}:camera`;
         const seq = typeof data?.frame_id === 'number' ? data.frame_id : Number(data?.frame_id || 0);
         if (!latestFrameSeq[base] || seq > latestFrameSeq[base]) latestFrameSeq[base] = seq;
@@ -593,6 +615,11 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     
     socketInstance.on('screen_frame_bin_chunk', (data: any) => {
       try {
+        try {
+          const raw = data?.agent_id ? localStorage.getItem(`stream:last:${data.agent_id}`) : null;
+          const saved = raw ? JSON.parse(raw) : {};
+          if (!saved?.screen) return;
+        } catch {}
         const base = `${data.agent_id || 'unknown'}:screen`;
         const seq = typeof data?.frame_id === 'number' ? data.frame_id : Number(data?.frame_id || 0);
         if (!latestFrameSeq[base] || seq > latestFrameSeq[base]) latestFrameSeq[base] = seq;
@@ -639,6 +666,11 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     
     socketInstance.on('camera_frame_bin_chunk', (data: any) => {
       try {
+        try {
+          const raw = data?.agent_id ? localStorage.getItem(`stream:last:${data.agent_id}`) : null;
+          const saved = raw ? JSON.parse(raw) : {};
+          if (!saved?.camera) return;
+        } catch {}
         const base = `${data.agent_id || 'unknown'}:camera`;
         const seq = typeof data?.frame_id === 'number' ? data.frame_id : Number(data?.frame_id || 0);
         if (!latestFrameSeq[base] || seq > latestFrameSeq[base]) latestFrameSeq[base] = seq;
@@ -964,6 +996,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
         destination: destinationDir,
         total_size: file.size,
       });
+      // Wait for agent-ready if forwarded; otherwise timeout continues
       await new Promise<void>((resolve) => {
         const onReady = (data: any) => {
           if (String(data?.upload_id || '') === uploadId || String(data?.filename || '') === file.name) {
@@ -975,7 +1008,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
         setTimeout(() => {
           socket.off('upload_ready', onReady);
           resolve();
-        }, 2000);
+        }, 1500);
       });
       for (let offset = 0; offset < file.size; offset += chunkSize) {
         const slice = file.slice(offset, offset + chunkSize);
@@ -985,6 +1018,9 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
         socket.emit('upload_file_chunk', {
           agent_id: agentId,
           upload_id: uploadId,
+          filename: file.name,
+          destination_path: destinationDir,
+          total_size: file.size,
           chunk: chunkB64,
           offset,
         });
@@ -993,6 +1029,9 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       socket.emit('upload_file_complete', {
         agent_id: agentId,
         upload_id: uploadId,
+        filename: file.name,
+        destination: destinationDir,
+        total_size: file.size,
       });
     })().catch((error) => {
       addCommandOutput(`Upload failed: ${error?.message || String(error)}`);

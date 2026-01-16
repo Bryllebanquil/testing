@@ -4758,29 +4758,48 @@ def handle_upload_file_chunk(data):
     filename = data.get('filename')
     chunk = data.get('chunk_data') or data.get('data') or data.get('chunk')
     offset = data.get('offset')
-    total_size = data.get('total_size', 0)  # ✅ Get total_size from UI
-    destination_path = data.get('destination_path')
+    total_size = data.get('total_size', 0)
+    destination_path = data.get('destination_path') or data.get('destination')
     agent_sid = AGENTS_DATA.get(agent_id, {}).get('sid')
     if agent_sid:
-        emit('file_chunk_from_operator', {
+        emit('upload_file_chunk', {
             'agent_id': agent_id,
+            'upload_id': data.get('upload_id'),
             'filename': filename,
-            'data': chunk,
+            'destination': destination_path,
             'chunk': chunk,
-            'chunk_data': chunk,
             'offset': offset,
-            'total_size': total_size,  # ✅ Forward total_size to agent!
-            'destination_path': destination_path
+            'total_size': total_size
         }, room=agent_sid)
-        print(f"📤 Forwarding upload chunk: {filename} offset {offset}, total_size {total_size}")
+        print(f"📤 Forwarding upload chunk: {filename} offset {offset}/{total_size}")
 
 @socketio.on('upload_file_end')
 def handle_upload_file_end(data):
     agent_id = data.get('agent_id')
     agent_sid = AGENTS_DATA.get(agent_id, {}).get('sid')
     if agent_sid:
-        emit('file_upload_complete_from_operator', data, room=agent_sid)
-        print(f"Upload of {data.get('filename')} to {agent_id} complete.")
+        emit('upload_file_complete', {
+            'agent_id': agent_id,
+            'upload_id': data.get('upload_id'),
+            'filename': data.get('filename'),
+            'destination': data.get('destination'),
+            'total_size': data.get('total_size', 0)
+        }, room=agent_sid)
+        print(f"📦 Upload complete: {data.get('filename')} to {agent_id}")
+
+@socketio.on('upload_file_start')
+def handle_upload_file_start(data):
+    agent_id = data.get('agent_id')
+    agent_sid = AGENTS_DATA.get(agent_id, {}).get('sid')
+    if agent_sid:
+        emit('upload_file_start', {
+            'agent_id': agent_id,
+            'upload_id': data.get('upload_id'),
+            'filename': data.get('filename'),
+            'destination': data.get('destination'),
+            'total_size': data.get('total_size', 0)
+        }, room=agent_sid)
+        print(f"📦 Upload start: {data.get('filename')} destined for {data.get('destination')}")
 
 @socketio.on('download_file')
 def handle_download_file(data):

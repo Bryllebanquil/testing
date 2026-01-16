@@ -22,14 +22,12 @@ import ToggleControlPanel from "./components/ToggleControlPanel";
  const WebRTCMonitoringLazy = lazy(() =>
    import("./components/WebRTCMonitoring").then((mod) => ({ default: mod.WebRTCMonitoring }))
  );
-                                     import { VoiceControl } from "./components/VoiceControl";
+                                    
  import { BulkUploadManager } from "./components/bulkuploadmanager";
  const ProcessManagerLazy = lazy(() =>
    import("./components/ProcessManager").then((mod) => ({ default: mod.ProcessManager }))
  );
- const VideoPlayerLazy = lazy(() =>
-   import("./components/VideoPlayer").then((mod) => ({ default: mod.VideoPlayer }))
- );
+ 
 import { ThemeProvider } from "./components/ThemeProvider";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Login } from "./components/Login";
@@ -85,12 +83,13 @@ type FilterOptions = {
 // Live agents come from SocketProvider via agent_list_update
 
 function AppContent() {
-  const { agents: liveAgents, connected, authenticated, agentConfig, sendCommand } = useSocket() as {
+  const { agents: liveAgents, connected, authenticated, agentConfig, sendCommand, lastActivity } = useSocket() as {
     agents: Agent[];
     connected: boolean;
     authenticated: boolean;
     agentConfig: Record<string, any>;
     sendCommand: (agentId: string, command: string) => void;
+    lastActivity: any;
   };
   const [selectedAgent, setSelectedAgent] = useState<
     string | null
@@ -361,17 +360,11 @@ function AppContent() {
                   <TabsTrigger value="streaming" className="text-xs sm:text-sm">
                     Streaming
                   </TabsTrigger>
-                  <TabsTrigger value="videos" className="text-xs sm:text-sm">
-                    Videos
-                  </TabsTrigger>
                   <TabsTrigger value="commands" className="text-xs sm:text-sm">
                     Commands
                   </TabsTrigger>
                   <TabsTrigger value="files" className="text-xs sm:text-sm">
                     Files
-                  </TabsTrigger>
-                  <TabsTrigger value="voice" className="text-xs sm:text-sm">
-                    Voice
                   </TabsTrigger>
                   <TabsTrigger value="monitoring" className="text-xs sm:text-sm">
                     Monitoring
@@ -380,6 +373,15 @@ function AppContent() {
                     WebRTC Pro
                   </TabsTrigger>
                 </TabsList>
+                <div className="text-xs text-muted-foreground">
+                  {lastActivity?.type
+                    ? (String(lastActivity.type).startsWith('files')
+                        ? `Last: Files ${lastActivity.details || ''}`
+                        : String(lastActivity.type).startsWith('stream:')
+                          ? `Last: ${String(lastActivity.type).replace('stream:', '').toUpperCase()} stream ${lastActivity.details || ''}`
+                          : null)
+                    : null}
+                </div>
 
                 <TabsContent
                   value="overview"
@@ -628,12 +630,6 @@ function AppContent() {
                   </Suspense>
                 </TabsContent>
 
-                <TabsContent value="videos" className="space-y-6">
-                  <Suspense fallback={<div className="text-sm text-muted-foreground p-4">Loading videos…</div>}>
-                    <VideoPlayerLazy />
-                  </Suspense>
-                </TabsContent>
-
                 <TabsContent
                   value="commands"
                   className="space-y-6"
@@ -704,15 +700,7 @@ function AppContent() {
                   <FileManager agentId={selectedAgent} />
                 </TabsContent>
 
-                <TabsContent
-                  value="voice"
-                  className="space-y-6"
-                >
-                  <VoiceControl 
-                    agentId={selectedAgent} 
-                    isConnected={onlineAgents.length > 0}
-                  />
-                </TabsContent>
+                
 
                 <TabsContent
                   value="monitoring"
