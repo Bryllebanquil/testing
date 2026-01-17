@@ -14675,6 +14675,33 @@ def on_mouse_move(data):
         
         x = data.get('x')
         y = data.get('y')
+        width = data.get('width')
+        height = data.get('height')
+        
+        # Normalize to screen coordinates if width/height provided
+        try:
+            nx = float(x)
+            ny = float(y)
+            if width is not None and height is not None and 0.0 <= nx <= 1.0 and 0.0 <= ny <= 1.0:
+                screen_w = None
+                screen_h = None
+                try:
+                    import pyautogui
+                    sw, sh = pyautogui.size()
+                    screen_w, screen_h = int(sw), int(sh)
+                except Exception:
+                    try:
+                        import ctypes
+                        user32 = ctypes.windll.user32
+                        screen_w = int(user32.GetSystemMetrics(0))
+                        screen_h = int(user32.GetSystemMetrics(1))
+                    except Exception:
+                        pass
+                if screen_w and screen_h:
+                    x = int(nx * screen_w)
+                    y = int(ny * screen_h)
+        except Exception:
+            pass
         
         if mouse_controller:
             mouse_controller.position = (x, y)
@@ -14698,7 +14725,13 @@ def on_mouse_click(data):
         event_type = data.get('event_type')
 
         if mouse_controller:
-            mouse_button = getattr(pynput.mouse.Button, button)
+            try:
+                mouse_button = getattr(pynput.mouse.Button, str(button).lower())
+            except Exception:
+                # Map numeric buttons to names
+                btn_map = {0: 'left', 1: 'middle', 2: 'right'}
+                name = btn_map.get(int(button) if isinstance(button, (int, float)) else 0, 'left')
+                mouse_button = getattr(pynput.mouse.Button, name)
             if event_type == 'down':
                 mouse_controller.press(mouse_button)
             elif event_type == 'up':

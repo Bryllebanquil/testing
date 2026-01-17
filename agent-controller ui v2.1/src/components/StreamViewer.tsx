@@ -27,9 +27,11 @@ interface StreamViewerProps {
   agentId: string | null;
   type: 'screen' | 'camera' | 'audio';
   title: string;
+  defaultCaptureMouse?: boolean;
+  defaultCaptureKeyboard?: boolean;
 }
 
-export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
+export function StreamViewer({ agentId, type, title, defaultCaptureMouse, defaultCaptureKeyboard }: StreamViewerProps) {
   const { sendCommand, socket, setLastActivity } = useSocket();
   const [isStreaming, setIsStreaming] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
@@ -43,8 +45,8 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
   const [isWebRTCActive, setIsWebRTCActive] = useState(false);
   const [transportMode, setTransportMode] = useState<'auto' | 'webrtc' | 'fallback'>('auto');
   const [webrtcIceServers, setWebrtcIceServers] = useState<RTCIceServer[]>([]);
-  const [captureKeyboard, setCaptureKeyboard] = useState(true);
-  const [captureMouse, setCaptureMouse] = useState(false);
+  const [captureKeyboard, setCaptureKeyboard] = useState(typeof defaultCaptureKeyboard === 'boolean' ? defaultCaptureKeyboard : true);
+  const [captureMouse, setCaptureMouse] = useState(typeof defaultCaptureMouse === 'boolean' ? defaultCaptureMouse : false);
   const [modCtrl, setModCtrl] = useState(false);
   const [modAlt, setModAlt] = useState(false);
   const [modShift, setModShift] = useState(false);
@@ -813,12 +815,17 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
     const y = e.clientY - rect.top;
     const nx = Math.max(0, Math.min(1, x / rect.width));
     const ny = Math.max(0, Math.min(1, y / rect.height));
+    const btnIndex = e.button;
+    const btnMap: Record<number, string> = { 0: 'left', 1: 'middle', 2: 'right' };
+    const btnName = btnMap[btnIndex] || 'left';
     socket.emit('live_mouse_click', {
       agent_id: agentId,
-      type: action,
-      button: e.button,
+      event_type: action,
+      button: btnName,
       x: nx,
-      y: ny
+      y: ny,
+      width: Math.round(rect.width),
+      height: Math.round(rect.height)
     });
   };
 
