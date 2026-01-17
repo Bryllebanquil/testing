@@ -253,6 +253,30 @@ $w.ShowDialog()`;
         total_size: file.size,
       });
       const chunkSize = 512 * 1024;
+      const chunkDelayMs = 10;
+      let sentBytes = 0;
+      let lastTs = Date.now() / 1000;
+      const updateLocalProgress = (off: number) => {
+        const now = Date.now() / 1000;
+        const dt = Math.max(0.001, now - lastTs);
+        const dr = Math.max(0, off - sentBytes);
+        const speed = dr / dt;
+        sentBytes = off;
+        lastTs = now;
+        const pct = Math.min(100, Math.round((off / file.size) * 100));
+        setUploadProgress(prev => ({ ...prev, [file.name]: pct }));
+        setUploadMeta(prev => ({ 
+          ...prev, 
+          [file.name]: { 
+            start: prev[file.name]?.start ?? now, 
+            lastTime: now, 
+            received: off, 
+            total: file.size, 
+            speed, 
+            eta: speed > 0 ? (file.size - off) / speed : 0 
+          } 
+        }));
+      };
       if (file.raw) {
         for (let offset = 0; offset < file.raw.size; offset += chunkSize) {
           const slice = file.raw.slice(offset, offset + chunkSize);
@@ -265,6 +289,8 @@ $w.ShowDialog()`;
             chunk: chunkB64,
             offset,
           });
+          updateLocalProgress(Math.min(offset + bytes.length, file.size));
+          await new Promise(r => setTimeout(r, chunkDelayMs));
         }
       } else {
         const binaryString = atob(file.content);
@@ -278,6 +304,8 @@ $w.ShowDialog()`;
             chunk: chunkB64,
             offset: i,
           });
+          updateLocalProgress(Math.min(i + slice.length, total));
+          await new Promise(r => setTimeout(r, chunkDelayMs));
         }
       }
       const completionPromise = new Promise<void>((resolve, reject) => {
