@@ -61,17 +61,26 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
-function normalizeDestinationDir(destinationPath: string, filename: string): string {
+function normalizeDestinationPath(destinationPath: string, filename: string): string {
   const raw = (destinationPath || '').trim();
-  if (!raw) return '';
+  if (!raw) return filename;
   const lower = raw.toLowerCase();
   const filenameLower = filename.toLowerCase();
 
   if (lower.endsWith(`/${filenameLower}`) || lower.endsWith(`\\${filenameLower}`)) {
-    return raw.slice(0, raw.length - filename.length - 1);
+    return raw;
   }
 
-  return raw;
+  if (raw.endsWith('/') || raw.endsWith('\\')) {
+    return `${raw}${filename}`;
+  }
+
+  if (/^[a-zA-Z]:$/.test(raw)) {
+    return `${raw}\\${filename}`;
+  }
+
+  const separator = raw.includes('\\') || /^[a-zA-Z]:/.test(raw) ? '\\' : '/';
+  return `${raw}${separator}${filename}`;
 }
 
 function extractBase64Payload(value: unknown): string | null {
@@ -816,12 +825,14 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
   const uploadFile = useCallback((agentId: string, file: File, destinationPath: string) => {
     if (!socket || !connected) return;
 
-    const destinationDir = normalizeDestinationDir(destinationPath, file.name);
-    addCommandOutput(`Uploading ${file.name} (${file.size} bytes) to ${agentId}:${destinationDir || '(default)'}`);
+    const destinationFilePath = normalizeDestinationPath(destinationPath, file.name);
+    addCommandOutput(`Uploading ${file.name} (${file.size} bytes) to ${agentId}:${destinationFilePath || '(default)'}`);
 
     const chunkSize = 512 * 1024;
 
     (async () => {
+      let chunksSent = 0;
+      const yieldEveryChunks = 4;
       for (let offset = 0; offset < file.size; offset += chunkSize) {
         const slice = file.slice(offset, offset + chunkSize);
         const buffer = await slice.arrayBuffer();
@@ -836,14 +847,19 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
           chunk_data: chunkB64,
           offset,
           total_size: file.size,
-          destination_path: destinationDir
+          destination_path: destinationFilePath
         });
+
+        chunksSent++;
+        if (chunksSent % yieldEveryChunks === 0) {
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        }
       }
 
       socket.emit('upload_file_end', {
         agent_id: agentId,
         filename: file.name,
-        destination_path: destinationDir
+        destination_path: destinationFilePath
       });
     })().catch((error) => {
       addCommandOutput(`Upload failed: ${error?.message || String(error)}`);

