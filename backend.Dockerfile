@@ -22,7 +22,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r /app/requirements.txt
+COPY requirements-controller.txt /app/requirements-controller.txt
+RUN if [ -f /app/requirements.txt ]; then pip install --no-cache-dir -r /app/requirements.txt; fi
+RUN pip install --no-cache-dir -r /app/requirements-controller.txt
 
 COPY controller.py /app/controller.py
 COPY main.py /app/main.py
@@ -34,4 +36,4 @@ EXPOSE 8080
 ENV HOST=0.0.0.0 \
     PORT=8080
 
-CMD ["python", "/app/controller.py"]
+CMD ["gunicorn", "-k", "eventlet", "-w", "1", "--bind", "0.0.0.0:8080", "controller:app"]

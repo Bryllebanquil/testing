@@ -27,10 +27,12 @@ interface StreamViewerProps {
   agentId: string | null;
   type: 'screen' | 'camera' | 'audio';
   title: string;
+  defaultCaptureMouse?: boolean;
+  defaultCaptureKeyboard?: boolean;
 }
 
-export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
-  const { sendCommand, socket } = useSocket();
+export function StreamViewer({ agentId, type, title, defaultCaptureMouse, defaultCaptureKeyboard }: StreamViewerProps) {
+  const { sendCommand, socket, setLastActivity } = useSocket();
   const [isStreaming, setIsStreaming] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [quality, setQuality] = useState('high');
@@ -41,10 +43,10 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
   const [bandwidth, setBandwidth] = useState(0);
   const [hasError, setHasError] = useState(false);
   const [isWebRTCActive, setIsWebRTCActive] = useState(false);
-  const [transportMode, setTransportMode] = useState<'auto' | 'webrtc' | 'fallback'>('fallback');
+  const [transportMode, setTransportMode] = useState<'auto' | 'webrtc' | 'fallback'>('auto');
   const [webrtcIceServers, setWebrtcIceServers] = useState<RTCIceServer[]>([]);
-  const [captureKeyboard, setCaptureKeyboard] = useState(true);
-  const [captureMouse, setCaptureMouse] = useState(false);
+  const [captureKeyboard, setCaptureKeyboard] = useState(typeof defaultCaptureKeyboard === 'boolean' ? defaultCaptureKeyboard : true);
+  const [captureMouse, setCaptureMouse] = useState(typeof defaultCaptureMouse === 'boolean' ? defaultCaptureMouse : false);
   const [modCtrl, setModCtrl] = useState(false);
   const [modAlt, setModAlt] = useState(false);
   const [modShift, setModShift] = useState(false);
@@ -55,16 +57,20 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const audioElRef = useRef<HTMLAudioElement | null>(null);
   const rtcPcRef = useRef<RTCPeerConnection | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioQueueRef = useRef<Float32Array[]>([]);
   const isPlayingAudioRef = useRef(false);
+  const audioDecoderRef = useRef<any | null>(null);
+  const opusInitializedRef = useRef(false);
   const webrtcTimeoutRef = useRef<number | null>(null);
   const fallbackTriggeredRef = useRef(false);
   const fpsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const frameCountRef = useRef(0);
   const lastMouseEmitRef = useRef<number>(0);
   const lastKeyEmitRef = useRef<number>(0);
+  const [webrtcAudioBridge, setWebrtcAudioBridge] = useState(false);
 
   const getStreamIcon = () => {
     switch (type) {
@@ -109,6 +115,20 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
         return;
       }
       
+      const isLikelyPCM16 = bytes.length % 2 === 0;
+      const isOgg = bytes.length >= 4 && bytes[0] === 0x4f && bytes[1] === 0x67 && bytes[2] === 0x67 && bytes[3] === 0x53;
+      const isWebM = bytes.length >= 4 && bytes[0] === 0x1a && bytes[1] === 0x45 && bytes[2] === 0xdf && bytes[3] === 0xa3;
+      const canUseWebCodecs = typeof (window as any).AudioDecoder !== 'undefined';
+      
+      if (!isLikelyPCM16 && canUseWebCodecs) {
+        try {
+          await decodeOpusFrame(bytes);
+          return;
+        } catch {
+          /* fallthrough to PCM */
+        }
+      }
+      
       // For PCM audio (16-bit samples)
       // Convert bytes to Float32Array for Web Audio API
       const samples = new Int16Array(bytes.buffer);
@@ -128,6 +148,55 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
     } catch (error) {
       console.error('Error processing audio frame:', error);
     }
+  };
+
+  const ensureAudioDecoder = () => {
+    if (audioDecoderRef.current) return audioDecoderRef.current;
+    const AudioDecoderCtor = (window as any).AudioDecoder;
+    if (!AudioDecoderCtor) return null;
+    const audioContext = initAudioContext();
+    const decoder = new AudioDecoderCtor({
+      output: (audioData: any) => {
+        try {
+          const sampleRate = audioData.sampleRate || 48000;
+          const frames = audioData.numberOfFrames || 0;
+          if (!frames) return;
+          const buffer = audioContext.createBuffer(audioData.numberOfChannels || 1, frames, sampleRate);
+          for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+            const arr = new Float32Array(frames);
+            audioData.copyTo(arr, { planeIndex: ch });
+            buffer.getChannelData(ch).set(arr);
+          }
+          const source = audioContext.createBufferSource();
+          source.buffer = buffer;
+          source.connect(audioContext.destination);
+          source.start();
+        } catch (e) {
+        }
+      },
+      error: (_e: any) => {
+      }
+    });
+    try {
+      decoder.configure({ codec: 'opus', sampleRate: 48000, numberOfChannels: 1 });
+      opusInitializedRef.current = true;
+    } catch {
+      opusInitializedRef.current = false;
+    }
+    audioDecoderRef.current = decoder;
+    return decoder;
+  };
+
+  const decodeOpusFrame = async (bytes: Uint8Array) => {
+    const decoder = ensureAudioDecoder();
+    if (!decoder || !opusInitializedRef.current) throw new Error('AudioDecoder not available');
+    const ts = performance.now();
+    const chunk = new (window as any).EncodedAudioChunk({
+      type: 'key',
+      timestamp: Math.floor(ts * 1000),
+      data: bytes
+    });
+    decoder.decode(chunk);
   };
 
   // Schedule audio playback from queue
@@ -214,105 +283,209 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
   // WebRTC viewer: signaling and media attachment
   useEffect(() => {
     if (!socket || !isStreaming || !agentId) return;
-    if (transportMode === 'fallback') return;
-    const handleViewerOffer = async (data: { offer: string; type: string }) => {
+    if (transportMode === 'fallback' && !webrtcAudioBridge) return;
+    let attachSocket = true;
+    (async () => {
       try {
-        if (webrtcTimeoutRef.current) {
-          clearTimeout(webrtcTimeoutRef.current);
-          webrtcTimeoutRef.current = null;
-        }
-        const pc = new RTCPeerConnection({
-          iceServers: webrtcIceServers.length > 0 ? webrtcIceServers : [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' },
-            { urls: 'stun:stun2.l.google.com:19302' },
-            { urls: 'stun:stun3.l.google.com:19302' },
-            { urls: 'stun:stun4.l.google.com:19302' }
-          ]
-        });
-        rtcPcRef.current = pc;
-        const inboundStream = new MediaStream();
-        if (videoRef.current) {
-          videoRef.current.srcObject = inboundStream;
-          videoRef.current.muted = isMuted;
-          await videoRef.current.play().catch(() => {});
-        }
-        pc.ontrack = (event) => {
-          for (const track of event.streams[0]?.getTracks?.() || []) {
-            inboundStream.addTrack(track);
-          }
-          try {
-            const hasAudio = !!event.streams[0]?.getAudioTracks?.()?.length;
-            if (hasAudio && videoRef.current) {
-              videoRef.current.muted = isMuted;
-              videoRef.current.play().catch(() => {});
-            }
-          } catch {}
-          if (webrtcTimeoutRef.current) {
-            clearTimeout(webrtcTimeoutRef.current);
-            webrtcTimeoutRef.current = null;
-          }
-          frameCountRef.current++;
-          setFrameCount((prev: number) => prev + 1);
-          setIsWebRTCActive(true);
-          setHasError(false);
-        };
-        pc.onicecandidate = (ev) => {
-          if (ev.candidate) {
-            socket.emit('webrtc_viewer_ice_candidate', { candidate: ev.candidate });
-          }
-        };
-        pc.onconnectionstatechange = () => {
-          const state = pc.connectionState;
-          if (state === 'connected') {
+        if (transportMode !== 'fallback') {
+          const resp = await apiClient.webrtcViewerConnect(agentId);
+          if (resp.success && resp.data && (resp.data as any).offer) {
+            attachSocket = false;
             if (webrtcTimeoutRef.current) {
               clearTimeout(webrtcTimeoutRef.current);
               webrtcTimeoutRef.current = null;
             }
-          } else if ((state === 'failed' || state === 'disconnected') && transportMode === 'auto') {
-            if (fallbackTriggeredRef.current) return;
-            fallbackTriggeredRef.current = true;
-            setTransportMode('fallback');
-            setIsWebRTCActive(false);
-            if (socket) {
-              socket.emit('webrtc_viewer_disconnect');
+            const pc = new RTCPeerConnection({
+              iceServers: webrtcIceServers.length > 0 ? webrtcIceServers : [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' },
+                { urls: 'stun:stun2.l.google.com:19302' },
+                { urls: 'stun:stun3.l.google.com:19302' },
+                { urls: 'stun:stun4.l.google.com:19302' }
+              ]
+            });
+            rtcPcRef.current = pc;
+            const inboundStream = new MediaStream();
+            if (videoRef.current) {
+              videoRef.current.srcObject = inboundStream;
+              videoRef.current.muted = isMuted;
+              await videoRef.current.play().catch(() => {});
             }
-            if (agentId) {
-              let cmd = '';
-              if (type === 'screen') cmd = 'start-stream';
-              else if (type === 'camera') cmd = 'start-camera';
-              else cmd = 'start-audio';
-              sendCommand(agentId, cmd);
-            }
+            pc.ontrack = (event) => {
+              for (const track of event.streams[0]?.getTracks?.() || []) {
+                inboundStream.addTrack(track);
+              }
+              try {
+                const hasAudio = !!event.streams[0]?.getAudioTracks?.()?.length;
+                if (hasAudio && videoRef.current) {
+                  videoRef.current.muted = isMuted;
+                  videoRef.current.play().catch(() => {});
+                }
+              } catch {}
+              if (webrtcTimeoutRef.current) {
+                clearTimeout(webrtcTimeoutRef.current);
+                webrtcTimeoutRef.current = null;
+              }
+              frameCountRef.current++;
+              setFrameCount((prev: number) => prev + 1);
+              setIsWebRTCActive(true);
+              setHasError(false);
+            };
+            pc.onicecandidate = (ev) => {
+              if (ev.candidate) {
+                apiClient.webrtcViewerIce(ev.candidate);
+              }
+            };
+            pc.onconnectionstatechange = () => {
+              const state = pc.connectionState;
+              if (state === 'connected') {
+                if (webrtcTimeoutRef.current) {
+                  clearTimeout(webrtcTimeoutRef.current);
+                  webrtcTimeoutRef.current = null;
+                }
+              } else if ((state === 'failed' || state === 'disconnected') && transportMode === 'auto') {
+                if (fallbackTriggeredRef.current) return;
+                fallbackTriggeredRef.current = true;
+                setTransportMode('fallback');
+                setIsWebRTCActive(false);
+                apiClient.webrtcViewerDisconnect();
+                if (agentId) {
+                  let cmd = '';
+                  if (type === 'screen') cmd = 'start-stream';
+                  else if (type === 'camera') cmd = 'start-camera';
+                  else cmd = 'start-audio';
+                  sendCommand(agentId, cmd);
+                }
+              }
+            };
+            const remoteDesc: RTCSessionDescriptionInit = {
+              type: 'offer',
+              sdp: (resp.data as any).offer
+            };
+            await pc.setRemoteDescription(remoteDesc);
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            await apiClient.webrtcViewerAnswer(answer.sdp || '');
+            return;
           }
-        };
-        const remoteDesc: RTCSessionDescriptionInit = {
-          type: data.type as RTCSessionDescriptionInit['type'],
-          sdp: data.offer
-        };
-        await pc.setRemoteDescription(remoteDesc);
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        socket.emit('webrtc_viewer_answer', { answer: answer.sdp });
-      } catch (e) {
-        setIsWebRTCActive(false);
-      }
-    };
-    const handleServerIce = async (payload: { agent_id?: string; candidate: any }) => {
-      try {
-        if (!rtcPcRef.current) return;
-        await rtcPcRef.current.addIceCandidate(payload.candidate);
-      } catch {
-        /* no-op */
-      }
-    };
-    socket.on('webrtc_viewer_offer', handleViewerOffer);
-    socket.on('webrtc_ice_candidate', handleServerIce);
-    socket.emit('webrtc_viewer_connect', { agent_id: agentId });
-    return () => {
-      socket.off('webrtc_viewer_offer', handleViewerOffer);
-      socket.off('webrtc_ice_candidate', handleServerIce);
-    };
+        }
+      } catch {}
+      if (!attachSocket) return;
+      const handleViewerOffer = async (data: { offer: string; type: string }) => {
+        try {
+          if (webrtcTimeoutRef.current) {
+            clearTimeout(webrtcTimeoutRef.current);
+            webrtcTimeoutRef.current = null;
+          }
+          const pc = new RTCPeerConnection({
+            iceServers: webrtcIceServers.length > 0 ? webrtcIceServers : [
+              { urls: 'stun:stun.l.google.com:19302' },
+              { urls: 'stun:stun1.l.google.com:19302' },
+              { urls: 'stun:stun2.l.google.com:19302' },
+              { urls: 'stun:stun3.l.google.com:19302' },
+              { urls: 'stun:stun4.l.google.com:19302' }
+            ]
+          });
+          rtcPcRef.current = pc;
+          const inboundStream = new MediaStream();
+          if (transportMode === 'fallback' && (type === 'screen' || type === 'camera')) {
+            const audioEl = audioElRef.current;
+            if (audioEl) {
+              audioEl.srcObject = inboundStream;
+              audioEl.muted = isMuted;
+              await audioEl.play().catch(() => {});
+            }
+          } else if (videoRef.current) {
+            videoRef.current.srcObject = inboundStream;
+            videoRef.current.muted = isMuted;
+            await videoRef.current.play().catch(() => {});
+          }
+          pc.ontrack = (event) => {
+            for (const track of event.streams[0]?.getTracks?.() || []) {
+              inboundStream.addTrack(track);
+            }
+            try {
+              if (transportMode === 'fallback' && (type === 'screen' || type === 'camera')) {
+                const hasAudio = !!event.streams[0]?.getAudioTracks?.()?.length;
+                const audioEl = audioElRef.current;
+                if (hasAudio && audioEl) {
+                  audioEl.muted = isMuted;
+                  audioEl.play().catch(() => {});
+                }
+              } else {
+                const hasAudio = !!event.streams[0]?.getAudioTracks?.()?.length;
+                if (hasAudio && videoRef.current) {
+                  videoRef.current.muted = isMuted;
+                  videoRef.current.play().catch(() => {});
+                }
+              }
+            } catch {}
+            if (webrtcTimeoutRef.current) {
+              clearTimeout(webrtcTimeoutRef.current);
+              webrtcTimeoutRef.current = null;
+            }
+            frameCountRef.current++;
+            setFrameCount((prev: number) => prev + 1);
+            setIsWebRTCActive(true);
+            setHasError(false);
+          };
+          pc.onicecandidate = (ev) => {
+            if (ev.candidate) {
+              socket.emit('webrtc_viewer_ice_candidate', { candidate: ev.candidate });
+            }
+          };
+          pc.onconnectionstatechange = () => {
+            const state = pc.connectionState;
+            if (state === 'connected') {
+              if (webrtcTimeoutRef.current) {
+                clearTimeout(webrtcTimeoutRef.current);
+                webrtcTimeoutRef.current = null;
+              }
+            } else if ((state === 'failed' || state === 'disconnected') && transportMode === 'auto') {
+              if (fallbackTriggeredRef.current) return;
+              fallbackTriggeredRef.current = true;
+              setTransportMode('fallback');
+              setIsWebRTCActive(false);
+              if (socket) {
+                socket.emit('webrtc_viewer_disconnect');
+              }
+              if (agentId) {
+                let cmd = '';
+                if (type === 'screen') cmd = 'start-stream';
+                else if (type === 'camera') cmd = 'start-camera';
+                else cmd = 'start-audio';
+                sendCommand(agentId, cmd);
+              }
+            }
+          };
+          const remoteDesc: RTCSessionDescriptionInit = {
+            type: data.type as RTCSessionDescriptionInit['type'],
+            sdp: data.offer
+          };
+          await pc.setRemoteDescription(remoteDesc);
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+          socket.emit('webrtc_viewer_answer', { answer: answer.sdp });
+        } catch (e) {
+          setIsWebRTCActive(false);
+        }
+      };
+      const handleServerIce = async (payload: { agent_id?: string; candidate: any }) => {
+        try {
+          if (!rtcPcRef.current) return;
+          await rtcPcRef.current.addIceCandidate(payload.candidate);
+        } catch {}
+      };
+      socket.on('webrtc_viewer_offer', handleViewerOffer);
+      socket.on('webrtc_ice_candidate', handleServerIce);
+      socket.emit('webrtc_viewer_connect', { agent_id: agentId });
+      const cleanup = () => {
+        socket.off('webrtc_viewer_offer', handleViewerOffer);
+        socket.off('webrtc_ice_candidate', handleServerIce);
+      };
+      return cleanup;
+    })();
+    return;
   }, [socket, isStreaming, agentId, transportMode, webrtcIceServers]);
 
   // Listen for frame events
@@ -395,6 +568,25 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
     };
   }, [isStreaming, agentId, type, lastFrameTime]);
 
+  useEffect(() => {
+    if (!socket || !isStreaming || !agentId) return;
+    const req = () => {
+      if (type === 'screen') {
+        socket.emit('request_video_frame', { agent_id: agentId });
+      } else if (type === 'camera') {
+        socket.emit('request_camera_frame', { agent_id: agentId });
+      } else {
+        socket.emit('request_audio_frame', { agent_id: agentId });
+      }
+    };
+    req();
+    const timeout = window.setTimeout(() => {
+      if (frameCountRef.current === 0) req();
+    }, 1200);
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [socket, isStreaming, agentId, type]);
   // Also listen for audio frames when viewing screen/camera in fallback mode
   useEffect(() => {
     if (!isStreaming || !agentId) return;
@@ -441,6 +633,13 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
       
       sendCommand(agentId, command);
       setIsStreaming(false);
+      try {
+        const key = `stream:last:${agentId}`;
+        const raw = localStorage.getItem(key);
+        const prev = raw ? JSON.parse(raw) : {};
+        localStorage.setItem(key, JSON.stringify({ ...prev, [type]: false }));
+      } catch {}
+      try { setLastActivity(`stream:${type}`, 'stopped', agentId); } catch {}
       setFrameCount(0);
       setFps(0);
       setBandwidth(0);
@@ -449,6 +648,17 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
       if (socket) {
         socket.emit('webrtc_viewer_disconnect');
       }
+      try {
+        apiClient.webrtcViewerDisconnect();
+      } catch {}
+      setWebrtcAudioBridge(false);
+      try {
+        const a = audioElRef.current;
+        if (a) {
+          a.pause();
+          (a as any).srcObject = null;
+        }
+      } catch {}
       
       if (imgRef.current) {
         imgRef.current.src = '';
@@ -469,11 +679,11 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
       }
       
       toast.success(`${type.charAt(0).toUpperCase() + type.slice(1)} stream stopped`);
-    } else {
-      // Start streaming
-      let command = '';
-      if (transportMode === 'fallback') {
-        switch (type) {
+      } else {
+        // Start streaming
+        let command = '';
+        if (transportMode === 'fallback') {
+          switch (type) {
           case 'screen':
             command = 'start-stream';
             break;
@@ -483,6 +693,10 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
           case 'audio':
             command = 'start-audio';
             break;
+        }
+        if (type === 'screen' || type === 'camera') {
+          sendCommand(agentId, 'start-webrtc-audio');
+          setWebrtcAudioBridge(true);
         }
       } else {
         switch (type) {
@@ -500,6 +714,13 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
       
       sendCommand(agentId, command);
       setIsStreaming(true);
+      try {
+        const key = `stream:last:${agentId}`;
+        const raw = localStorage.getItem(key);
+        const prev = raw ? JSON.parse(raw) : {};
+        localStorage.setItem(key, JSON.stringify({ ...prev, [type]: true }));
+      } catch {}
+      try { setLastActivity(`stream:${type}`, 'started', agentId); } catch {}
       setIsWebRTCActive(false);
       setHasError(false);
       fallbackTriggeredRef.current = false;
@@ -522,6 +743,10 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
             else if (type === 'camera') cmd = 'start-camera';
             else cmd = 'start-audio';
             sendCommand(agentId, cmd);
+            if (type === 'screen' || type === 'camera') {
+              sendCommand(agentId, 'start-webrtc-audio');
+              setWebrtcAudioBridge(true);
+            }
           }
         }, 8000);
       }
@@ -590,12 +815,17 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
     const y = e.clientY - rect.top;
     const nx = Math.max(0, Math.min(1, x / rect.width));
     const ny = Math.max(0, Math.min(1, y / rect.height));
+    const btnIndex = e.button;
+    const btnMap: Record<number, string> = { 0: 'left', 1: 'middle', 2: 'right' };
+    const btnName = btnMap[btnIndex] || 'left';
     socket.emit('live_mouse_click', {
       agent_id: agentId,
-      type: action,
-      button: e.button,
+      event_type: action,
+      button: btnName,
       x: nx,
-      y: ny
+      y: ny,
+      width: Math.round(rect.width),
+      height: Math.round(rect.height)
     });
   };
 
@@ -608,7 +838,7 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
     lastKeyEmitRef.current = now;
     socket.emit('live_key_press', {
       agent_id: agentId,
-      type: action,
+      event_type: action,
       key: e.key,
       code: e.code,
       altKey: e.altKey || modAlt,
@@ -624,7 +854,7 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
     if (!captureKeyboard) return;
     const payload: any = {
       agent_id: agentId,
-      type: 'down',
+      event_type: 'down',
       key,
       code: code || key,
       altKey: modAlt,
@@ -633,7 +863,7 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
       metaKey: modMeta
     };
     socket.emit('live_key_press', payload);
-    socket.emit('live_key_press', { ...payload, type: 'up' });
+    socket.emit('live_key_press', { ...payload, event_type: 'up' });
   };
   
   const sendText = (text: string) => {
@@ -674,6 +904,34 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
         videoRef.current.srcObject = null;
       }
     }
+  }, [agentId]);
+  
+  useEffect(() => {
+    if (!agentId) return;
+    try {
+      const raw = localStorage.getItem(`stream:last:${agentId}`);
+      const saved = raw ? JSON.parse(raw) : {};
+      if (saved && saved[type]) {
+        let command = '';
+        if (transportMode === 'fallback') {
+          switch (type) {
+            case 'screen': command = 'start-stream'; break;
+            case 'camera': command = 'start-camera'; break;
+            case 'audio': command = 'start-audio'; break;
+          }
+        } else {
+          switch (type) {
+            case 'screen': command = 'start-webrtc-screen'; break;
+            case 'camera': command = 'start-webrtc-camera'; break;
+            case 'audio': command = 'start-webrtc-audio'; break;
+          }
+        }
+        if (command) {
+          sendCommand(agentId, command);
+          setIsStreaming(true);
+        }
+      }
+    } catch {}
   }, [agentId]);
 
   useEffect(() => {
@@ -851,13 +1109,25 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
                     }
                   }
                 } else {
-                  const video = videoRef.current;
-                  if (video) {
-                    if (!isMuted) {
-                      video.muted = true;
-                    } else {
-                      video.muted = false;
-                      video.play().catch(() => {});
+                  if (transportMode === 'fallback' && (type === 'screen' || type === 'camera')) {
+                    const a = audioElRef.current;
+                    if (a) {
+                      if (!isMuted) {
+                        a.muted = true;
+                      } else {
+                        a.muted = false;
+                        a.play().catch(() => {});
+                      }
+                    }
+                  } else {
+                    const video = videoRef.current;
+                    if (video) {
+                      if (!isMuted) {
+                        video.muted = true;
+                      } else {
+                        video.muted = false;
+                        video.play().catch(() => {});
+                      }
                     }
                   }
                 }
@@ -950,6 +1220,7 @@ export function StreamViewer({ agentId, type, title }: StreamViewerProps) {
                   style={{ display: frameCount > 0 ? 'block' : 'none' }}
                 />
               )}
+              <audio ref={audioElRef} style={{ display: 'none' }} />
               {!isWebRTCActive && frameCount === 0 && (
                 <div className="text-center text-muted-foreground">
                   <StreamIcon className="h-12 w-12 mx-auto mb-2 animate-pulse" />

