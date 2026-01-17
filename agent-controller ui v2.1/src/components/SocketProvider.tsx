@@ -1012,47 +1012,21 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
   }, [socket, connected, addCommandOutput]);
 
   const uploadFile = useCallback((agentId: string, file: File, destinationPath: string) => {
-<<<<<<< HEAD
     if (!socket || !connected) return;
-
     const destinationFilePath = normalizeDestinationPath(destinationPath, file.name);
     addCommandOutput(`Uploading ${file.name} (${file.size} bytes) to ${agentId}:${destinationFilePath || '(default)'}`);
 
-    const chunkSize = 512 * 1024;
-
-    (async () => {
-      let chunksSent = 0;
-      const yieldEveryChunks = 4;
-=======
-    if (!socket) return;
-    const destinationDir = normalizeDestinationDir(destinationPath, file.name);
-    addCommandOutput(`Uploading ${file.name} (${file.size} bytes) to ${agentId}:${destinationDir || '(default)'}`);
     const uploadId = `ul_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-    const chunkSize = 256 * 1024;
+    const chunkSize = 512 * 1024;
     const chunkDelayMs = 8;
     (async () => {
       socket.emit('upload_file_start', {
         agent_id: agentId,
         upload_id: uploadId,
         filename: file.name,
-        destination: destinationDir,
+        destination: destinationFilePath,
         total_size: file.size,
       });
-      // Wait for agent-ready if forwarded; otherwise timeout continues
-      await new Promise<void>((resolve) => {
-        const onReady = (data: any) => {
-          if (String(data?.upload_id || '') === uploadId || String(data?.filename || '') === file.name) {
-            socket.off('upload_ready', onReady);
-            resolve();
-          }
-        };
-        socket.on('upload_ready', onReady);
-        setTimeout(() => {
-          socket.off('upload_ready', onReady);
-          resolve();
-        }, 1500);
-      });
->>>>>>> 65064d9d58fead668dd69e7827f2cdb398cd35c1
       for (let offset = 0; offset < file.size; offset += chunkSize) {
         const slice = file.slice(offset, offset + chunkSize);
         const buffer = await slice.arrayBuffer();
@@ -1062,33 +1036,19 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
           agent_id: agentId,
           upload_id: uploadId,
           filename: file.name,
-          destination_path: destinationDir,
+          destination: destinationFilePath,
           total_size: file.size,
-<<<<<<< HEAD
-          destination_path: destinationFilePath
-        });
-
-        chunksSent++;
-        if (chunksSent % yieldEveryChunks === 0) {
-          await new Promise((resolve) => setTimeout(resolve, 0));
-        }
-=======
           chunk: chunkB64,
           offset,
         });
         await new Promise((r) => setTimeout(r, chunkDelayMs));
->>>>>>> 65064d9d58fead668dd69e7827f2cdb398cd35c1
       }
       socket.emit('upload_file_complete', {
         agent_id: agentId,
         upload_id: uploadId,
         filename: file.name,
-<<<<<<< HEAD
-        destination_path: destinationFilePath
-=======
-        destination: destinationDir,
+        destination: destinationFilePath,
         total_size: file.size,
->>>>>>> 65064d9d58fead668dd69e7827f2cdb398cd35c1
       });
     })().catch((error) => {
       addCommandOutput(`Upload failed: ${error?.message || String(error)}`);

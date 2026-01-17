@@ -23,7 +23,7 @@ import ToggleControlPanel from "./components/ToggleControlPanel";
    import("./components/WebRTCMonitoring").then((mod) => ({ default: mod.WebRTCMonitoring }))
  );
                                     
- import { BulkUploadManager } from "./components/bulkuploadmanager";
+ import { BulkUploadManager } from "./components/bulkuploadmanager.tsx";
  const ProcessManagerLazy = lazy(() =>
    import("./components/ProcessManager").then((mod) => ({ default: mod.ProcessManager }))
  );
@@ -349,7 +349,7 @@ function AppContent() {
                 onValueChange={setActiveTab}
                 className="space-y-6"
               >
-                <TabsList className="grid w-full h-auto grid-cols-4 sm:grid-cols-8">
+                <TabsList className="grid w-full h-auto grid-cols-3 sm:grid-cols-9">
                   <TabsTrigger value="overview" className="text-xs sm:text-sm">
                     Overview
                   </TabsTrigger>
