@@ -114,6 +114,20 @@ function normalizeDestinationPath(destinationPath: string, filename: string): st
   return `${raw}${separator}${filename}`;
 }
 
+function extractDirectoryFromPath(path: string): string {
+  const raw = (path || '').trim();
+  if (!raw) return '';
+  const hasBackslash = raw.includes('\\') || /^[a-zA-Z]:/.test(raw);
+  const sep = hasBackslash ? '\\' : '/';
+  if (raw.endsWith(sep)) return raw;
+  if (/^[a-zA-Z]:$/.test(raw)) return `${raw}\\`;
+  const idx1 = raw.lastIndexOf('\\');
+  const idx2 = raw.lastIndexOf('/');
+  const idx = Math.max(idx1, idx2);
+  if (idx >= 0) return raw.slice(0, idx);
+  return raw;
+}
+
 function extractBase64Payload(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
@@ -1014,7 +1028,11 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
   const uploadFile = useCallback((agentId: string, file: File, destinationPath: string) => {
     if (!socket || !connected) return;
     const destinationFilePath = normalizeDestinationPath(destinationPath, file.name);
-    addCommandOutput(`Uploading ${file.name} (${file.size} bytes) to ${agentId}:${destinationFilePath || '(default)'}`);
+    const destinationDir = extractDirectoryFromPath(destinationFilePath);
+    const displayPath = destinationDir
+      ? (destinationDir.endsWith('\\') || destinationDir.endsWith('/') ? `${destinationDir}${file.name}` : `${destinationDir}${destinationDir.includes('\\') ? '\\' : '/'}${file.name}`)
+      : file.name;
+    addCommandOutput(`Uploading ${file.name} (${file.size} bytes) to ${agentId}:${displayPath || '(default)'}`);
 
     const uploadId = `ul_${Date.now()}_${Math.random().toString(16).slice(2)}`;
     const chunkSize = 512 * 1024;
@@ -1024,7 +1042,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
         agent_id: agentId,
         upload_id: uploadId,
         filename: file.name,
-        destination: destinationFilePath,
+        destination: destinationDir || '',
         total_size: file.size,
       });
       for (let offset = 0; offset < file.size; offset += chunkSize) {
@@ -1036,7 +1054,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
           agent_id: agentId,
           upload_id: uploadId,
           filename: file.name,
-          destination: destinationFilePath,
+          destination: destinationDir || '',
           total_size: file.size,
           chunk: chunkB64,
           offset,
@@ -1047,7 +1065,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
         agent_id: agentId,
         upload_id: uploadId,
         filename: file.name,
-        destination: destinationFilePath,
+        destination: destinationDir || '',
         total_size: file.size,
       });
     })().catch((error) => {
