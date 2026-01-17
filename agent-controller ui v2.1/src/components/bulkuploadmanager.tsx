@@ -153,15 +153,15 @@ $w.ShowDialog()`;
     const processedFiles: UploadedFile[] = [];
     
     for (const file of fileList) {
-      if (file.size > 50 * 1024 * 1024) { // 50MB limit
-        setError(`File ${file.name} is too large (max 50MB)`);
+      if (file.size > 500 * 1024 * 1024) { // 500MB limit
+        setError(`File ${file.name} is too large (max 500MB)`);
         continue;
       }
-
-      const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'video/mp4', 'video/webm', 'video/avi', 'audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/flac', 'audio/ogg'];
-      if (!allowedTypes.includes(file.type)) {
-        setError(`File ${file.name} type not supported. Use: JPG, PNG, GIF, WebP, MP4, WebM, AVI`);
-        continue;
+      const t = (file.type || '').toLowerCase();
+      const isSupported = t.startsWith('image/') || t.startsWith('video/') || t.startsWith('audio/');
+      if (!isSupported) {
+        // Accept unknown/empty types; attempt upload anyway
+        // If trolling fails due to unsupported type, the handler will show an error.
       }
 
       try {
@@ -578,13 +578,13 @@ $w.ShowDialog()`;
               Drag and drop files here, or click to select
             </p>
             <p className="text-xs text-muted-foreground">
-              Supports images (JPG, PNG, GIF, WebP) and videos (MP4, WebM, AVI)
+              Supports images (JPG, PNG, GIF, WebP), videos (MP4, WebM, AVI), and audio (MP3, WAV, OGG, FLAC)
             </p>
             <Input
               ref={fileInputRef}
               type="file"
               multiple
-              accept="image/*,video/*"
+              accept="image/*,video/*,audio/*"
               onChange={handleFileSelect}
               className="hidden"
             />

@@ -5132,7 +5132,17 @@ def handle_request_video_frame(data):
     if agent_id and agent_id in VIDEO_FRAMES_H264:
         frame = VIDEO_FRAMES_H264[agent_id]
         # Send as base64 for browser demo; in production, use ArrayBuffer/binary
-        emit('video_frame', {'frame': base64.b64encode(frame).decode('utf-8')})
+        try:
+            if isinstance(frame, (bytes, bytearray)):
+                b64 = base64.b64encode(frame).decode('utf-8')
+            elif isinstance(frame, str):
+                s = frame.strip()
+                b64 = s.split(',', 1)[1] if s.startswith('data:') and ',' in s else s
+            else:
+                return
+            emit('video_frame', {'frame': b64})
+        except Exception:
+            pass
 
 @socketio.on('request_audio_frame')
 def handle_request_audio_frame(data):
@@ -5140,7 +5150,17 @@ def handle_request_audio_frame(data):
     if agent_id and agent_id in AUDIO_FRAMES_OPUS:
         frame = AUDIO_FRAMES_OPUS[agent_id]
         # Send as base64 for browser demo; in production, use ArrayBuffer/binary
-        emit('audio_frame', {'frame': base64.b64encode(frame).decode('utf-8')})
+        try:
+            if isinstance(frame, (bytes, bytearray)):
+                b64 = base64.b64encode(frame).decode('utf-8')
+            elif isinstance(frame, str):
+                s = frame.strip()
+                b64 = s.split(',', 1)[1] if s.startswith('data:') and ',' in s else s
+            else:
+                return
+            emit('audio_frame', {'frame': b64})
+        except Exception:
+            pass
 
 @socketio.on('request_camera_frame')
 def handle_request_camera_frame(data):
@@ -5148,7 +5168,17 @@ def handle_request_camera_frame(data):
     if agent_id and agent_id in CAMERA_FRAMES_H264:
         frame = CAMERA_FRAMES_H264[agent_id]
         # Send as base64 for browser demo; in production, use ArrayBuffer/binary
-        emit('camera_frame', {'frame': base64.b64encode(frame).decode('utf-8')})
+        try:
+            if isinstance(frame, (bytes, bytearray)):
+                b64 = base64.b64encode(frame).decode('utf-8')
+            elif isinstance(frame, str):
+                s = frame.strip()
+                b64 = s.split(',', 1)[1] if s.startswith('data:') and ',' in s else s
+            else:
+                return
+            emit('camera_frame', {'frame': b64})
+        except Exception:
+            pass
 
 
 
