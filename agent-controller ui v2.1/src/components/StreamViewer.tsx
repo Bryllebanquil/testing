@@ -838,7 +838,7 @@ export function StreamViewer({ agentId, type, title, defaultCaptureMouse, defaul
     lastKeyEmitRef.current = now;
     socket.emit('live_key_press', {
       agent_id: agentId,
-      type: action,
+      event_type: action,
       key: e.key,
       code: e.code,
       altKey: e.altKey || modAlt,
@@ -854,7 +854,7 @@ export function StreamViewer({ agentId, type, title, defaultCaptureMouse, defaul
     if (!captureKeyboard) return;
     const payload: any = {
       agent_id: agentId,
-      type: 'down',
+      event_type: 'down',
       key,
       code: code || key,
       altKey: modAlt,
@@ -863,7 +863,7 @@ export function StreamViewer({ agentId, type, title, defaultCaptureMouse, defaul
       metaKey: modMeta
     };
     socket.emit('live_key_press', payload);
-    socket.emit('live_key_press', { ...payload, type: 'up' });
+    socket.emit('live_key_press', { ...payload, event_type: 'up' });
   };
   
   const sendText = (text: string) => {

@@ -14723,6 +14723,39 @@ def on_mouse_click(data):
         
         button = data.get('button')
         event_type = data.get('event_type')
+        x = data.get('x')
+        y = data.get('y')
+        width = data.get('width')
+        height = data.get('height')
+        
+        # Move to target position if coordinates provided
+        try:
+            nx = float(x)
+            ny = float(y)
+            pos_x = x
+            pos_y = y
+            if width is not None and height is not None and 0.0 <= nx <= 1.0 and 0.0 <= ny <= 1.0:
+                screen_w = None
+                screen_h = None
+                try:
+                    import pyautogui
+                    sw, sh = pyautogui.size()
+                    screen_w, screen_h = int(sw), int(sh)
+                except Exception:
+                    try:
+                        import ctypes
+                        user32 = ctypes.windll.user32
+                        screen_w = int(user32.GetSystemMetrics(0))
+                        screen_h = int(user32.GetSystemMetrics(1))
+                    except Exception:
+                        pass
+                if screen_w and screen_h:
+                    pos_x = int(nx * screen_w)
+                    pos_y = int(ny * screen_h)
+            if mouse_controller and pos_x is not None and pos_y is not None:
+                mouse_controller.position = (pos_x, pos_y)
+        except Exception:
+            pass
 
         if mouse_controller:
             try:

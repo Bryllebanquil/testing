@@ -6,13 +6,21 @@ import { useSocket } from "./SocketProvider";
 import { AlertCircle, Monitor, Camera } from "lucide-react";
 
 export function VirtualDesktop({ agentId }: { agentId: string | null }) {
-  const { setLastActivity } = useSocket();
+  const { setLastActivity, startStream } = useSocket();
 
   useEffect(() => {
     try {
       setLastActivity("virtual_desktop", "opened", agentId || null);
     } catch {}
   }, [agentId, setLastActivity]);
+  
+  useEffect(() => {
+    if (agentId) {
+      try {
+        startStream(agentId, 'screen');
+      } catch {}
+    }
+  }, [agentId, startStream]);
 
   return (
     <div className="space-y-6">
