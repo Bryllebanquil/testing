@@ -52,7 +52,7 @@ export function AgentCard({ agent, isSelected, onSelect }: AgentCardProps) {
   return (
     <Card 
       className={cn(
-        "w-full max-w-[520px] mx-auto cursor-pointer transition-all hover:shadow-md",
+        "cursor-pointer transition-all hover:shadow-md",
         isSelected && "ring-2 ring-primary",
         !isOnline && "opacity-75"
       )}
