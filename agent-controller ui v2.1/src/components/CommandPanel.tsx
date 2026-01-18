@@ -44,7 +44,6 @@ export function CommandPanel({ agentId }: CommandPanelProps) {
   const { sendCommand, commandOutput } = useSocket();
   const [command, setCommand] = useState('');
   const [output, setOutput] = useState('');
-  const [prompt, setPrompt] = useState('PS C:\\>');
   const [isExecuting, setIsExecuting] = useState(false);
   const [history, setHistory] = useState(commandHistory);
   const [showAgentTag, setShowAgentTag] = useState(true);
@@ -70,6 +69,7 @@ export function CommandPanel({ agentId }: CommandPanelProps) {
     if (!commandToExecute.trim() || !agentId) return;
 
     setIsExecuting(true);
+    setOutput('');
 
     try {
       sendCommand(agentId, commandToExecute);
@@ -111,11 +111,6 @@ export function CommandPanel({ agentId }: CommandPanelProps) {
     if (commandOutput.length > 0) {
       const latestOutput = commandOutput[commandOutput.length - 1];
       const processed = showAgentTag ? latestOutput : latestOutput.replace(/^\[[^\]]+\]\s*/, '');
-      const strippedForPrompt = latestOutput.replace(/^\[[^\]]+\]\s*/gm, '');
-      const promptMatches = strippedForPrompt.match(/^PS [^\n]*>\s*$/gm);
-      if (promptMatches && promptMatches.length > 0) {
-        setPrompt(promptMatches[promptMatches.length - 1].trim());
-      }
       setOutput(prev => applyChunk(prev, processed));
       if (currentCommandId !== null) {
         setHistory(prev =>
@@ -130,14 +125,6 @@ export function CommandPanel({ agentId }: CommandPanelProps) {
       }, 800);
     }
   }, [commandOutput, showAgentTag, currentCommandId]);
-
-  useEffect(() => {
-    setOutput('');
-    setPrompt('PS C:\\>');
-    setCommand('');
-    setCurrentCommandId(null);
-    setIsExecuting(false);
-  }, [agentId]);
 
   useEffect(() => {
     const viewport = outputRef.current?.parentElement;
@@ -236,42 +223,38 @@ export function CommandPanel({ agentId }: CommandPanelProps) {
                   {output}
                 </pre>
               </ScrollArea>
-              <div className="flex flex-col gap-2 bg-[#012456] p-2 rounded sm:flex-row sm:items-center">
-                <div className="flex items-center gap-2 w-full flex-1 min-w-0">
-                  <span className="font-mono text-sm text-[#e5e5e5] whitespace-nowrap">{prompt}</span>
-                  <Input
-                    placeholder="Type a command and press Enter"
-                    value={command}
-                    onChange={(e) => setCommand(e.target.value)}
-                    onKeyPress={handleKeyPress}
-                    disabled={!agentId || isExecuting}
-                    className="font-mono text-sm bg-transparent border-none text-[#e5e5e5] focus-visible:ring-0 focus-visible:outline-none"
-                  />
-                  <Button 
-                    onClick={() => executeCommand()}
-                    disabled={!agentId || !command.trim() || isExecuting}
-                    size="sm"
-                    variant="secondary"
-                    className="bg-[#0a2a6b] text-[#e5e5e5] hover:bg-[#0d337f]"
-                  >
-                    {isExecuting ? (
-                      <RefreshCw className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Send className="h-4 w-4" />
-                    )}
-                  </Button>
-                </div>
-                <div className="flex items-center gap-2 justify-end w-full sm:w-auto">
-                  <Button variant="ghost" size="sm" onClick={copyOutput} disabled={!output}>
-                    <Copy className="h-4 w-4 text-[#e5e5e5]" />
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={clearOutput} disabled={!output}>
-                    <Trash2 className="h-4 w-4 text-[#e5e5e5]" />
-                  </Button>
-                  <Button variant="ghost" size="sm" disabled={!output}>
-                    <Download className="h-4 w-4 text-[#e5e5e5]" />
-                  </Button>
-                </div>
+              <div className="flex items-center gap-2 bg-[#012456] p-2 rounded">
+                <span className="font-mono text-sm text-[#e5e5e5]">{'PS C:\\>'}</span>
+                <Input
+                  placeholder="Type a command and press Enter"
+                  value={command}
+                  onChange={(e) => setCommand(e.target.value)}
+                  onKeyPress={handleKeyPress}
+                  disabled={!agentId || isExecuting}
+                  className="font-mono text-sm bg-transparent border-none text-[#e5e5e5] focus-visible:ring-0 focus-visible:outline-none"
+                />
+                <Button 
+                  onClick={() => executeCommand()}
+                  disabled={!agentId || !command.trim() || isExecuting}
+                  size="sm"
+                  variant="secondary"
+                  className="bg-[#0a2a6b] text-[#e5e5e5] hover:bg-[#0d337f]"
+                >
+                  {isExecuting ? (
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Send className="h-4 w-4" />
+                  )}
+                </Button>
+                <Button variant="ghost" size="sm" onClick={copyOutput} disabled={!output}>
+                  <Copy className="h-4 w-4 text-[#e5e5e5]" />
+                </Button>
+                <Button variant="ghost" size="sm" onClick={clearOutput} disabled={!output}>
+                  <Trash2 className="h-4 w-4 text-[#e5e5e5]" />
+                </Button>
+                <Button variant="ghost" size="sm" disabled={!output}>
+                  <Download className="h-4 w-4 text-[#e5e5e5]" />
+                </Button>
               </div>
               {!agentId && (
                 <div className="text-center text-muted-foreground text-sm py-2">
