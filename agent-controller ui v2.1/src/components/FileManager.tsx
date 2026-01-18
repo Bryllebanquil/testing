@@ -6,7 +6,7 @@ import { Input } from './ui/input';
 import { Badge } from './ui/badge';
 import { ScrollArea } from './ui/scroll-area';
 import { Progress } from './ui/progress';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog';
 import { API_BASE_URL } from '../services/api';
 import { 
   Files, 
@@ -469,7 +469,7 @@ export function FileManager({ agentId }: FileManagerProps) {
           ) : (
             <>
               {/* Navigation */}
-              <div className="flex items-center space-x-2">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                 <Button variant="ghost" size="sm" onClick={() => handleNavigate('/')}>
                   <Home className="h-3 w-3" />
                 </Button>
@@ -488,7 +488,7 @@ export function FileManager({ agentId }: FileManagerProps) {
               </div>
 
               {/* Search and Actions */}
-              <div className="flex items-center space-x-2">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                 <div className="flex-1 relative">
                   <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-3 w-3 text-muted-foreground" />
                   <Input
@@ -502,13 +502,14 @@ export function FileManager({ agentId }: FileManagerProps) {
                   size="sm" 
                   onClick={handleDownload}
                   disabled={selectedFiles.length === 0 || uploadProgress !== null || downloadProgress !== null}
+                  className="w-full sm:w-auto"
                 >
                   <Download className="h-3 w-3 mr-1" />
                   Download ({selectedFiles.length})
                 </Button>
                 <label className="inline-flex items-center">
                   <input type="file" className="hidden" onChange={handleUpload} />
-                  <Button size="sm" variant="outline" disabled={uploadProgress !== null || downloadProgress !== null} asChild>
+                  <Button size="sm" variant="outline" disabled={uploadProgress !== null || downloadProgress !== null} className="w-full sm:w-auto" asChild>
                     <span className="inline-flex items-center"><Upload className="h-3 w-3 mr-1" />Upload</span>
                   </Button>
                 </label>
@@ -517,6 +518,7 @@ export function FileManager({ agentId }: FileManagerProps) {
                   variant="outline"
                   onClick={handlePreview}
                   disabled={selectedPreviewableIndex < 0 || uploadProgress !== null || downloadProgress !== null}
+                  className="w-full sm:w-auto"
                 >
                   <Image className="h-3 w-3 mr-1" />
                   Preview
@@ -526,13 +528,14 @@ export function FileManager({ agentId }: FileManagerProps) {
                   variant="destructive"
                   disabled={selectedFiles.length === 0}
                   onClick={() => setConfirmDeleteOpen(true)}
+                  className="w-full sm:w-auto"
                 >
                   <Trash2 className="h-3 w-3" />
                 </Button>
               </div>
 
               <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
-                <DialogContent className="w-[92vw] sm:max-w-[1200px] h-[85vh] sm:max-h-[900px] p-4">
+                <DialogContent aria-describedby="image-preview-desc" className="max-w-[90vw] p-4">
                   <div className="flex flex-col h-full gap-3">
                     <DialogHeader className="shrink-0">
                       <DialogTitle className="text-sm font-medium truncate">
@@ -541,10 +544,11 @@ export function FileManager({ agentId }: FileManagerProps) {
                       <div className="text-xs text-muted-foreground">
                         {previewIndex + 1}/{previewItems.length}
                       </div>
+                      <DialogDescription id="image-preview-desc" className="sr-only">Preview of selected file</DialogDescription>
                     </DialogHeader>
                     <div className="flex-1 bg-muted rounded overflow-hidden flex items-center justify-center p-2 sm:p-4">
                       {previewUrl && previewKind === 'image' && (
-                        <img src={previewUrl} className="max-w-full max-h-full object-contain" />
+                        <img src={previewUrl} className="w-[50vw] max-w-full max-h-[70vh] h-auto object-contain mx-auto" />
                       )}
                       {previewUrl && previewKind === 'video' && (
                         <video

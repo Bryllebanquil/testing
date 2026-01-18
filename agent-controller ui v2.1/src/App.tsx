@@ -270,7 +270,7 @@ function AppContent() {
 
           <main className="flex-1 overflow-auto">
             <ErrorBoundary>
-              <div className="p-4 sm:p-6 space-y-6">
+              <div className="container px-4 sm:px-6 py-4 sm:py-6 space-y-6">
 
             {/* Overview Stats - only show for overview tab */}
             {activeTab === "overview" &&
@@ -417,7 +417,7 @@ function AppContent() {
                     </CardHeader>
                     <CardContent>
                       <div className="space-y-6">
-                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch mx-auto max-w-6xl">
                           <div className="lg:col-span-2 h-[420px]">
                             <ActivityFeed />
                           </div>
@@ -426,7 +426,7 @@ function AppContent() {
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch mx-auto max-w-6xl">
                           <div className="h-[420px]">
                             <QuickActions
                             agentCount={onlineAgents.length}
@@ -508,7 +508,8 @@ function AppContent() {
                   value="agents"
                   className="space-y-6"
                 >
-                  <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+                  <div className="mx-auto max-w-6xl">
+                    <div className="grid gap-6 [grid-template-columns:repeat(auto-fit,minmax(340px,1fr))]">
                     {filteredAgents.map((agent: Agent) => (
                       <AgentCard
                         key={agent.id}
@@ -519,6 +520,7 @@ function AppContent() {
                         }
                       />
                     ))}
+                    </div>
                   </div>
                   <Card>
                     <CardHeader>
@@ -569,13 +571,14 @@ function AppContent() {
                               <span className="text-sm">Enabled Registry Actions</span>
                               <Badge variant="secondary">{actionCount}</Badge>
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex flex-col gap-2 sm:flex-row">
                               <Button
                                 disabled={!aid}
                                 onClick={() => {
                                   if (!aid) return;
                                   sendCommand(aid, bEnabled ? "bypasses:on" : "bypasses:off");
                                 }}
+                                className="w-full sm:w-auto"
                               >
                                 Apply Bypasses To Selected
                               </Button>
@@ -586,6 +589,7 @@ function AppContent() {
                                   if (!aid) return;
                                   sendCommand(aid, rEnabled ? "registry:on" : "registry:off");
                                 }}
+                                className="w-full sm:w-auto"
                               >
                                 Apply Registry To Selected
                               </Button>
