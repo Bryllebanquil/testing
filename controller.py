@@ -4339,7 +4339,10 @@ def handle_disconnect():
             break
     
     if disconnected_agent_id:
-        del AGENTS_DATA[disconnected_agent_id]
+        try:
+            AGENTS_DATA[disconnected_agent_id]["sid"] = None
+        except Exception:
+            pass
         emit('agent_list_update', AGENTS_DATA, room='operators', broadcast=True)
         
         # Log activity

@@ -122,7 +122,7 @@ export function ActivityFeed() {
   ];
 
   return (
-    <Card>
+    <Card className="h-full flex flex-col">
       <CardHeader>
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
@@ -163,8 +163,8 @@ export function ActivityFeed() {
         </div>
       </CardHeader>
       
-      <CardContent>
-        <ScrollArea className="h-[300px]">
+      <CardContent className="flex-1">
+        <ScrollArea className="h-full">
           <div className="space-y-3">
             {filteredActivities.length === 0 ? (
               <div className="text-center text-muted-foreground py-8">

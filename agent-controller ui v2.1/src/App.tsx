@@ -85,20 +85,35 @@ type FilterOptions = {
 // Live agents come from SocketProvider via agent_list_update
 
 function AppContent() {
-  const { agents: liveAgents, connected, authenticated, agentConfig, sendCommand, lastActivity } = useSocket() as {
+  const { agents: liveAgents, connected, authenticated, agentConfig, sendCommand, lastActivity, selectedAgent, setSelectedAgent, agentMetrics, streamsActiveCount, commandsExecutedCount } = useSocket() as {
     agents: Agent[];
     connected: boolean;
     authenticated: boolean;
     agentConfig: Record<string, any>;
     sendCommand: (agentId: string, command: string) => void;
     lastActivity: any;
+    selectedAgent: string | null;
+    setSelectedAgent: (agentId: string | null) => void;
+    agentMetrics: Record<string, { cpu: number; memory: number; network: number }>;
+    streamsActiveCount: number;
+    commandsExecutedCount: number;
   };
-  const [selectedAgent, setSelectedAgent] = useState<
-    string | null
-  >(null);
   const [activeTab, setActiveTab] = useState("overview");
   const [agents, setAgents] = useState<Agent[]>(liveAgents as Agent[]);
-  const [networkActivity, setNetworkActivity] = useState("0.0");
+  const networkActivity = (() => {
+    try {
+      const online = agents.filter(a => a.status === 'online');
+      if (online.length === 0) return 0;
+      const total = online.reduce((acc, a) => {
+        const live = a.id ? agentMetrics[a.id] : undefined;
+        const v = live?.network ?? a.performance.network ?? 0;
+        return acc + (Number.isFinite(Number(v)) ? Number(v) : 0);
+      }, 0);
+      return total;
+    } catch {
+      return 0;
+    }
+  })();
 
   useEffect(() => {
     setAgents(liveAgents);
@@ -286,7 +301,7 @@ function AppContent() {
                       <Monitor className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                      <div className="text-2xl font-bold">0</div>
+                      <div className="text-2xl font-bold">{streamsActiveCount}</div>
                       <p className="text-xs text-muted-foreground">
                         Screen + Audio
                       </p>
@@ -301,9 +316,9 @@ function AppContent() {
                       <Terminal className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                      <div className="text-2xl font-bold">0</div>
+                      <div className="text-2xl font-bold">{commandsExecutedCount}</div>
                       <p className="text-xs text-muted-foreground">
-                        +12 from last hour
+                        Session count
                       </p>
                     </CardContent>
                   </Card>
@@ -317,7 +332,7 @@ function AppContent() {
                     </CardHeader>
                     <CardContent>
                       <div className="text-2xl font-bold">
-                        {networkActivity} MB/s
+                        {networkActivity.toFixed(1)} MB/s
                       </div>
                       <p className="text-xs text-muted-foreground">
                         Data transferred
@@ -402,28 +417,30 @@ function AppContent() {
                     </CardHeader>
                     <CardContent>
                       <div className="space-y-6">
-                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                          <div className="lg:col-span-2">
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
+                          <div className="lg:col-span-2 h-[420px]">
                             <ActivityFeed />
                           </div>
-                          <div>
+                          <div className="h-[420px]">
                             <SystemMonitor />
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                          <QuickActions
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
+                          <div className="h-[420px]">
+                            <QuickActions
                             agentCount={onlineAgents.length}
                             selectedAgent={selectedAgent}
-                          />
-                          <Card>
+                            />
+                          </div>
+                          <Card className="h-[420px] flex flex-col">
                             <CardHeader>
                               <CardTitle>Security Overview</CardTitle>
                               <CardDescription>
                                 UAC bypass and registry status
                               </CardDescription>
                             </CardHeader>
-                            <CardContent>
+                            <CardContent className="flex-1 overflow-auto">
                               {(() => {
                                 const aid = selectedAgent || (onlineAgents[0]?.id ?? null);
                                 const cfg = aid ? agentConfig?.[aid] : null;

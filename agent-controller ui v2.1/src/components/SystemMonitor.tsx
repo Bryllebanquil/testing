@@ -20,14 +20,14 @@ export function SystemMonitor() {
 
   return (
     <div className="space-y-4">
-      <Card>
+      <Card className="h-full flex flex-col">
         <CardHeader>
           <CardTitle className="text-sm flex items-center">
             <Activity className="h-4 w-4 mr-2" />
             Agent Performance
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="flex-1 space-y-4">
           {/* CPU */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
