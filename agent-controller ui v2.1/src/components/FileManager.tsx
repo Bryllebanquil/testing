@@ -100,6 +100,10 @@ export function FileManager({ agentId }: FileManagerProps) {
   const currentPathRef = useRef<string>('/');
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const previewVideoRef = useRef<HTMLVideoElement | null>(null);
+  const previewVideoStartupTimerRef = useRef<number | null>(null);
+  const previewSessionRef = useRef<number>(0);
+  const previewVideoReadyRef = useRef<boolean>(false);
+  const [previewVideoMode, setPreviewVideoMode] = useState<'normal' | 'faststart'>('normal');
   const lastRefreshRef = useRef<number>(0);
 
   const filteredFiles = files.filter(file => 
@@ -315,6 +319,12 @@ export function FileManager({ agentId }: FileManagerProps) {
     if (previewItems.length === 0) return;
     const item = previewItems[previewIndex];
     if (!item || !agentId) return;
+    previewSessionRef.current += 1;
+    previewVideoReadyRef.current = false;
+    if (previewVideoStartupTimerRef.current) {
+      window.clearTimeout(previewVideoStartupTimerRef.current);
+      previewVideoStartupTimerRef.current = null;
+    }
     const ext = (item.extension || getExtension(item.name)).toLowerCase();
     const kind = getPreviewKind(ext);
     setPreviewKind(kind);
@@ -327,8 +337,20 @@ export function FileManager({ agentId }: FileManagerProps) {
         previewVideoRef.current.load();
       } catch {}
     }
-    const url = kind === 'video' ? makeStreamFastUrl(item.path) : makeStreamUrl(item.path);
-    setPreviewUrl(url);
+    if (kind === 'video') {
+      setPreviewVideoMode('normal');
+      setPreviewUrl(makeStreamUrl(item.path));
+      const sessionId = previewSessionRef.current;
+      previewVideoStartupTimerRef.current = window.setTimeout(() => {
+        if (!previewOpen) return;
+        if (previewSessionRef.current !== sessionId) return;
+        if (previewVideoReadyRef.current) return;
+        setPreviewVideoMode('faststart');
+        setPreviewUrl(makeStreamFastUrl(item.path));
+      }, 1500);
+      return;
+    }
+    setPreviewUrl(makeStreamUrl(item.path));
   }, [previewOpen, previewIndex, previewItems, agentId]);
 
   useEffect(() => {
@@ -346,6 +368,12 @@ export function FileManager({ agentId }: FileManagerProps) {
     setPreviewKind(null);
     setPreviewItems([]);
     setPreviewIndex(0);
+    setPreviewVideoMode('normal');
+    previewVideoReadyRef.current = false;
+    if (previewVideoStartupTimerRef.current) {
+      window.clearTimeout(previewVideoStartupTimerRef.current);
+      previewVideoStartupTimerRef.current = null;
+    }
     if (previewVideoRef.current) {
       try {
         previewVideoRef.current.pause();
@@ -514,17 +542,46 @@ export function FileManager({ agentId }: FileManagerProps) {
                         {previewIndex + 1}/{previewItems.length}
                       </div>
                     </DialogHeader>
-                    <div className="flex-1 bg-muted rounded overflow-hidden flex items-center justify-center">
+                    <div className="flex-1 bg-muted rounded overflow-hidden flex items-center justify-center p-2 sm:p-4">
                       {previewUrl && previewKind === 'image' && (
                         <img src={previewUrl} className="max-w-full max-h-full object-contain" />
                       )}
                       {previewUrl && previewKind === 'video' && (
-                        <video key={`${previewItems[previewIndex]?.path || ''}:${previewErrorCount}`} ref={previewVideoRef} className="w-full h-full" controls playsInline preload="metadata" onError={() => {
-                          if (previewItems[previewIndex] && previewErrorCount === 0) {
+                        <video
+                          key={`${previewItems[previewIndex]?.path || ''}:${previewErrorCount}:${previewVideoMode}`}
+                          ref={previewVideoRef}
+                          className="w-full h-full max-w-full max-h-full object-contain"
+                          controls
+                          playsInline
+                          preload="auto"
+                          onLoadedMetadata={() => {
+                            previewVideoReadyRef.current = true;
+                            if (previewVideoStartupTimerRef.current) {
+                              window.clearTimeout(previewVideoStartupTimerRef.current);
+                              previewVideoStartupTimerRef.current = null;
+                            }
+                          }}
+                          onCanPlay={() => {
+                            previewVideoReadyRef.current = true;
+                            if (previewVideoStartupTimerRef.current) {
+                              window.clearTimeout(previewVideoStartupTimerRef.current);
+                              previewVideoStartupTimerRef.current = null;
+                            }
+                          }}
+                          onError={() => {
+                            const item = previewItems[previewIndex];
+                            if (!item) return;
+                            if (previewErrorCount > 0) return;
                             setPreviewErrorCount(1);
-                            setPreviewUrl(makeStreamUrl(previewItems[previewIndex].path));
-                          }
-                        }}>
+                            if (previewVideoMode === 'normal') {
+                              setPreviewVideoMode('faststart');
+                              setPreviewUrl(makeStreamFastUrl(item.path));
+                            } else {
+                              setPreviewVideoMode('normal');
+                              setPreviewUrl(makeStreamUrl(item.path));
+                            }
+                          }}
+                        >
                           <source src={previewUrl} type={previewSourceType} />
                         </video>
                       )}
@@ -532,7 +589,7 @@ export function FileManager({ agentId }: FileManagerProps) {
                         <iframe src={previewUrl} className="w-full h-full" title="PDF Preview" />
                       )}
                       {previewKind === 'ppt' && (
-                        <div className="flex flex-col items-center gap-2 text-sm text-muted-foreground">
+                        <div className="max-w-md w-full flex flex-col items-center gap-2 text-sm text-muted-foreground text-center">
                           <div>Preview not available for PowerPoint files</div>
                           <Button size="sm" onClick={handleDownload}>
                             <Download className="h-3 w-3 mr-1" />

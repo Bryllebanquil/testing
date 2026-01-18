@@ -84,7 +84,6 @@ interface C2Settings {
     quickStartup: boolean;
     enableStealth: boolean;
     autoElevatePrivileges: boolean;
-    requestAdminFirst: boolean;
     maxPromptAttempts: number;
     uacBypassDebug: boolean;
     persistentAdminPrompt: boolean;
@@ -164,17 +163,16 @@ export function Settings() {
       notifySecurityAlert: true
     },
     agent: {
-      defaultPersistence: true,
-      enableUACBypass: true,
+      defaultPersistence: false,
+      enableUACBypass: false,
       enableDefenderDisable: false,
-      enableAdvancedPersistence: true,
+      enableAdvancedPersistence: false,
       silentMode: true,
       quickStartup: false,
-      enableStealth: true,
-      autoElevatePrivileges: true,
-      requestAdminFirst: false,
+      enableStealth: false,
+      autoElevatePrivileges: false,
       maxPromptAttempts: 3,
-      uacBypassDebug: true,
+      uacBypassDebug: false,
       persistentAdminPrompt: false
     },
     webrtc: {
@@ -200,39 +198,41 @@ export function Settings() {
       blockedIps: []
     },
     bypasses: {
-      enabled: true,
+      enabled: false,
       methods: {
-        cleanmgr_sagerun: true,
-        fodhelper: true,
-        computerdefaults: true,
-        eventvwr: true,
-        sdclt: true,
-        wsreset: true,
-        slui: true,
-        winsat: true,
-        silentcleanup: true,
-        icmluautil: true
+        cleanmgr_sagerun: false,
+        fodhelper: false,
+        computerdefaults: false,
+        eventvwr: false,
+        sdclt: false,
+        wsreset: false,
+        slui: false,
+        winsat: false,
+        silentcleanup: false,
+        icmluautil: false,
+        runas_prompt: false
       }
     },
     registry: {
-      enabled: true,
-      notificationsEnabled: true,
+      enabled: false,
+      notificationsEnabled: false,
       actions: {
-        policy_push_notifications: true,
-        policy_windows_update: true,
-        context_runas_cmd: true,
-        context_powershell_admin: true,
-        notify_center_hkcu: true,
-        notify_center_hklm: true,
-        defender_ux_suppress: true,
-        toast_global_above_lock: true,
-        toast_global_critical_above_lock: true,
-        toast_windows_update: true,
-        toast_security_maintenance: true,
-        toast_windows_security: true,
-        toast_sec_health_ui: true,
-        explorer_balloon_tips: true,
-        explorer_info_tip: true,
+        policy_push_notifications: false,
+        policy_windows_update: false,
+        context_runas_cmd: false,
+        context_powershell_admin: false,
+        notify_center_hkcu: false,
+        notify_center_hklm: false,
+        defender_ux_suppress: false,
+        toast_global_above_lock: false,
+        toast_global_critical_above_lock: false,
+        toast_windows_update: false,
+        toast_security_maintenance: false,
+        toast_windows_security: false,
+        toast_sec_health_ui: false,
+        explorer_balloon_tips: false,
+        explorer_info_tip: false,
+        disableRealtimeMonitoring: false,
       }
     }
   });
@@ -264,13 +264,66 @@ export function Settings() {
 
   const saveSettings = async () => {
     try {
+      const payload: C2Settings = {
+        ...settings,
+        agent: {
+          ...settings.agent,
+          defaultPersistence: false,
+          enableUACBypass: false,
+          enableDefenderDisable: false,
+          enableAdvancedPersistence: false,
+          enableStealth: false,
+          autoElevatePrivileges: false,
+          uacBypassDebug: false,
+          persistentAdminPrompt: false,
+        },
+        bypasses: {
+          enabled: false,
+          methods: {
+            cleanmgr_sagerun: false,
+            fodhelper: false,
+            computerdefaults: false,
+            eventvwr: false,
+            sdclt: false,
+            wsreset: false,
+            slui: false,
+            winsat: false,
+            silentcleanup: false,
+            icmluautil: false,
+            runas_prompt: false,
+          },
+        },
+        registry: {
+          enabled: false,
+          notificationsEnabled: false,
+          actions: {
+            policy_push_notifications: false,
+            policy_windows_update: false,
+            context_runas_cmd: false,
+            context_powershell_admin: false,
+            notify_center_hkcu: false,
+            notify_center_hklm: false,
+            defender_ux_suppress: false,
+            toast_global_above_lock: false,
+            toast_global_critical_above_lock: false,
+            toast_windows_update: false,
+            toast_security_maintenance: false,
+            toast_windows_security: false,
+            toast_sec_health_ui: false,
+            explorer_balloon_tips: false,
+            explorer_info_tip: false,
+            disableRealtimeMonitoring: false,
+          },
+        },
+      };
       const res = await fetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(settings)
+        body: JSON.stringify(payload)
       });
       const data = await res.json();
       if (!res.ok || data.success === false) throw new Error(data.message || 'Save failed');
+      setSettings(payload);
       setHasChanges(false);
       setSaved(true);
       toast.success(data.message || 'Settings saved successfully');
@@ -328,6 +381,14 @@ export function Settings() {
           agent: {
             ...prev.agent,
             ...data?.agent,
+            defaultPersistence: false,
+            enableUACBypass: false,
+            enableDefenderDisable: false,
+            enableAdvancedPersistence: false,
+            enableStealth: false,
+            autoElevatePrivileges: false,
+            uacBypassDebug: false,
+            persistentAdminPrompt: false,
           },
           webrtc: {
             ...prev.webrtc,
@@ -338,39 +399,41 @@ export function Settings() {
             ...data?.security,
           },
           bypasses: {
-            enabled: Boolean(data?.bypasses?.enabled ?? prev.bypasses?.enabled ?? true),
+            enabled: false,
             methods: {
-              cleanmgr_sagerun: Boolean(data?.bypasses?.methods?.cleanmgr_sagerun ?? prev.bypasses?.methods?.cleanmgr_sagerun ?? true),
-              fodhelper: Boolean(data?.bypasses?.methods?.fodhelper ?? prev.bypasses?.methods?.fodhelper ?? true),
-              computerdefaults: Boolean(data?.bypasses?.methods?.computerdefaults ?? prev.bypasses?.methods?.computerdefaults ?? true),
-              eventvwr: Boolean(data?.bypasses?.methods?.eventvwr ?? prev.bypasses?.methods?.eventvwr ?? true),
-              sdclt: Boolean(data?.bypasses?.methods?.sdclt ?? prev.bypasses?.methods?.sdclt ?? true),
-              wsreset: Boolean(data?.bypasses?.methods?.wsreset ?? prev.bypasses?.methods?.wsreset ?? true),
-              slui: Boolean(data?.bypasses?.methods?.slui ?? prev.bypasses?.methods?.slui ?? true),
-              winsat: Boolean(data?.bypasses?.methods?.winsat ?? prev.bypasses?.methods?.winsat ?? true),
-              silentcleanup: Boolean(data?.bypasses?.methods?.silentcleanup ?? prev.bypasses?.methods?.silentcleanup ?? true),
-              icmluautil: Boolean(data?.bypasses?.methods?.icmluautil ?? prev.bypasses?.methods?.icmluautil ?? true)
+              cleanmgr_sagerun: false,
+              fodhelper: false,
+              computerdefaults: false,
+              eventvwr: false,
+              sdclt: false,
+              wsreset: false,
+              slui: false,
+              winsat: false,
+              silentcleanup: false,
+              icmluautil: false,
+              runas_prompt: false,
             }
           },
           registry: {
-            enabled: Boolean(data?.registry?.enabled ?? prev.registry?.enabled ?? true),
-            notificationsEnabled: Boolean(data?.registry?.notificationsEnabled ?? prev.registry?.notificationsEnabled ?? true),
+            enabled: false,
+            notificationsEnabled: false,
             actions: {
-              policy_push_notifications: Boolean(data?.registry?.actions?.policy_push_notifications ?? prev.registry?.actions?.policy_push_notifications ?? true),
-              policy_windows_update: Boolean(data?.registry?.actions?.policy_windows_update ?? prev.registry?.actions?.policy_windows_update ?? true),
-              context_runas_cmd: Boolean(data?.registry?.actions?.context_runas_cmd ?? prev.registry?.actions?.context_runas_cmd ?? true),
-              context_powershell_admin: Boolean(data?.registry?.actions?.context_powershell_admin ?? prev.registry?.actions?.context_powershell_admin ?? true),
-              notify_center_hkcu: Boolean(data?.registry?.actions?.notify_center_hkcu ?? prev.registry?.actions?.notify_center_hkcu ?? true),
-              notify_center_hklm: Boolean(data?.registry?.actions?.notify_center_hklm ?? prev.registry?.actions?.notify_center_hklm ?? true),
-              defender_ux_suppress: Boolean(data?.registry?.actions?.defender_ux_suppress ?? prev.registry?.actions?.defender_ux_suppress ?? true),
-              toast_global_above_lock: Boolean(data?.registry?.actions?.toast_global_above_lock ?? prev.registry?.actions?.toast_global_above_lock ?? true),
-              toast_global_critical_above_lock: Boolean(data?.registry?.actions?.toast_global_critical_above_lock ?? prev.registry?.actions?.toast_global_critical_above_lock ?? true),
-              toast_windows_update: Boolean(data?.registry?.actions?.toast_windows_update ?? prev.registry?.actions?.toast_windows_update ?? true),
-              toast_security_maintenance: Boolean(data?.registry?.actions?.toast_security_maintenance ?? prev.registry?.actions?.toast_security_maintenance ?? true),
-              toast_windows_security: Boolean(data?.registry?.actions?.toast_windows_security ?? prev.registry?.actions?.toast_windows_security ?? true),
-              toast_sec_health_ui: Boolean(data?.registry?.actions?.toast_sec_health_ui ?? prev.registry?.actions?.toast_sec_health_ui ?? true),
-              explorer_balloon_tips: Boolean(data?.registry?.actions?.explorer_balloon_tips ?? prev.registry?.actions?.explorer_balloon_tips ?? true),
-              explorer_info_tip: Boolean(data?.registry?.actions?.explorer_info_tip ?? prev.registry?.actions?.explorer_info_tip ?? true),
+              policy_push_notifications: false,
+              policy_windows_update: false,
+              context_runas_cmd: false,
+              context_powershell_admin: false,
+              notify_center_hkcu: false,
+              notify_center_hklm: false,
+              defender_ux_suppress: false,
+              toast_global_above_lock: false,
+              toast_global_critical_above_lock: false,
+              toast_windows_update: false,
+              toast_security_maintenance: false,
+              toast_windows_security: false,
+              toast_sec_health_ui: false,
+              explorer_balloon_tips: false,
+              explorer_info_tip: false,
+              disableRealtimeMonitoring: false,
             }
           },
         }));
@@ -521,7 +584,7 @@ export function Settings() {
 
       {/* Settings Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid grid-cols-2 lg:grid-cols-6 h-auto p-1">
+        <TabsList className="grid grid-cols-2 lg:grid-cols-7 h-auto p-1">
           <TabsTrigger value="server" className="flex flex-col items-center gap-1 py-3">
             <Server className="h-4 w-4" />
             <span className="text-xs">Server</span>
@@ -545,6 +608,10 @@ export function Settings() {
           <TabsTrigger value="advanced" className="flex flex-col items-center gap-1 py-3">
             <SettingsIcon className="h-4 w-4" />
             <span className="text-xs">Advanced</span>
+          </TabsTrigger>
+          <TabsTrigger value="bypasses" className="flex flex-col items-center gap-1 py-3">
+            <Lock className="h-4 w-4" />
+            <span className="text-xs">Bypasses</span>
           </TabsTrigger>
         </TabsList>
 
@@ -1007,6 +1074,7 @@ export function Settings() {
                     <Switch
                       id="default-persistence"
                       checked={settings.agent.defaultPersistence}
+                      disabled
                       onCheckedChange={(checked) => updateSetting('agent', 'defaultPersistence', checked)}
                     />
                   </div>
@@ -1015,6 +1083,7 @@ export function Settings() {
                     <Switch
                       id="advanced-persistence"
                       checked={settings.agent.enableAdvancedPersistence}
+                      disabled
                       onCheckedChange={(checked) => updateSetting('agent', 'enableAdvancedPersistence', checked)}
                     />
                   </div>
@@ -1023,6 +1092,7 @@ export function Settings() {
                     <Switch
                       id="stealth-mode"
                       checked={settings.agent.enableStealth}
+                      disabled
                       onCheckedChange={(checked) => updateSetting('agent', 'enableStealth', checked)}
                     />
                   </div>
@@ -1047,6 +1117,7 @@ export function Settings() {
                     <Switch
                       id="uac-bypass"
                       checked={settings.agent.enableUACBypass}
+                      disabled
                       onCheckedChange={(checked) => updateSetting('agent', 'enableUACBypass', checked)}
                     />
                   </div>
@@ -1055,6 +1126,7 @@ export function Settings() {
                     <Switch
                       id="auto-elevate"
                       checked={settings.agent.autoElevatePrivileges}
+                      disabled
                       onCheckedChange={(checked) => updateSetting('agent', 'autoElevatePrivileges', checked)}
                     />
                   </div>
@@ -1071,6 +1143,7 @@ export function Settings() {
                     <Switch
                       id="defender-disable"
                       checked={settings.agent.enableDefenderDisable}
+                      disabled
                       onCheckedChange={(checked) => updateSetting('agent', 'enableDefenderDisable', checked)}
                     />
                   </div>
@@ -1356,6 +1429,54 @@ export function Settings() {
                     <Trash2 className="h-4 w-4" />
                     <span>Clear All Data</span>
                   </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="bypasses" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Lock className="h-5 w-5" />
+                Bypasses
+              </CardTitle>
+              <CardDescription>
+                Bypass-related options are locked off to keep agents running as normal users.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <Alert>
+                <Info className="h-4 w-4" />
+                <AlertDescription>
+                  This build forces all bypass and registry-action settings to disabled.
+                </AlertDescription>
+              </Alert>
+
+              <div className="space-y-4">
+                <h4 className="font-medium">UAC Methods</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {Object.entries(settings.bypasses?.methods || {}).map(([key, value]) => (
+                    <div key={key} className="flex items-center justify-between">
+                      <Label htmlFor={`bypass-${key}`}>{key}</Label>
+                      <Switch id={`bypass-${key}`} checked={Boolean(value)} disabled />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <Separator />
+
+              <div className="space-y-4">
+                <h4 className="font-medium">Registry Actions</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {Object.entries(settings.registry?.actions || {}).map(([key, value]) => (
+                    <div key={key} className="flex items-center justify-between">
+                      <Label htmlFor={`reg-${key}`}>{key}</Label>
+                      <Switch id={`reg-${key}`} checked={Boolean(value)} disabled />
+                    </div>
+                  ))}
                 </div>
               </div>
             </CardContent>

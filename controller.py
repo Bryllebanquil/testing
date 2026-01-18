@@ -2497,6 +2497,9 @@ FILE_RANGE_WAITERS = {}
 FILE_THUMB_WAITERS = {}
 FILE_FASTSTART_WAITERS = {}
 FILE_WAITERS_LOCK = threading.Lock()
+FASTSTART_CACHE = {}
+FASTSTART_CACHE_LOCK = threading.Lock()
+FASTSTART_CACHE_TTL_S = 15 * 60
 STREAM_SETTINGS = defaultdict(lambda: {"chunk_size": 1024 * 1024})
 FEATURE_FLAGS_DEFAULT = {
     "monitoring_enabled": True,
@@ -2534,6 +2537,33 @@ def _adjust_stream_chunk_size(agent_id: str, elapsed_s: float, success: bool):
             else:
                 new_size = current
         STREAM_SETTINGS[agent_id] = {"chunk_size": new_size}
+    except Exception:
+        pass
+
+def _faststart_cache_get(agent_id: str, file_path: str):
+    try:
+        key = f"{agent_id}:{file_path}"
+        now = time.time()
+        with FASTSTART_CACHE_LOCK:
+            entry = FASTSTART_CACHE.get(key)
+            if not entry:
+                return None
+            if (now - float(entry.get('ts') or 0)) > FASTSTART_CACHE_TTL_S:
+                FASTSTART_CACHE.pop(key, None)
+                return None
+            return entry
+    except Exception:
+        return None
+
+def _faststart_cache_set(agent_id: str, file_path: str, transformed_path: str | None, ok: bool):
+    try:
+        key = f"{agent_id}:{file_path}"
+        with FASTSTART_CACHE_LOCK:
+            FASTSTART_CACHE[key] = {
+                'path': transformed_path,
+                'ok': bool(ok),
+                'ts': time.time(),
+            }
     except Exception:
         pass
 
@@ -3471,6 +3501,8 @@ def stream_agent_file(agent_id):
         if total_size > 0:
             resp.headers['Content-Range'] = f'bytes {actual_start}-{actual_end}/{total_size}'
         resp.headers['Content-Disposition'] = 'inline'
+        resp.headers['Cache-Control'] = 'private, max-age=30'
+        resp.headers['X-Accel-Buffering'] = 'no'
         _adjust_stream_chunk_size(agent_id, _elapsed, success=True)
         return resp
 
@@ -3506,6 +3538,8 @@ def stream_agent_file(agent_id):
     resp.headers['Content-Length'] = str(len(raw))
     resp.headers['Content-Range'] = f'bytes {actual_start}-{actual_end}/{total_size}'
     resp.headers['Content-Disposition'] = 'inline'
+    resp.headers['Cache-Control'] = 'private, max-age=30'
+    resp.headers['X-Accel-Buffering'] = 'no'
     _adjust_stream_chunk_size(agent_id, _elapsed, success=True)
     return resp
 
@@ -3522,12 +3556,26 @@ def stream_agent_file_faststart(agent_id):
     if not file_path:
         return jsonify({'error': 'File path is required'}), 400
 
-    faststart = _request_agent_faststart(agent_id, agent_sid, file_path, False)
     target_path = file_path
-    if faststart and not faststart.get('error'):
-        p = faststart.get('path') or faststart.get('transformed_path')
-        if isinstance(p, str) and p.strip():
-            target_path = p.strip()
+    ext = (os.path.splitext(file_path)[1] or '').lower().lstrip('.')
+    should_faststart = ext in {'mp4', 'm4v', 'mov'}
+    if should_faststart:
+        cached = _faststart_cache_get(agent_id, file_path)
+        if cached and cached.get('ok') and isinstance(cached.get('path'), str) and cached.get('path'):
+            target_path = str(cached.get('path'))
+        elif cached and cached.get('ok') is False:
+            target_path = file_path
+        else:
+            faststart = _request_agent_faststart(agent_id, agent_sid, file_path, False)
+            if faststart and not faststart.get('error'):
+                p = faststart.get('path') or faststart.get('transformed_path')
+                if isinstance(p, str) and p.strip():
+                    target_path = p.strip()
+                    _faststart_cache_set(agent_id, file_path, target_path, ok=True)
+                else:
+                    _faststart_cache_set(agent_id, file_path, None, ok=False)
+            else:
+                _faststart_cache_set(agent_id, file_path, None, ok=False)
 
     mime = _guess_mime(target_path)
     range_header = request.headers.get('Range')
@@ -3589,6 +3637,8 @@ def stream_agent_file_faststart(agent_id):
         if total_size > 0:
             resp.headers['Content-Range'] = f'bytes {actual_start}-{actual_end}/{total_size}'
         resp.headers['Content-Disposition'] = 'inline'
+        resp.headers['Cache-Control'] = 'private, max-age=30'
+        resp.headers['X-Accel-Buffering'] = 'no'
         return resp
 
     # No Range header: serve initial chunk as partial content for progressive playback
@@ -3623,6 +3673,8 @@ def stream_agent_file_faststart(agent_id):
     resp.headers['Content-Length'] = str(len(raw))
     resp.headers['Content-Range'] = f'bytes {actual_start}-{actual_end}/{total_size}'
     resp.headers['Content-Disposition'] = 'inline'
+    resp.headers['Cache-Control'] = 'private, max-age=30'
+    resp.headers['X-Accel-Buffering'] = 'no'
     _adjust_stream_chunk_size(agent_id, _elapsed, success=True)
     return resp
 

@@ -97,7 +97,18 @@ RemoveRegValue "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Notifications\Se
 RemoveRegValue "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Notifications\Settings" "NOC_GLOBAL_SETTING_ALLOW_CRITICAL_TOASTS_ABOVE_LOCK"
 RemoveRegValue "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Notifications\Settings\Windows.SystemToast.WindowsUpdate" "Enabled"
 RemoveRegValue "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Notifications\Settings\Windows.SystemToast.SecurityAndMaintenance" "Enabled"
+RemoveRegValue "HKCU:\SOFTWARE\Policies\Microsoft\Windows\CurrentVersion\PushNotifications" "NoToastApplicationNotification"
+RemoveRegValue "HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender Security Center\Notifications" "DisableNotifications"
+RemoveRegValue "HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender Security Center\Systray" "HideSystray"
 Write-Host "[OK] Notification settings restored"
+Write-Host ""
+Write-Host "[STEP 9/12] Removing Context Menu Admin Shortcuts..."
+Write-Host "==============================================================================="
+RemoveRegKey "HKCR:\Directory\Background\shell\runas\command"
+RemoveRegKey "HKCR:\Directory\Background\shell\runas"
+RemoveRegKey "HKCR:\Directory\Background\shell\PowershellAdmin\command"
+RemoveRegKey "HKCR:\Directory\Background\shell\PowershellAdmin"
+Write-Host "[OK] Context menu admin shortcuts removed"
 Write-Host ""
 Write-Host "[STEP 9/12] Removing Scheduled Tasks..."
 Write-Host "==============================================================================="
@@ -114,6 +125,10 @@ Write-Host "====================================================================
 StopDeleteService "WindowsSecurityService"
 StopDeleteService "WindowsSecurityUpdate"
 StopDeleteService "SystemUpdateService"
+try { sc.exe config WinDefend start= auto | Out-Null } catch {}
+try { sc.exe start WinDefend | Out-Null } catch {}
+try { sc.exe config SecurityHealthService start= auto | Out-Null } catch {}
+try { sc.exe start SecurityHealthService | Out-Null } catch {}
 Write-Host "[OK] Windows services removed"
 Write-Host ""
 Write-Host "[STEP 11/12] Removing Startup Folder Entries and Files..."
@@ -165,6 +180,13 @@ try { Set-MpPreference -DisableIOAVProtection $false -ErrorAction SilentlyContin
 try { Set-MpPreference -DisableOnAccessProtection $false -ErrorAction SilentlyContinue } catch {}
 try { Set-MpPreference -DisableIntrusionPreventionSystem $false -ErrorAction SilentlyContinue } catch {}
 try { Set-MpPreference -DisableScriptScanning $false -ErrorAction SilentlyContinue } catch {}
+try { Set-MpPreference -DisableTamperProtection $false -ErrorAction SilentlyContinue } catch {}
+try { Remove-MpPreference -ExclusionPath "$env:TEMP" -ErrorAction SilentlyContinue } catch {}
+try { Remove-MpPreference -ExclusionPath "C:\Windows\Temp" -ErrorAction SilentlyContinue } catch {}
+try { Remove-MpPreference -ExclusionPath "C:\Users\Public" -ErrorAction SilentlyContinue } catch {}
+try { Remove-MpPreference -ExclusionPath "C:\ProgramData" -ErrorAction SilentlyContinue } catch {}
+SetRegDword "HKLM:\SOFTWARE\Microsoft\Windows Defender\Features" "TamperProtection" 1
+SetRegDword "HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender\Features" "TamperProtection" 1
 Write-Host "[OK] Windows Defender settings restored"
 Write-Host ""
 Write-Host "==============================================================================="
@@ -190,6 +212,17 @@ SetRegDword "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" "P
 RemoveRegValue "HKCU:\Environment" "COR_ENABLE_PROFILING"
 RemoveRegValue "HKCU:\Environment" "COR_PROFILER"
 RemoveRegValue "HKCU:\Environment" "COR_PROFILER_PATH"
+SetRegDword "HKLM:\SYSTEM\CurrentControlSet\Services\WdFilter" "Start" 0
+try { Get-NetFirewallRule -DisplayName "Python Agent*" -ErrorAction SilentlyContinue | Remove-NetFirewallRule -ErrorAction SilentlyContinue } catch {}
+try {
+    $ns = "root\subscription"
+    Get-WmiObject -Namespace $ns -Class __EventFilter -Filter "Name='WindowsSecurityFilter'" | Remove-WmiObject -ErrorAction SilentlyContinue
+    Get-WmiObject -Namespace $ns -Class CommandLineEventConsumer -Filter "Name='WindowsSecurityConsumer'" | Remove-WmiObject -ErrorAction SilentlyContinue
+    Get-WmiObject -Namespace $ns -Class __FilterToConsumerBinding | Where-Object { $_.Filter -match "WindowsSecurityFilter" -or $_.Consumer -match "WindowsSecurityConsumer" } | Remove-WmiObject -ErrorAction SilentlyContinue
+} catch {}
+RemoveRegKey "HKCU:\Software\Classes\CLSID\{00021401-0000-0000-C000-000000000046}\InProcServer32"
+RemoveRegKey "HKCU:\Software\Classes\CLSID\{13709620-C279-11CE-A49E-444553540000}\InProcServer32"
+RemoveRegKey "HKCU:\Software\Classes\CLSID\{9BA05972-F6A8-11CF-A442-00A0C90A8F39}\InProcServer32"
 Write-Host "[OK] Additional cleanup completed"
 Write-Host ""
 Write-Host "==============================================================================="

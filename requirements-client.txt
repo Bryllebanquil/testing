@@ -10,6 +10,7 @@ python-socketio>=5.13.0
 websockets>=10.4
 requests>=2.32.4
 urllib3>=2.0.0
+websocket_client
 
 # Async and threading support
 eventlet>=0.33.3
