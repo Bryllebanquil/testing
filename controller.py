@@ -2493,6 +2493,12 @@ DASHBOARD_HTML = r'''
 AGENTS_DATA = defaultdict(lambda: {"sid": None, "last_seen": None})
 DOWNLOAD_BUFFERS = defaultdict(lambda: {"chunks": [], "total_size": 0, "local_path": None})
 FILE_INFO_WAITERS = {}
+
+def _agents_payload():
+    try:
+        return {aid: dict(data) for aid, data in AGENTS_DATA.items()}
+    except Exception:
+        return {}
 FILE_RANGE_WAITERS = {}
 FILE_THUMB_WAITERS = {}
 FILE_FASTSTART_WAITERS = {}
@@ -4294,7 +4300,7 @@ def debug_agents():
 def broadcast_agents():
     """Manually broadcast agent list to all operators"""
     try:
-        socketio.emit('agent_list_update', AGENTS_DATA, room='operators')
+        socketio.emit('agent_list_update', _agents_payload(), room='operators')
         return jsonify({
             'success': True,
             'message': f'Agent list broadcast to operators room',
@@ -4343,7 +4349,7 @@ def handle_disconnect():
             AGENTS_DATA[disconnected_agent_id]["sid"] = None
         except Exception:
             pass
-        emit('agent_list_update', AGENTS_DATA, room='operators', broadcast=True)
+        emit('agent_list_update', _agents_payload(), room='operators', broadcast=True)
         
         # Log activity
         emit('activity_update', {
@@ -4381,7 +4387,7 @@ def handle_operator_connect():
     print(f"Current agents: {list(AGENTS_DATA.keys())}")
     
     # Send agent list to the specific operator that just connected
-    emit('agent_list_update', AGENTS_DATA, room=request.sid)
+    emit('agent_list_update', _agents_payload(), room=request.sid)
     # Confirm room joining
     emit('joined_room', 'operators', room=request.sid)
 
@@ -4396,7 +4402,7 @@ def handle_join_room(room_name):
     
     # If joining operators room, also send agent list
     if room_name == 'operators':
-        emit('agent_list_update', AGENTS_DATA, room=request.sid)
+        emit('agent_list_update', _agents_payload(), room=request.sid)
         print(f"Agent list sent to operator {request.sid}")
 
 def _emit_agent_config(agent_id: str):
@@ -4459,7 +4465,7 @@ def handle_request_agent_list():
     print(f"Agent list requested by {request.sid}")
     print(f"Current agents: {list(AGENTS_DATA.keys())}")
     print(f"Agent data: {AGENTS_DATA}")
-    emit('agent_list_update', AGENTS_DATA, room=request.sid)
+    emit('agent_list_update', _agents_payload(), room=request.sid)
     print(f"Agent list sent to {request.sid}")
 
 @socketio.on('agent_connect')
@@ -4531,7 +4537,7 @@ def handle_agent_connect(data):
             pass
         
         # Notify all operators of the new agent
-        emit('agent_list_update', AGENTS_DATA, room='operators', broadcast=True)
+        emit('agent_list_update', _agents_payload(), room='operators', broadcast=True)
         
         # Log activity
         emit('activity_update', {
@@ -4690,9 +4696,18 @@ def handle_toggle_echo_cancellation(data):
         emit('toggle_echo_cancellation', {'enabled': enabled}, room=agent_sid)
 @socketio.on('agent_heartbeat')
 def handle_agent_heartbeat(data):
-    agent_id = data.get('agent_id')
-    if agent_id in AGENTS_DATA:
-        AGENTS_DATA[agent_id]['last_seen'] = datetime.datetime.utcnow().isoformat() + 'Z'
+    agent_id = (data or {}).get('agent_id')
+    if not agent_id:
+        return
+    if agent_id not in AGENTS_DATA:
+        AGENTS_DATA[agent_id] = {}
+    prev_sid = AGENTS_DATA[agent_id].get('sid')
+    AGENTS_DATA[agent_id]['last_seen'] = datetime.datetime.utcnow().isoformat() + 'Z'
+    AGENTS_DATA[agent_id]['sid'] = request.sid
+    if not AGENTS_DATA[agent_id].get('name'):
+        AGENTS_DATA[agent_id]['name'] = f'Agent-{agent_id}'
+    if prev_sid != request.sid:
+        emit('agent_list_update', _agents_payload(), room='operators', broadcast=True)
 
 @socketio.on('ping')
 def handle_ping(data):
@@ -4713,7 +4728,7 @@ def handle_ping(data):
         
         if handle_ping.ping_count[agent_id] % 10 == 0:
             print(f"Updating operators with agent {agent_id} status after {handle_ping.ping_count[agent_id]} pings")
-            emit('agent_list_update', AGENTS_DATA, room='operators', broadcast=True)
+            emit('agent_list_update', _agents_payload(), room='operators', broadcast=True)
     
     # Send pong response
     emit('pong', {
@@ -4775,7 +4790,7 @@ def handle_agent_register(data):
         
         # Notify operators
         print(f"Broadcasting agent_list_update to operators room with agent data: {list(AGENTS_DATA.keys())}")
-        emit('agent_list_update', AGENTS_DATA, room='operators', broadcast=True)
+        emit('agent_list_update', _agents_payload(), room='operators', broadcast=True)
         try:
             _emit_agent_config(agent_id)
         except Exception:
@@ -5320,7 +5335,7 @@ def handle_agent_telemetry(data):
                 AGENT_FEATURE_FLAGS[agent_id]['quality_level'] = q
         except Exception:
             pass
-        emit('agent_list_update', AGENTS_DATA, room='operators', broadcast=True)
+        emit('agent_list_update', _agents_payload(), room='operators', broadcast=True)
 
 # --- WebRTC Socket.IO Event Handlers ---
 
@@ -6328,18 +6343,25 @@ def handle_agent_notification(data):
 @socketio.on('heartbeat')
 def handle_heartbeat(data):
     """Handle heartbeat from agents to keep them alive"""
-    agent_id = data.get('agent_id')
-    if agent_id and agent_id in AGENTS_DATA:
-        AGENTS_DATA[agent_id]["last_seen"] = datetime.datetime.utcnow().isoformat() + "Z"
-        # Update performance metrics if provided
-        if 'performance' in data:
-            perf = data['performance']
-            AGENTS_DATA[agent_id]["cpu_usage"] = perf.get('cpu', 0)
-            AGENTS_DATA[agent_id]["memory_usage"] = perf.get('memory', 0)
-            AGENTS_DATA[agent_id]["network_usage"] = perf.get('network', 0)
-        
-        # Acknowledge heartbeat
-        emit('heartbeat_ack', {'timestamp': datetime.datetime.utcnow().isoformat() + 'Z'})
+    agent_id = (data or {}).get('agent_id')
+    if not agent_id:
+        return
+    if agent_id not in AGENTS_DATA:
+        AGENTS_DATA[agent_id] = {}
+    prev_sid = AGENTS_DATA[agent_id].get('sid')
+    AGENTS_DATA[agent_id]["last_seen"] = datetime.datetime.utcnow().isoformat() + "Z"
+    AGENTS_DATA[agent_id]["sid"] = request.sid
+    # Update performance metrics if provided
+    if 'performance' in data:
+        perf = data['performance']
+        AGENTS_DATA[agent_id]["cpu_usage"] = perf.get('cpu', 0)
+        AGENTS_DATA[agent_id]["memory_usage"] = perf.get('memory', 0)
+        AGENTS_DATA[agent_id]["network_usage"] = perf.get('network', 0)
+    if prev_sid != request.sid:
+        emit('agent_list_update', _agents_payload(), room='operators', broadcast=True)
+
+    # Acknowledge heartbeat
+    emit('heartbeat_ack', {'timestamp': datetime.datetime.utcnow().isoformat() + 'Z'})
 
 # Background task to check for disconnected agents
 def cleanup_disconnected_agents():
@@ -6372,7 +6394,7 @@ def cleanup_disconnected_agents():
                     del AGENTS_DATA[agent_id]
                     
                     # Notify operators
-                    socketio.emit('agent_list_update', AGENTS_DATA, room='operators')
+                    socketio.emit('agent_list_update', _agents_payload(), room='operators')
                     socketio.emit('activity_update', {
                         'id': f'act_{int(time.time())}',
                         'type': 'connection',
