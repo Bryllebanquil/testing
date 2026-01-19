@@ -6,7 +6,7 @@ import { Input } from './ui/input';
 import { Badge } from './ui/badge';
 import { ScrollArea } from './ui/scroll-area';
 import { Progress } from './ui/progress';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog';
 import { API_BASE_URL } from '../services/api';
 import { 
   Files, 
@@ -538,22 +538,22 @@ export function FileManager({ agentId }: FileManagerProps) {
                       <DialogTitle className="text-sm font-medium truncate">
                         {previewItems[previewIndex]?.name || 'Preview'}
                       </DialogTitle>
-                      <div className="text-xs text-muted-foreground">
+                      <DialogDescription className="text-xs text-muted-foreground">
                         {previewIndex + 1}/{previewItems.length}
-                      </div>
+                      </DialogDescription>
                     </DialogHeader>
                     <div className="flex-1 bg-muted rounded overflow-hidden flex items-center justify-center p-2 sm:p-4">
                       {previewUrl && previewKind === 'image' && (
                         <img
                           src={previewUrl}
-                          className="block max-w-[50vw] max-h-[50vh] w-auto h-auto object-contain mx-auto"
+                          className="block w-[50vw] h-[50vh] object-contain mx-auto"
                         />
                       )}
                       {previewUrl && previewKind === 'video' && (
                         <video
                           key={`${previewItems[previewIndex]?.path || ''}:${previewErrorCount}:${previewVideoMode}`}
                           ref={previewVideoRef}
-                          className="w-full h-full max-w-full max-h-full object-contain"
+                          className="w-[50vw] h-[50vh] object-contain mx-auto"
                           controls
                           playsInline
                           preload="auto"
@@ -589,7 +589,7 @@ export function FileManager({ agentId }: FileManagerProps) {
                         </video>
                       )}
                       {previewUrl && previewKind === 'pdf' && (
-                        <iframe src={previewUrl} className="w-full h-full" title="PDF Preview" />
+                        <iframe src={previewUrl} className="w-[50vw] h-[50vh] mx-auto" title="PDF Preview" />
                       )}
                       {previewKind === 'ppt' && (
                         <div className="max-w-md w-full flex flex-col items-center gap-2 text-sm text-muted-foreground text-center">
@@ -625,6 +625,9 @@ export function FileManager({ agentId }: FileManagerProps) {
                 <DialogContent className="sm:max-w-[440px]">
                   <DialogHeader>
                     <DialogTitle className="text-sm">Delete selected files?</DialogTitle>
+                    <DialogDescription className="text-sm text-muted-foreground">
+                      This action can’t be undone.
+                    </DialogDescription>
                   </DialogHeader>
                   <div className="space-y-2 text-sm text-muted-foreground">
                     <div>{selectedFiles.length} item(s) will be deleted.</div>

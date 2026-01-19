@@ -214,7 +214,7 @@ export function CommandPanel({ agentId }: CommandPanelProps) {
               </div>
             </CardHeader>
             <CardContent className="space-y-3">
-              <ScrollArea className="min-h-[280px] max-h-[520px] rounded">
+              <ScrollArea className="min-h-[220px] sm:min-h-[280px] max-h-[60vh] sm:max-h-[520px] rounded">
                 <pre
                   className="bg-[#012456] text-[#e5e5e5] p-4 rounded font-mono text-sm overflow-x-auto break-normal"
                   style={{ whiteSpace: 'pre', fontFamily: 'Consolas, \"Courier New\", monospace', tabSize: 8 as any }}
@@ -223,15 +223,15 @@ export function CommandPanel({ agentId }: CommandPanelProps) {
                   {output}
                 </pre>
               </ScrollArea>
-              <div className="flex items-center gap-2 bg-[#012456] p-2 rounded">
-                <span className="font-mono text-sm text-[#e5e5e5]">{'PS C:\\>'}</span>
+              <div className="flex items-center gap-2 bg-[#012456] p-2 rounded flex-wrap sm:flex-nowrap">
+                <span className="font-mono text-sm text-[#e5e5e5] w-full sm:w-auto">{'PS C:\\>'}</span>
                 <Input
                   placeholder="Type a command and press Enter"
                   value={command}
                   onChange={(e) => setCommand(e.target.value)}
                   onKeyPress={handleKeyPress}
                   disabled={!agentId || isExecuting}
-                  className="font-mono text-sm bg-transparent border-none text-[#e5e5e5] focus-visible:ring-0 focus-visible:outline-none"
+                  className="font-mono text-sm bg-transparent border-none text-[#e5e5e5] focus-visible:ring-0 focus-visible:outline-none flex-1 min-w-0"
                 />
                 <Button 
                   onClick={() => executeCommand()}
@@ -246,7 +246,7 @@ export function CommandPanel({ agentId }: CommandPanelProps) {
                     <Send className="h-4 w-4" />
                   )}
                 </Button>
-                <Button variant="ghost" size="sm" onClick={copyOutput} disabled={!output}>
+                <Button variant="ghost" size="sm" onClick={copyOutput} disabled={!output} className="sm:ml-0">
                   <Copy className="h-4 w-4 text-[#e5e5e5]" />
                 </Button>
                 <Button variant="ghost" size="sm" onClick={clearOutput} disabled={!output}>

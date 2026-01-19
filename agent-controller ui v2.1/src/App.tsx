@@ -418,22 +418,22 @@ function AppContent() {
                     <CardContent>
                       <div className="space-y-6">
                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
-                          <div className="lg:col-span-2 h-[420px]">
+                          <div className="lg:col-span-2 h-[300px] sm:h-[420px]">
                             <ActivityFeed />
                           </div>
-                          <div className="h-[420px]">
+                          <div className="h-[300px] sm:h-[420px]">
                             <SystemMonitor />
                           </div>
                         </div>
 
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
-                          <div className="h-[420px]">
+                          <div className="h-[300px] sm:h-[420px]">
                             <QuickActions
                             agentCount={onlineAgents.length}
                             selectedAgent={selectedAgent}
                             />
                           </div>
-                          <Card className="h-[420px] flex flex-col">
+                          <Card className="h-[300px] sm:h-[420px] flex flex-col">
                             <CardHeader>
                               <CardTitle>Security Overview</CardTitle>
                               <CardDescription>
