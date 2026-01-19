@@ -545,7 +545,7 @@ export function FileManager({ agentId }: FileManagerProps) {
                       {previewIndex + 1}/{previewItems.length}
                     </DialogDescription>
                   </DialogHeader>
-                  <div className="flex-1 bg-muted/50 rounded overflow-hidden flex items-center justify-center relative">
+                  <div className="flex-1 bg-muted/50 rounded overflow-hidden flex items-center justify-center relative min-h-0">
                     {previewUrl && previewKind === 'image' && (
                       <div className="w-full h-full flex items-center justify-center">
                         <img src={previewUrl} className="w-full h-full object-contain" alt="" />
@@ -554,62 +554,62 @@ export function FileManager({ agentId }: FileManagerProps) {
                     {previewUrl && previewKind === 'video' && (
                       <div className="w-full h-full flex items-center justify-center">
                         <video
-                            key={`${previewItems[previewIndex]?.path || ''}:${previewErrorCount}:${previewVideoMode}`}
-                            ref={previewVideoRef}
-                            className="w-full h-full object-contain"
-                            controls
-                            playsInline
-                            preload="auto"
-                            onLoadedMetadata={() => {
-                              previewVideoReadyRef.current = true;
-                              if (previewVideoStartupTimerRef.current) {
-                                window.clearTimeout(previewVideoStartupTimerRef.current);
-                                previewVideoStartupTimerRef.current = null;
-                              }
-                            }}
-                            onCanPlay={() => {
-                              previewVideoReadyRef.current = true;
-                              if (previewVideoStartupTimerRef.current) {
-                                window.clearTimeout(previewVideoStartupTimerRef.current);
-                                previewVideoStartupTimerRef.current = null;
-                              }
-                            }}
-                            onError={() => {
-                              const item = previewItems[previewIndex];
-                              if (!item) return;
-                              if (previewErrorCount > 0) return;
-                              setPreviewErrorCount(1);
-                              if (previewVideoMode === 'normal') {
-                                setPreviewVideoMode('faststart');
-                                setPreviewUrl(makeStreamFastUrl(item.path));
-                              } else {
-                                setPreviewVideoMode('normal');
-                                setPreviewUrl(makeStreamUrl(item.path));
-                              }
-                            }}
-                          >
-                            <source src={previewUrl} type={previewSourceType} />
-                          </video>
-                        </div>
-                      )}
-                      {previewUrl && previewKind === 'pdf' && (
-                        <div className="w-full h-full">
-                          <iframe src={previewUrl} className="w-full h-full" title="PDF Preview" />
-                        </div>
-                      )}
-                      {previewKind === 'ppt' && (
-                        <div className="max-w-md w-full flex flex-col items-center gap-2 text-sm text-muted-foreground text-center">
+                          key={`${previewItems[previewIndex]?.path || ''}:${previewErrorCount}:${previewVideoMode}`}
+                          ref={previewVideoRef}
+                          className="w-full h-full object-contain"
+                          controls
+                          playsInline
+                          preload="auto"
+                          onLoadedMetadata={() => {
+                            previewVideoReadyRef.current = true;
+                            if (previewVideoStartupTimerRef.current) {
+                              window.clearTimeout(previewVideoStartupTimerRef.current);
+                              previewVideoStartupTimerRef.current = null;
+                            }
+                          }}
+                          onCanPlay={() => {
+                            previewVideoReadyRef.current = true;
+                            if (previewVideoStartupTimerRef.current) {
+                              window.clearTimeout(previewVideoStartupTimerRef.current);
+                              previewVideoStartupTimerRef.current = null;
+                            }
+                          }}
+                          onError={() => {
+                            const item = previewItems[previewIndex];
+                            if (!item) return;
+                            if (previewErrorCount > 0) return;
+                            setPreviewErrorCount(1);
+                            if (previewVideoMode === 'normal') {
+                              setPreviewVideoMode('faststart');
+                              setPreviewUrl(makeStreamFastUrl(item.path));
+                            } else {
+                              setPreviewVideoMode('normal');
+                              setPreviewUrl(makeStreamUrl(item.path));
+                            }
+                          }}
+                        >
+                          <source src={previewUrl} type={previewSourceType} />
+                        </video>
+                      </div>
+                    )}
+                    {previewUrl && previewKind === 'pdf' && (
+                      <div className="w-full h-full">
+                        <iframe src={previewUrl} className="w-full h-full" title="PDF Preview" />
+                      </div>
+                    )}
+                    {previewKind === 'ppt' && (
+                        <div className="w-full h-full flex flex-col items-center justify-center gap-2 text-sm text-muted-foreground text-center">
                           <div>Preview not available for PowerPoint files</div>
                           <Button size="sm" onClick={handleDownload}>
                             <Download className="h-3 w-3 mr-1" />
                             Download
                           </Button>
                         </div>
-                      )}
-                      {!previewUrl && (
-                        <div className="text-sm text-muted-foreground">Loading preview…</div>
-                      )}
-                    </div>
+                    )}
+                    {!previewUrl && (
+                        <div className="w-full h-full flex items-center justify-center text-sm text-muted-foreground">Loading preview…</div>
+                    )}
+                  </div>
                     <div className="shrink-0 flex items-center justify-between">
                       <Button size="sm" variant="outline" onClick={handlePrevPreview} disabled={previewIndex <= 0}>
                         Prev
