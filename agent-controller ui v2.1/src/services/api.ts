@@ -209,6 +209,14 @@ class ApiClient {
             error: (data && data.error) ? data.error : `HTTP ${response.status}`,
             data,
           } as ApiResponse<T>;
+          try {
+            if (response.status === 401) {
+              const evt = new CustomEvent('auth_required', { detail: { endpoint, method, url, timestamp: Date.now() } });
+              window.dispatchEvent(evt);
+            }
+            const evt2 = new CustomEvent('api_error', { detail: { status: response.status, endpoint, method, url, error: (data && data.error) || null, message: (data && (data.message || data.error)) || `HTTP ${response.status}`, timestamp: Date.now() } });
+            window.dispatchEvent(evt2);
+          } catch {}
           return fail;
         }
         const ok = {

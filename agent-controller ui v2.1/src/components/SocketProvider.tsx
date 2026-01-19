@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
 import apiClient from '../services/api';
+import { toast } from 'sonner';
 
 interface Agent {
   id: string;
@@ -319,6 +320,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       console.error('Failed to initialize socket connection:', error);
       addCommandOutput(`Connection Error: Failed to initialize socket connection to ${socketUrl}`);
+      try { toast.error('Connection error: failed to initialize'); } catch {}
       return;
     }
 
@@ -371,6 +373,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     socketInstance.on('connect_error', (error) => {
       console.error('Connection error:', error);
       addCommandOutput(`Connection Error: ${error.message || 'Unknown error'}`);
+      try { toast.error(`Connection error: ${error?.message || 'Unknown'}`); } catch {}
     });
 
     socketInstance.on('reconnect', (attemptNumber) => {
@@ -381,6 +384,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     socketInstance.on('reconnect_error', (error) => {
       console.error('Reconnection error:', error);
       addCommandOutput(`Reconnection Error: ${error.message || 'Unknown error'}`);
+      try { toast.error(`Reconnection error: ${error?.message || 'Unknown'}`); } catch {}
     });
 
     socketInstance.on('config_update', (data: any) => {
@@ -930,6 +934,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     socketInstance.on('webrtc_error', (data: { message: string }) => {
       console.error('WebRTC Error:', data.message);
       addCommandOutput(`WebRTC Error: ${data.message}`);
+      try { toast.error(`WebRTC error: ${data.message}`); } catch {}
     });
 
     return () => {
@@ -956,18 +961,61 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     checkAuthStatus();
   }, []);
 
+  // Global handler: show popup when backend requires authentication
+  useEffect(() => {
+    const onAuthRequired = (e: CustomEvent<any> | Event) => {
+      try {
+        const detail: any = (e as any).detail || {};
+        const n: Notification = {
+          id: `auth_${Date.now()}`,
+          type: 'warning',
+          title: 'Authentication Required',
+          message: 'Please log in to continue.',
+          timestamp: new Date(),
+          read: false,
+          category: 'system',
+        };
+        setNotifications(prev => [...prev.slice(-99), n]);
+        setAuthenticated(false);
+        try { toast.error('Authentication required. Please log in.'); } catch {}
+      } catch (err) {
+      }
+    };
+    window.addEventListener('auth_required', onAuthRequired as any);
+    return () => {
+      window.removeEventListener('auth_required', onAuthRequired as any);
+    };
+  }, []);
+
+  // Global handler: show popup for any API error responses
+  useEffect(() => {
+    const onApiError = (e: CustomEvent<any> | Event) => {
+      try {
+        const detail: any = (e as any).detail || {};
+        const msg = detail?.message || detail?.error || 'Request failed';
+        toast.error(typeof msg === 'string' ? msg : 'Request failed', { duration: 5000 });
+      } catch {}
+    };
+    window.addEventListener('api_error', onApiError as any);
+    return () => {
+      window.removeEventListener('api_error', onApiError as any);
+    };
+  }, []);
+
   const sendCommand = useCallback((agentId: string, command: string) => {
     console.log('🔍 SocketProvider: sendCommand called:', { agentId, command, socket: !!socket, connected });
     
     if (!socket || !connected) {
       console.error('🔍 SocketProvider: Not connected to server');
       addCommandOutput(`Error: Not connected to server`);
+      try { toast.error('Not connected to server'); } catch {}
       return;
     }
     
     if (!agentId || !command.trim()) {
       console.error('🔍 SocketProvider: Invalid agent ID or command');
       addCommandOutput(`Error: Invalid agent ID or command`);
+      try { toast.error('Invalid agent ID or command'); } catch {}
       return;
     }
     
@@ -988,6 +1036,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       console.error('🔍 SocketProvider: Error sending command:', error);
       addCommandOutput(`Error: Failed to send command`);
+      try { toast.error('Failed to send command'); } catch {}
     }
   }, [socket, connected, addCommandOutput, setLastActivity, markStreamActive]);
 

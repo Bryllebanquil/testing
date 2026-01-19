@@ -33,6 +33,7 @@ import ToggleControlPanel from "./components/ToggleControlPanel";
 import { ThemeProvider } from "./components/ThemeProvider";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Login } from "./components/Login";
+import { Toaster } from "./components/ui/sonner";
 import {
   Tabs,
   TabsContent,
@@ -817,6 +818,7 @@ export default function App() {
       storageKey="neural-control-hub-theme"
     >
       <AppContent />
+      <Toaster position="top-right" richColors />
     </ThemeProvider>
   );
 }
