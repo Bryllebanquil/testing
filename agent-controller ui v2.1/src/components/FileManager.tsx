@@ -234,22 +234,25 @@ export function FileManager({ agentId }: FileManagerProps) {
 
   const handleDownload = () => {
     if (selectedFiles.length === 0) return;
-    const filePath = selectedFiles[0];
-    const item = files.find(f => f.path === filePath);
     setDownloadProgress(0);
     setUploadProgress(null);
-    setTransferFileName(item?.name || filePath);
-    // Request download via socket (first selected file)
-    downloadFile(agentId!, filePath);
+    setTransferFileName(`${selectedFiles.length} files`);
+    // Request download via socket for all selected files
+    selectedFiles.forEach(filePath => {
+      downloadFile(agentId!, filePath);
+    });
   };
 
   const handleUpload = (e?: ChangeEvent<HTMLInputElement>) => {
-    const file = e?.target?.files?.[0];
-    if (!file || !agentId) return;
+    const files = e?.target?.files;
+    if (!files || files.length === 0 || !agentId) return;
     setUploadProgress(0);
     setDownloadProgress(null);
-    setTransferFileName(file.name);
-    uploadFile(agentId, file, currentPath === '/' ? '' : currentPath);
+    setTransferFileName(`${files.length} files`);
+    
+    Array.from(files).forEach(file => {
+      uploadFile(agentId, file, currentPath === '/' ? '' : currentPath);
+    });
   };
 
   const handleRefresh = () => {
@@ -507,7 +510,7 @@ export function FileManager({ agentId }: FileManagerProps) {
                   Download ({selectedFiles.length})
                 </Button>
                 <label className="inline-flex items-center">
-                  <input type="file" className="hidden" onChange={handleUpload} />
+                  <input type="file" className="hidden" onChange={handleUpload} multiple />
                   <Button size="sm" variant="outline" disabled={uploadProgress !== null || downloadProgress !== null} asChild>
                     <span className="inline-flex items-center"><Upload className="h-3 w-3 mr-1" />Upload</span>
                   </Button>
@@ -532,25 +535,25 @@ export function FileManager({ agentId }: FileManagerProps) {
               </div>
 
               <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
-                <DialogContent className="w-[92vw] sm:max-w-[1200px] h-[85vh] sm:max-h-[900px] p-4">
-                  <div className="flex flex-col h-full gap-3">
-                    <DialogHeader className="shrink-0">
-                      <DialogTitle className="text-sm font-medium truncate">
-                        {previewItems[previewIndex]?.name || 'Preview'}
-                      </DialogTitle>
-                      <DialogDescription className="text-xs text-muted-foreground">
-                        {previewIndex + 1}/{previewItems.length}
-                      </DialogDescription>
-                    </DialogHeader>
-                    <div className="flex-1 bg-muted rounded overflow-hidden flex items-center justify-center p-2 sm:p-4">
-                      {previewUrl && previewKind === 'image' && (
-                        <div className="w-[50vmin] h-[50vmin] flex items-center justify-center mx-auto">
-                          <img src={previewUrl} className="w-full h-full object-contain" alt="" />
-                        </div>
-                      )}
-                      {previewUrl && previewKind === 'video' && (
-                        <div className="w-[50vmin] h-[50vmin] flex items-center justify-center mx-auto">
-                          <video
+                <DialogContent className="w-[95vw] max-w-[95vw] sm:max-w-[95vw] h-[90vh] max-h-[90vh] p-2 sm:p-4 overflow-hidden">
+                <div className="flex flex-col h-full gap-2">
+                  <DialogHeader className="shrink-0">
+                    <DialogTitle className="text-sm font-medium truncate">
+                      {previewItems[previewIndex]?.name || 'Preview'}
+                    </DialogTitle>
+                    <DialogDescription className="text-xs text-muted-foreground">
+                      {previewIndex + 1}/{previewItems.length}
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="flex-1 bg-muted/50 rounded overflow-hidden flex items-center justify-center relative">
+                    {previewUrl && previewKind === 'image' && (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <img src={previewUrl} className="w-full h-full object-contain" alt="" />
+                      </div>
+                    )}
+                    {previewUrl && previewKind === 'video' && (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <video
                             key={`${previewItems[previewIndex]?.path || ''}:${previewErrorCount}:${previewVideoMode}`}
                             ref={previewVideoRef}
                             className="w-full h-full object-contain"
@@ -590,7 +593,7 @@ export function FileManager({ agentId }: FileManagerProps) {
                         </div>
                       )}
                       {previewUrl && previewKind === 'pdf' && (
-                        <div className="w-[50vmin] h-[50vmin] mx-auto">
+                        <div className="w-full h-full">
                           <iframe src={previewUrl} className="w-full h-full" title="PDF Preview" />
                         </div>
                       )}
