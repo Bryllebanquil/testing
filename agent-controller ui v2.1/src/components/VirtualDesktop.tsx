@@ -42,13 +42,13 @@ export function VirtualDesktop({ agentId }: { agentId: string | null }) {
             </div>
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <StreamViewer agentId={agentId} type="screen" title="Desktop Screen" defaultCaptureMouse={true} defaultCaptureKeyboard={true} />
+              <StreamViewer agentId={agentId} type="screen" title="Desktop Screen" defaultCaptureMouse={false} defaultCaptureKeyboard={false} />
               <div className="space-y-4">
                 <div className="text-xs text-muted-foreground flex items-center gap-2">
                   <Camera className="h-3 w-3" />
                   Optional Camera Stream
                 </div>
-                <StreamViewer agentId={agentId} type="camera" title="Camera" defaultCaptureMouse={true} defaultCaptureKeyboard={true} />
+                <StreamViewer agentId={agentId} type="camera" title="Camera" defaultCaptureMouse={false} defaultCaptureKeyboard={false} />
               </div>
             </div>
           )}

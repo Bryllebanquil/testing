@@ -51,13 +51,17 @@ export function Header({ activeTab, onTabChange, onAgentSelect, onAgentDeselect,
             <div className="min-w-0">
               <h1 className="text-sm sm:text-lg font-semibold truncate">Neural Control Hub</h1>
               <p className="text-xs text-muted-foreground hidden sm:block">
-                {lastActivity?.type ? (
-                  lastActivity.type.startsWith('files')
-                    ? `Last: Files ${lastActivity.details || ''}`
-                    : lastActivity.type.startsWith('stream:')
-                      ? `Last: ${lastActivity.type.replace('stream:', '').toUpperCase()} stream ${lastActivity.details || ''}`
-                      : 'Advanced Agent Management'
-                ) : 'Advanced Agent Management'}
+                {(() => {
+                  const t = String(lastActivity?.type || '');
+                  const d = String(lastActivity?.details || '');
+                  const showStream = activeTab === 'streaming' || activeTab === 'virtual';
+                  if (!t) return 'Advanced Agent Management';
+                  if (t.startsWith('stream:') && !showStream) return 'Advanced Agent Management';
+                  if (t.startsWith('files')) return `Last: Files ${d}`;
+                  if (t.startsWith('stream:')) return `Last: ${t.replace('stream:', '').toUpperCase()} stream ${d}`;
+                  if (t === 'virtual_desktop') return `Last: Virtual Desktop ${d}`;
+                  return 'Advanced Agent Management';
+                })()}
               </p>
             </div>
           </div>

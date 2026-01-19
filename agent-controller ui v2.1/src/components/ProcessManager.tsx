@@ -88,6 +88,11 @@ export function ProcessManager({ agentId, isConnected }: ProcessManagerProps) {
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [refreshInterval, setRefreshInterval] = useState<number>(5000);
   const [autoRefresh, setAutoRefresh] = useState(false);
+  const removeProcessLocal = (pid: number) => {
+    if (!pid || Number.isNaN(pid)) return;
+    setProcesses(prev => prev.filter(p => p.pid !== pid));
+    setFilteredProcesses(prev => prev.filter(p => p.pid !== pid));
+  };
 
   // Mock process data - in real implementation, this would come from the agent
   const mockProcesses: Process[] = [
@@ -294,6 +299,8 @@ export function ProcessManager({ agentId, isConnected }: ProcessManagerProps) {
       const pid = data.pid;
       const op = data.operation;
       if (ok) {
+        removeProcessLocal(Number(pid));
+        try { sendCommand(agentId, "list-processes"); } catch {}
         toast.success(`${op} PID ${pid}: ${data.message || 'success'}`);
       } else {
         toast.error(`${op} PID ${pid}: ${data.error || 'failed'}`);
@@ -302,6 +309,46 @@ export function ProcessManager({ agentId, isConnected }: ProcessManagerProps) {
     socket.on('process_operation_result', handler);
     return () => { socket.off('process_operation_result', handler); };
   }, [socket, agentId]);
+
+  useEffect(() => {
+    if (!socket) return;
+    const handler = (data: any) => {
+      if (!agentId || data.agent_id !== agentId) return;
+      const cmd = String(data.command || '').toLowerCase();
+      const text = String(data.formatted_text || data.output || '');
+      const isKillCmd = cmd.includes('kill') || cmd.includes('taskkill') || cmd.includes('stop-process');
+      if (!isKillCmd) return;
+      const pidMatch = cmd.match(/\b(\d{1,})\b/) || text.match(/PID[:\s]+(\d{1,})/i);
+      const pid = pidMatch ? Number(pidMatch[1]) : NaN;
+      const exitCode = typeof data.exit_code === 'number' ? data.exit_code : Number(data.exit_code);
+      const reportedSuccess = Boolean(data.success);
+      const force = cmd.includes('-9') || cmd.includes('/f');
+      const denied = /access is denied/i.test(text);
+      const prelimOk = reportedSuccess || exitCode === 0 || /(stopped|terminated|killed)/i.test(text) || /exit\s*code\s*0/i.test(text);
+      const title = force ? 'Force kill' : 'Terminate';
+      const finalize = () => {
+        const stillThere = processes.some(p => p.pid === pid);
+        if (!stillThere && !denied) {
+          removeProcessLocal(pid);
+          toast.success(`${title} succeeded`, { description: cmd });
+        } else if (denied) {
+          toast.warning(`${title} denied`, { description: cmd });
+        } else {
+          toast.error(`${title} failed`, { description: cmd });
+        }
+      };
+      try {
+        sendCommand(agentId, "list-processes");
+        setTimeout(finalize, 800);
+      } catch {
+        if (prelimOk && !denied) toast.success(`${title} succeeded`, { description: cmd });
+        else if (denied) toast.warning(`${title} denied`, { description: cmd });
+        else toast.error(`${title} failed`, { description: cmd });
+      }
+    };
+    socket.on('command_result', handler);
+    return () => { socket.off('command_result', handler); };
+  }, [socket, agentId, processes, sendCommand]);
 
   useEffect(() => {
     if (!socket) return;

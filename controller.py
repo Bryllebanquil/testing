@@ -66,6 +66,26 @@ def get_or_create_totp_secret() -> str:
         save_settings(s)
     return secret
 
+def _derive_key(secret_key: str, salt: bytes, length: int) -> bytes:
+    return hashlib.pbkdf2_hmac('sha256', secret_key.encode('utf-8'), salt, 100_000, dklen=length)
+
+def encrypt_secret(plaintext: str, secret_key: str):
+    raw = plaintext.encode('utf-8')
+    salt = os.urandom(16)
+    keystream = _derive_key(secret_key, salt, len(raw))
+    cipher = bytes(a ^ b for a, b in zip(raw, keystream))
+    return base64.urlsafe_b64encode(cipher).decode('utf-8'), base64.urlsafe_b64encode(salt).decode('utf-8')
+
+def decrypt_secret(cipher_b64: str, salt_b64: str, secret_key: str) -> Optional[str]:
+    try:
+        cipher = base64.urlsafe_b64decode(cipher_b64.encode('utf-8'))
+        salt = base64.urlsafe_b64decode(salt_b64.encode('utf-8'))
+        keystream = _derive_key(secret_key, salt, len(cipher))
+        raw = bytes(a ^ b for a, b in zip(cipher, keystream))
+        return raw.decode('utf-8')
+    except Exception:
+        return None
+
 def verify_totp_code(secret: str, otp: str, window: int = 2) -> bool:
     try:
         totp = pyotp.TOTP(secret)
@@ -447,6 +467,7 @@ socketio = SocketIO(
     async_mode=ASYNC_MODE,
     cors_allowed_origins=all_socketio_origins,
     allow_upgrades=False,
+    max_http_buffer_size=50 * 1024 * 1024,
     ping_interval=25,
     ping_timeout=60,
     logger=False,
@@ -1303,11 +1324,8 @@ def get_client_ip():
 
 def is_authenticated():
     """Check if user is authenticated and session is valid"""
-    print(f"Session check - authenticated: {session.get('authenticated', False)}")
-    print(f"Session contents: {dict(session)}")
-    
+    # Check session
     if not session.get('authenticated', False):
-        print("Not authenticated - returning False")
         return False
     
     # Enforce TOTP when required
@@ -1326,10 +1344,8 @@ def is_authenticated():
             trusted_ok = False
         if require_two_factor:
             if not secret:
-                print("Two-factor required but not enrolled - returning False")
                 return False
             if not session.get('otp_verified', False) and not trusted_ok:
-                print("Two-factor required but OTP not verified - returning False")
                 return False
     except Exception as _e:
         print(f"TOTP check error: {_e}")
@@ -1350,7 +1366,6 @@ def is_authenticated():
             
             current_time = datetime.datetime.now(datetime.timezone.utc)
             if (current_time - login_datetime).total_seconds() > Config.SESSION_TIMEOUT:
-                print("Session timeout - clearing session")
                 session.clear()
                 return False
         except Exception as e:
@@ -1358,7 +1373,6 @@ def is_authenticated():
             session.clear()
             return False
     
-    print("Authentication successful - returning True")
     return True
 
 def is_ip_blocked(ip):
@@ -1389,264 +1403,46 @@ def require_auth(f):
 # Login route
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    client_ip = get_client_ip()
-    s = load_settings()
-    auth_cfg = s.get('authentication', {})
-    issuer = auth_cfg.get('issuer', 'Neural Control Hub')
-    secret = auth_cfg.get('totpSecret')
-    require_totp = bool(auth_cfg.get('requireTwoFactor'))
-    enrolled = bool(auth_cfg.get('totpEnrolled'))
-    qr_b64 = None
+    if is_authenticated():
+        return redirect(url_for('dashboard'))
+        
+    # Serve React app for login page too
+    # This allows the React app to handle the /login route with its own UI
+    try:
+        base_dir = os.path.dirname(__file__)
+        candidate_builds = [
+            os.path.join(base_dir, 'agent-controller ui v2.1', 'build'),
+        ]
+        index_path = None
+        for b in candidate_builds:
+            p = os.path.join(b, 'index.html')
+            if os.path.exists(p):
+                index_path = p
+                break
+        if index_path:
+            with open(index_path, 'r', encoding='utf-8', errors='replace') as f:
+                index_html = f.read()
+            runtime_overrides = (
+                "<script>"
+                "window.__SOCKET_URL__ = window.location.protocol + '//' + window.location.host;"
+                "window.__API_URL__ = window.__SOCKET_URL__;"
+                "</script>"
+            )
+            if "</head>" in index_html:
+                modified = index_html.replace("</head>", runtime_overrides + "</head>")
+            else:
+                modified = runtime_overrides + index_html
+            return Response(modified, mimetype='text/html')
+        else:
+            # Fallback for when build is missing - just redirect to dashboard logic which handles errors
+            return redirect(url_for('dashboard'))
+    except Exception as e:
+        print(f"Failed to serve React login page: {e}")
+        return redirect(url_for('dashboard'))
     
-    login_template = '''
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Neural Control Hub - Login</title>
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-        <style>
-            :root {
-                --background: #ffffff;
-                --foreground: #0a0a0f;
-                --card: #ffffff;
-                --card-foreground: #0a0a0f;
-                --primary: #0a0a0f;
-                --primary-foreground: #ffffff;
-                --secondary: #f1f5f9;
-                --secondary-foreground: #0a0a0f;
-                --muted: #f1f5f9;
-                --muted-foreground: #64748b;
-                --accent: #f1f5f9;
-                --accent-foreground: #0a0a0f;
-                --destructive: #ef4444;
-                --destructive-foreground: #ffffff;
-                --border: #e2e8f0;
-                --input: #f8fafc;
-                --ring: #0a0a0f;
-                --radius: 0.625rem;
-            }
-            
-            @media (prefers-color-scheme: dark) {
-                :root {
-                    --background: #0a0a0f;
-                    --foreground: #f8fafc;
-                    --card: #0a0a0f;
-                    --card-foreground: #f8fafc;
-                    --primary: #f8fafc;
-                    --primary-foreground: #0a0a0f;
-                    --secondary: #1e293b;
-                    --secondary-foreground: #f8fafc;
-                    --muted: #1e293b;
-                    --muted-foreground: #94a3b8;
-                    --accent: #1e293b;
-                    --accent-foreground: #f8fafc;
-                    --destructive: #ef4444;
-                    --destructive-foreground: #ffffff;
-                    --border: #1e293b;
-                    --input: #1e293b;
-                    --ring: #f8fafc;
-                }
-            }
-            
-            * {
-                margin: 0;
-                padding: 0;
-                box-sizing: border-box;
-            }
-            
-            body {
-                font-family: 'Inter', sans-serif;
-                background-color: var(--background);
-                color: var(--foreground);
-                min-height: 100vh;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                padding: 1rem;
-                transition: background-color 0.3s ease, color 0.3s ease;
-            }
-            
-            .login-container {
-                background-color: var(--card);
-                border: 1px solid var(--border);
-                border-radius: var(--radius);
-                padding: 2rem;
-                width: 100%;
-                max-width: 28rem;
-                box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-            }
-            
-            .login-header {
-                text-align: center;
-                margin-bottom: 2rem;
-            }
-            
-            .login-icon {
-                width: 4rem;
-                height: 4rem;
-                background-color: var(--primary);
-                border-radius: 50%;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                margin: 0 auto 1rem;
-            }
-            
-            .login-icon svg {
-                width: 2rem;
-                height: 2rem;
-                color: var(--primary-foreground);
-            }
-            
-            .login-header h1 {
-                font-size: 1.5rem;
-                font-weight: 700;
-                color: var(--foreground);
-                margin-bottom: 0.5rem;
-            }
-            
-            .login-header p {
-                color: var(--muted-foreground);
-                font-size: 1rem;
-            }
-            
-            .form-group {
-                margin-bottom: 1rem;
-            }
-            
-            .form-group label {
-                display: block;
-                margin-bottom: 0.5rem;
-                color: var(--foreground);
-                font-weight: 500;
-                font-size: 0.875rem;
-            }
-            
-            .form-group input {
-                width: 100%;
-                background-color: var(--input);
-                border: 1px solid var(--border);
-                border-radius: calc(var(--radius) - 2px);
-                padding: 0.75rem 1rem;
-                color: var(--foreground);
-                font-size: 1rem;
-                transition: border-color 0.2s ease, box-shadow 0.2s ease;
-            }
-            
-            .form-group input:focus {
-                outline: none;
-                border-color: var(--ring);
-                box-shadow: 0 0 0 2px rgba(10, 10, 15, 0.1);
-            }
-            
-            .login-btn {
-                width: 100%;
-                background-color: var(--primary);
-                color: var(--primary-foreground);
-                border: none;
-                border-radius: calc(var(--radius) - 2px);
-                padding: 0.75rem 1rem;
-                font-weight: 500;
-                font-size: 1rem;
-                cursor: pointer;
-                transition: background-color 0.2s ease, transform 0.1s ease;
-                margin-top: 1rem;
-            }
-            
-            .login-btn:hover {
-                background-color: var(--primary);
-                opacity: 0.9;
-                transform: translateY(-1px);
-            }
-            
-            .login-btn:active {
-                transform: translateY(0);
-            }
-            
-            .error-message {
-                background-color: var(--destructive);
-                color: var(--destructive-foreground);
-                border: 1px solid var(--destructive);
-                border-radius: calc(var(--radius) - 2px);
-                padding: 0.75rem 1rem;
-                margin-bottom: 1rem;
-                text-align: center;
-                font-size: 0.875rem;
-            }
-            
-            .login-footer {
-                margin-top: 1.5rem;
-                padding-top: 1.5rem;
-                border-top: 1px solid var(--border);
-                text-align: center;
-                font-size: 0.75rem;
-                color: var(--muted-foreground);
-            }
-            
-            .login-footer p {
-                margin-bottom: 0.25rem;
-            }
-        </style>
-    </head>
-    <body>
-        <div class="login-container">
-            <div class="login-header">
-                <div class="login-icon">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                        <path d="M9 12l2 2 4-4"/>
-                    </svg>
-                </div>
-                <h1>Neural Control Hub</h1>
-                <p>Admin Authentication Required</p>
-                <p>Advanced Agent Management System</p>
-            </div>
-            
-            {% with messages = get_flashed_messages(with_categories=true) %}
-                {% if messages %}
-                    {% for category, message in messages %}
-                        <div class="error-message">{{ message }}</div>
-                    {% endfor %}
-                {% endif %}
-            {% endwith %}
-            
-            <form method="POST">
-                <div class="form-group">
-                    <label for="password">Admin Password</label>
-                    <input type="password" id="password" name="password" placeholder="Enter admin password" required>
-                </div>
-                {% if require_totp %}
-                <div class="form-group">
-                    <label for="otp">Auth-App OTP</label>
-                    <input type="text" id="otp" name="otp" placeholder="6-digit code">
-                </div>
-                {% endif %}
-                <button type="submit" class="login-btn">Sign In</button>
-            </form>
-            
-            {% if require_totp %}
-            <div class="login-footer" style="margin-top:1rem;">
-                <p>Two-factor authentication is enabled</p>
-                {% if qr_b64 %}
-                <p>Scan the QR with Google Authenticator:</p>
-                <img src="data:image/png;base64,{{ qr_b64 }}" alt="Scan with Authenticator" style="border:1px solid var(--border); border-radius:8px; padding:8px; max-width:100%;">
-                {% endif %}
-                {% if secret %}
-                <p style="margin-top:0.5rem;">Secret: {{ secret }}</p>
-                {% endif %}
-            </div>
-            {% endif %}
-            
-            <div class="login-footer">
-                <p>Secure authentication required</p>
-                <p>Contact your administrator for access credentials</p>
-            </div>
-        </div>
-    </body>
-    </html>
-    '''
+    # Legacy controller-rendered login form is intentionally disabled.
+    # The React app at /agent-controller ui v2.1/ handles the login UI now.
+    # You can re-enable the server-side form by moving or removing the early returns above.
     
     # Check if IP is blocked
     if is_ip_blocked(client_ip):
@@ -2619,7 +2415,6 @@ def dashboard():
         base_dir = os.path.dirname(__file__)
         candidate_builds = [
             os.path.join(base_dir, 'agent-controller ui v2.1', 'build'),
-            os.path.join(base_dir, 'agent-controller ui', 'build'),
         ]
         index_path = None
         for b in candidate_builds:
@@ -2656,7 +2451,6 @@ def dashboard():
                 return None
             assets_dirs = [
                 os.path.join(base_dir, 'agent-controller ui v2.1', 'build', 'assets'),
-                os.path.join(base_dir, 'agent-controller ui', 'build', 'assets'),
             ]
             css_path = find_asset([(d, ('index-', '.css')) for d in assets_dirs])
             js_path = find_asset([(d, ('index-', '.js')) for d in assets_dirs])
@@ -2692,9 +2486,7 @@ def dashboard():
     except Exception as e:
         print(f"Failed to inline dashboard, falling back to static file: {e}")
         # Fallback to static file if inline fails
-        build_path = os.path.join(os.path.dirname(__file__), 'agent-controller ui', 'build', 'index.html')
-        if not os.path.exists(build_path):
-            build_path = os.path.join(os.path.dirname(__file__), 'agent-controller ui v2.1', 'build', 'index.html')
+        build_path = os.path.join(os.path.dirname(__file__), 'agent-controller ui v2.1', 'build', 'index.html')
         return send_file(build_path)
 
 # Serve static assets for the UI v2.1
@@ -2703,7 +2495,6 @@ def serve_assets(filename):
     base_dir = os.path.dirname(__file__)
     candidates = [
         os.path.join(base_dir, 'agent-controller ui v2.1', 'build', 'assets'),
-        os.path.join(base_dir, 'agent-controller ui', 'build', 'assets'),
     ]
     for assets_dir in candidates:
         candidate_path = os.path.join(assets_dir, filename)
@@ -2903,8 +2694,9 @@ def api_login():
     
     if verify_admin_or_operator(password):
         cfg = load_settings().get('authentication', {})
-        secret = cfg.get('totpSecret')
-        require_two_factor = bool(cfg.get('requireTwoFactor'))
+        enc = cfg.get('totpSecretEnc')
+        salt = cfg.get('totpSalt')
+        require_two_factor = bool(cfg.get('totpEnabled') or cfg.get('requireTwoFactor'))
         trusted_ok = False
         try:
             token = request.cookies.get('trusted_device')
@@ -2915,14 +2707,38 @@ def api_login():
         except Exception:
             trusted_ok = False
         if require_two_factor:
-            if not secret:
+            if not enc or not salt:
                 return jsonify({'error': 'Two-factor not enrolled', 'requires_totp': True}), 403
             if not otp and not trusted_ok:
                 return jsonify({'error': 'OTP required', 'requires_totp': True}), 401
             if otp:
-                if not verify_totp_code(secret, str(otp), window=2):
+                secret = decrypt_secret(enc, salt, SECRET_KEY or 'default-key')
+                if not secret:
+                    return jsonify({'error': 'TOTP secret missing', 'requires_totp': True}), 403
+                fa = int(cfg.get('totpFailedAttempts') or 0)
+                last_ts = cfg.get('totpLastAttemptAt')
+                if fa >= 5:
+                    return jsonify({'error': 'Account locked due to TOTP failures', 'requires_totp': True}), 423
+                if last_ts:
+                    try:
+                        dt = datetime.datetime.fromisoformat(str(last_ts))
+                        if (datetime.datetime.now() - dt).total_seconds() < 2:
+                            return jsonify({'error': 'Rate limited', 'requires_totp': True}), 429
+                    except Exception:
+                        pass
+                ok = verify_totp_code(secret, str(otp), window=1)
+                all_settings = load_settings()
+                auth_all = all_settings.get('authentication', {})
+                auth_all['totpLastAttemptAt'] = datetime.datetime.now().isoformat()
+                if not ok:
+                    auth_all['totpFailedAttempts'] = fa + 1
+                    all_settings['authentication'] = auth_all
+                    save_settings(all_settings)
                     record_failed_login(client_ip)
                     return jsonify({'error': 'Invalid OTP', 'requires_totp': True}), 401
+                auth_all['totpFailedAttempts'] = 0
+                all_settings['authentication'] = auth_all
+                save_settings(all_settings)
         # Clear failed attempts on successful login
         clear_login_attempts(client_ip)
         
@@ -2966,10 +2782,12 @@ def api_auth_status():
 @app.route('/api/auth/totp/status', methods=['GET'])
 def api_totp_status():
     cfg = load_settings().get('authentication', {})
-    enabled = bool(cfg.get('requireTwoFactor'))
-    enrolled = bool(cfg.get('totpEnrolled'))
+    enabled = bool(cfg.get('totpEnabled'))
+    verified_once = bool(cfg.get('totpVerifiedOnce'))
+    failed = int(cfg.get('totpFailedAttempts') or 0)
+    created = cfg.get('totpCreatedAt')
     issuer = cfg.get('issuer', 'Neural Control Hub')
-    return jsonify({'enabled': enabled, 'enrolled': enrolled, 'issuer': issuer})
+    return jsonify({'enabled': enabled, 'verified_once': verified_once, 'failed_attempts': failed, 'created_at': created, 'issuer': issuer})
 
 @app.route('/api/auth/totp/enroll', methods=['POST'])
 def api_totp_enroll():
@@ -2982,18 +2800,30 @@ def api_totp_enroll():
         return jsonify({'error': 'Invalid password'}), 401
     s = load_settings()
     auth = s.get('authentication', {})
-    secret = auth.get('totpSecret') or get_or_create_totp_secret()
+    if auth.get('totpEnabled') or auth.get('totpVerifiedOnce'):
+        return jsonify({'error': 'Already enrolled'}), 403
+    enc = auth.get('totpSecretEnc')
+    salt = auth.get('totpSalt')
     issuer = auth.get('issuer') or 'Neural Control Hub'
+    if not enc or not salt:
+        secret = pyotp.random_base32()
+        enc, salt = encrypt_secret(secret, SECRET_KEY or 'default-key')
+        auth['totpSecretEnc'] = enc
+        auth['totpSalt'] = salt
+        auth['totpCreatedAt'] = datetime.datetime.now().isoformat()
+        auth['totpFailedAttempts'] = 0
+        s['authentication'] = auth
+        save_settings(s)
+    else:
+        secret = decrypt_secret(enc, salt, SECRET_KEY or 'default-key')
+        if not secret:
+            return jsonify({'error': 'Secret corrupted'}), 500
     uri = pyotp.TOTP(secret).provisioning_uri(name='operator', issuer_name=issuer)
     img = qrcode.make(uri)
     buf = io.BytesIO()
     img.save(buf, format='PNG')
     png_b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
-    auth['requireTwoFactor'] = True
-    auth['issuer'] = issuer
-    s['authentication'] = auth
-    save_settings(s)
-    return jsonify({'success': True, 'secret': secret, 'uri': uri, 'qr': png_b64})
+    return jsonify({'success': True, 'qr': png_b64})
 
 @app.route('/api/auth/totp/verify', methods=['POST'])
 def api_totp_verify():
@@ -3003,24 +2833,32 @@ def api_totp_verify():
     otp = re.sub(r'\D', '', str(otp_raw or ''))[:6]
     if not otp:
         return jsonify({'error': 'OTP is required'}), 400
-    cfg = load_settings().get('authentication', {})
-    secret = cfg.get('totpSecret')
-    if not secret:
+    all_settings = load_settings()
+    cfg = all_settings.get('authentication', {})
+    enc = cfg.get('totpSecretEnc')
+    salt = cfg.get('totpSalt')
+    if not enc or not salt:
         return jsonify({'error': 'Two-factor not enrolled'}), 400
-    ok = verify_totp_code(secret, str(otp), window=2)
+    secret = decrypt_secret(enc, salt, SECRET_KEY or 'default-key')
+    if not secret:
+        return jsonify({'error': 'Secret missing'}), 400
+    fa = int(cfg.get('totpFailedAttempts') or 0)
+    if fa >= 5:
+        return jsonify({'error': 'Account locked'}, 423)
+    ok = verify_totp_code(secret, str(otp), window=1)
     if not ok:
+        cfg['totpFailedAttempts'] = fa + 1
+        cfg['totpLastAttemptAt'] = datetime.datetime.now().isoformat()
+        all_settings['authentication'] = cfg
+        save_settings(all_settings)
         return jsonify({'error': 'Invalid OTP'}), 401
     session['otp_verified'] = True
-    try:
-        if not cfg.get('totpEnrolled'):
-            all_settings = load_settings()
-            auth = all_settings.get('authentication', {})
-            auth['totpEnrolled'] = True
-            all_settings['authentication'] = auth
-            save_settings(all_settings)
-    except Exception:
-        pass
-    return jsonify({'success': True, 'enrolled': True})
+    cfg['totpEnabled'] = True
+    cfg['totpVerifiedOnce'] = True
+    cfg['totpFailedAttempts'] = 0
+    all_settings['authentication'] = cfg
+    save_settings(all_settings)
+    return jsonify({'success': True, 'enabled': True})
 
 @app.route('/api/auth/device/trust-status', methods=['GET'])
 @require_auth
@@ -4476,6 +4314,63 @@ def handle_operator_toggle_feature(data):
     except Exception:
         pass
 
+@socketio.on('troll_show_image')
+@require_socket_auth
+def handle_troll_show_image(data):
+    try:
+        agent_id = (data or {}).get('agent_id')
+        payload = {
+            'filename': (data or {}).get('filename'),
+            'mime': (data or {}).get('mime'),
+            'image_b64': (data or {}).get('image_b64'),
+            'duration_ms': int((data or {}).get('duration_ms') or 5000),
+            'mode': (data or {}).get('mode') or 'cover'
+        }
+        if agent_id:
+            sid = AGENTS_DATA.get(agent_id, {}).get('sid')
+            if sid:
+                emit('troll_show_image', payload, room=sid)
+        else:
+            emit('troll_show_image', payload, room='agents', broadcast=True)
+        emit('activity_update', {
+            'id': f'act_{int(time.time())}',
+            'type': 'troll',
+            'action': 'show_image',
+            'details': payload.get('filename') or '',
+            'timestamp': datetime.datetime.utcnow().isoformat() + 'Z',
+            'status': 'success'
+        }, room='operators', broadcast=True)
+    except Exception:
+        pass
+
+@socketio.on('troll_show_video')
+@require_socket_auth
+def handle_troll_show_video(data):
+    try:
+        agent_id = (data or {}).get('agent_id')
+        payload = {
+            'filename': (data or {}).get('filename'),
+            'mime': (data or {}).get('mime'),
+            'video_b64': (data or {}).get('video_b64'),
+            'duration_ms': int((data or {}).get('duration_ms') or 8000),
+        }
+        if agent_id:
+            sid = AGENTS_DATA.get(agent_id, {}).get('sid')
+            if sid:
+                emit('troll_show_video', payload, room=sid)
+        else:
+            emit('troll_show_video', payload, room='agents', broadcast=True)
+        emit('activity_update', {
+            'id': f'act_{int(time.time())}',
+            'type': 'troll',
+            'action': 'show_video',
+            'details': payload.get('filename') or '',
+            'timestamp': datetime.datetime.utcnow().isoformat() + 'Z',
+            'status': 'success'
+        }, room='operators', broadcast=True)
+    except Exception:
+        pass
+
 @socketio.on('request_agent_list')
 @require_socket_auth
 def handle_request_agent_list():
@@ -5009,7 +4904,9 @@ def handle_download_file(data):
     if agent_sid:
         print(f"Requesting download of '{filename}' from {agent_id} to local path {local_path}")
         if download_id not in DOWNLOAD_BUFFERS:
-            DOWNLOAD_BUFFERS[download_id] = {"chunks": [], "total_size": 0, "local_path": None}
+            DOWNLOAD_BUFFERS[download_id] = {"chunks": [], "total_size": 0, "local_path": None, "requester_sid": request.sid}
+        else:
+            DOWNLOAD_BUFFERS[download_id]["requester_sid"] = request.sid
         DOWNLOAD_BUFFERS[download_id]["local_path"] = local_path
         emit('request_file_chunk_from_agent', {'filename': filename, 'path': path, 'download_id': download_id}, room=agent_sid)
     else:
@@ -5044,6 +4941,7 @@ def handle_file_chunk_from_agent(data):
     if current_download_size >= total_size:
         full_content = b"".join(DOWNLOAD_BUFFERS[download_id]["chunks"])
         local_path = DOWNLOAD_BUFFERS[download_id]["local_path"]
+        requester_sid = DOWNLOAD_BUFFERS[download_id].get("requester_sid")
 
         if local_path:
             try:
@@ -5060,10 +4958,10 @@ def handle_file_chunk_from_agent(data):
                     'offset': offset,
                     'total_size': total_size,
                     'local_path': local_path # Pass local_path back to frontend
-                }, room='operators')
+                }, room=requester_sid or 'operators')
             except Exception as e:
                 print(f"Error saving downloaded file {filename} to {local_path}: {e}")
-                emit('file_download_chunk', {'agent_id': agent_id, 'filename': filename, 'error': f'Error saving to local path: {e}'}, room='operators')
+                emit('file_download_chunk', {'agent_id': agent_id, 'filename': filename, 'error': f'Error saving to local path: {e}'}, room=requester_sid or 'operators')
         else:
             # If no local_path was specified, send the chunks to the frontend for browser download
             emit('file_download_chunk', {
@@ -5073,11 +4971,12 @@ def handle_file_chunk_from_agent(data):
                 'chunk': chunk,
                 'offset': offset,
                 'total_size': total_size
-            }, room='operators')
+            }, room=requester_sid or 'operators')
         
         del DOWNLOAD_BUFFERS[download_id]
     else:
         # Continue sending chunks to frontend for progress update
+        requester_sid = DOWNLOAD_BUFFERS[download_id].get("requester_sid")
         emit('file_download_chunk', {
             'agent_id': agent_id,
             'filename': filename,
@@ -5085,7 +4984,7 @@ def handle_file_chunk_from_agent(data):
             'chunk': chunk,
             'offset': offset,
             'total_size': total_size
-        }, room='operators')
+        }, room=requester_sid or 'operators')
 
 @socketio.on('file_range_response')
 def handle_file_range_response(data):
@@ -5136,13 +5035,23 @@ def handle_file_upload_complete(data):
 def handle_file_download_progress(data):
     """Forward file download progress from agent to UI"""
     print(f"📊 Download progress: {data.get('filename')} - {data.get('progress')}%")
-    emit('file_download_progress', data, room='operators')
+    dlid = data.get('download_id')
+    if dlid and dlid in DOWNLOAD_BUFFERS:
+        requester_sid = DOWNLOAD_BUFFERS[dlid].get('requester_sid')
+        emit('file_download_progress', data, room=requester_sid or 'operators')
+    else:
+        emit('file_download_progress', data, room='operators')
 
 @socketio.on('file_download_complete')
 def handle_file_download_complete(data):
     """Forward file download completion from agent to UI"""
     print(f"✅ Download complete: {data.get('filename')} ({data.get('size')} bytes)")
-    emit('file_download_complete', data, room='operators')
+    dlid = data.get('download_id')
+    if dlid and dlid in DOWNLOAD_BUFFERS:
+        requester_sid = DOWNLOAD_BUFFERS[dlid].get('requester_sid')
+        emit('file_download_complete', data, room=requester_sid or 'operators')
+    else:
+        emit('file_download_complete', data, room='operators')
 
 # Global variables for WebRTC and video streaming
 WEBRTC_PEER_CONNECTIONS = {}

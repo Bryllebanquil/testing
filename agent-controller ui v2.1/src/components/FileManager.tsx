@@ -105,6 +105,7 @@ export function FileManager({ agentId }: FileManagerProps) {
   const previewVideoReadyRef = useRef<boolean>(false);
   const [previewVideoMode, setPreviewVideoMode] = useState<'normal' | 'faststart'>('normal');
   const lastRefreshRef = useRef<number>(0);
+  const [fitMode, setFitMode] = useState<'contain' | 'cover' | 'fill'>('contain');
 
   const filteredFiles = files.filter(file => 
     file.name.toLowerCase().includes(searchTerm.toLowerCase())
@@ -555,13 +556,13 @@ export function FileManager({ agentId }: FileManagerProps) {
                       </DialogDescription>
                     </DialogHeader>
                     
-                    {/* Preview area - now with more accurate height calculation */}
-                    <div className="flex-1 bg-muted/50 rounded overflow-hidden flex items-center justify-center relative min-h-0">
+                    {/* Preview area - constrained to 50% of viewport */}
+                    <div className="shrink-0 bg-muted/50 rounded overflow-hidden flex items-center justify-center relative w-[50vw] h-[50vh] mx-auto">
                       {previewUrl && previewKind === 'image' && (
                         <div className="w-full h-full flex items-center justify-center p-2">
                           <img 
                             src={previewUrl} 
-                            className="max-w-full max-h-full object-contain" 
+                            className={`${fitMode === 'contain' ? 'max-w-full max-h-full' : 'w-full h-full'} ${fitMode === 'contain' ? 'object-contain' : fitMode === 'cover' ? 'object-cover' : 'object-fill'}`} 
                             alt={previewItems[previewIndex]?.name}
                           />
                         </div>
@@ -572,7 +573,7 @@ export function FileManager({ agentId }: FileManagerProps) {
                           <video
                             key={`${previewItems[previewIndex]?.path || ''}:${previewErrorCount}:${previewVideoMode}`}
                             ref={previewVideoRef}
-                            className="max-w-full max-h-full object-contain"
+                            className={`${fitMode === 'contain' ? 'max-w-full max-h-full' : 'w-full h-full'} ${fitMode === 'contain' ? 'object-contain' : fitMode === 'cover' ? 'object-cover' : 'object-fill'}`}
                             controls
                             playsInline
                             preload="auto"
@@ -665,6 +666,17 @@ export function FileManager({ agentId }: FileManagerProps) {
                       >
                         Next →
                       </Button>
+                      <div className="flex items-center gap-2">
+                        <Button size="sm" variant="outline" onClick={() => setFitMode('contain')} disabled={fitMode === 'contain'}>
+                          Fit: contain
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => setFitMode('cover')} disabled={fitMode === 'cover'}>
+                          Fit: cover
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => setFitMode('fill')} disabled={fitMode === 'fill'}>
+                          Fit: fill
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 </DialogContent>
@@ -776,7 +788,7 @@ export function FileManager({ agentId }: FileManagerProps) {
                             {showThumb ? (
                               <img
                                 src={makeThumbUrl(file.path)}
-                                className="h-8 w-8 rounded object-contain bg-background"
+                                className="h-8 w-8 rounded object-cover bg-background"
                                 loading="lazy"
                                 alt=""
                               />

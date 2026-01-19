@@ -9,8 +9,9 @@ export function SystemMonitor() {
   const { agents, selectedAgent, agentMetrics } = useSocket();
 
   const metrics = useMemo(() => {
-    const current = agents.find(a => a.id === selectedAgent);
-    const live = selectedAgent ? agentMetrics[selectedAgent] : undefined;
+    const selectedId = selectedAgent || (agents[0]?.id ?? null);
+    const current = selectedId ? agents.find(a => a.id === selectedId) : agents[0];
+    const live = selectedId ? agentMetrics[selectedId] : undefined;
     return {
       cpu: { usage: live?.cpu ?? current?.performance.cpu ?? 0 },
       memory: { used: live?.memory ?? current?.performance.memory ?? 0 },
@@ -20,7 +21,7 @@ export function SystemMonitor() {
 
   return (
     <div className="space-y-4">
-      <Card className="h-full flex flex-col">
+      <Card className="h-[300px] flex flex-col">
         <CardHeader>
           <CardTitle className="text-sm flex items-center">
             <Activity className="h-4 w-4 mr-2" />
@@ -29,7 +30,7 @@ export function SystemMonitor() {
         </CardHeader>
         <CardContent className="flex-1 space-y-4">
           {/* CPU */}
-          <div className="space-y-2">
+          <div className="space-y-2 p-[10px]">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-2">
                 <Cpu className="h-4 w-4 text-blue-500" />
@@ -43,7 +44,7 @@ export function SystemMonitor() {
           </div>
 
           {/* Memory */}
-          <div className="space-y-2">
+          <div className="space-y-2 p-[10px]">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-2">
                 <MemoryStick className="h-4 w-4 text-green-500" />
@@ -57,7 +58,7 @@ export function SystemMonitor() {
           </div>
 
           {/* Network (agent throughput) */}
-          <div className="space-y-2">
+          <div className="space-y-2 p-[10px]">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-2">
                 <Network className="h-4 w-4 text-orange-500" />
