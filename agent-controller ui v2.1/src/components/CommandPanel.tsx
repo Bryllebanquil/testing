@@ -7,6 +7,7 @@ import { Badge } from './ui/badge';
 import { ScrollArea } from './ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Switch } from './ui/switch';
+import { CommandQueue, PendingCommand } from '../utils/commandQueue';
 import { 
   Terminal, 
   Send, 
@@ -51,6 +52,8 @@ export function CommandPanel({ agentId }: CommandPanelProps) {
   const endTimerRef = useRef<number | null>(null);
   const outputRef = useRef<HTMLPreElement | null>(null);
   const [autoScroll, setAutoScroll] = useState(true);
+  const [queue] = useState(() => new CommandQueue((aid, cmd) => sendCommand(aid, cmd), 15000));
+  const [pending, setPending] = useState<PendingCommand[]>([]);
 
   const applyChunk = (prev: string, chunk: string) => {
     const normalized = chunk.replace(/\r\n/g, '\n');
@@ -72,7 +75,7 @@ export function CommandPanel({ agentId }: CommandPanelProps) {
     setOutput('');
 
     try {
-      sendCommand(agentId, commandToExecute);
+      queue.enqueue(agentId, commandToExecute);
       const entry = {
         id: Date.now(),
         command: commandToExecute,
@@ -90,6 +93,15 @@ export function CommandPanel({ agentId }: CommandPanelProps) {
     }
     
     if (!cmd) setCommand('');
+  };
+
+  const executeBatch = () => {
+    if (!agentId) return;
+    const lines = command.split('\n').map(l => l.trim()).filter(Boolean);
+    if (lines.length === 0) return;
+    setIsExecuting(true);
+    queue.enqueueBatch(agentId, lines);
+    setCommand('');
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -146,6 +158,26 @@ export function CommandPanel({ agentId }: CommandPanelProps) {
       viewport.scrollTop = viewport.scrollHeight;
     }
   }, [output, autoScroll]);
+
+  useEffect(() => {
+    const update = () => setPending(queue.getPending());
+    queue.on('ack', update);
+    queue.on('success', (pc) => {
+      setPending(queue.getPending());
+      setIsExecuting(false);
+    });
+    queue.on('error', (pc) => {
+      setPending(queue.getPending());
+      setIsExecuting(false);
+    });
+    queue.on('timeout', (pc) => {
+      setPending(queue.getPending());
+      setIsExecuting(false);
+    });
+    return () => {
+      queue.off('ack', update);
+    };
+  }, [queue]);
 
   return (
     <div className="space-y-6">
@@ -246,6 +278,14 @@ export function CommandPanel({ agentId }: CommandPanelProps) {
                     <Send className="h-4 w-4" />
                   )}
                 </Button>
+                <Button 
+                  onClick={executeBatch}
+                  disabled={!agentId || !command.trim()}
+                  size="sm"
+                  variant="outline"
+                >
+                  Batch
+                </Button>
                 <Button variant="ghost" size="sm" onClick={copyOutput} disabled={!output}>
                   <Copy className="h-4 w-4 text-[#e5e5e5]" />
                 </Button>
@@ -256,6 +296,21 @@ export function CommandPanel({ agentId }: CommandPanelProps) {
                   <Download className="h-4 w-4 text-[#e5e5e5]" />
                 </Button>
               </div>
+              {pending.length > 0 && (
+                <div className="space-y-1">
+                  {pending.map(p => (
+                    <div key={p.local_id} className="flex items-center justify-between text-xs text-muted-foreground">
+                      <span className="font-mono">{p.command}</span>
+                      <span>
+                        {p.status === 'pending' && 'pending'}
+                        {p.status === 'success' && 'success'}
+                        {p.status === 'error' && 'error'}
+                        {p.status === 'timeout' && 'timeout'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
               {!agentId && (
                 <div className="text-center text-muted-foreground text-sm py-2">
                   Select an agent to execute commands

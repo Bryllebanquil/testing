@@ -544,7 +544,10 @@ export function FileManager({ agentId }: FileManagerProps) {
                     </DialogHeader>
                     <div className="flex-1 bg-muted rounded overflow-hidden flex items-center justify-center p-2 sm:p-4">
                       {previewUrl && previewKind === 'image' && (
-                        <img src={previewUrl} className="max-w-full max-h-full object-contain" />
+                        <img
+                          src={previewUrl}
+                          className="block max-w-[50vw] max-h-[50vh] w-auto h-auto object-contain mx-auto"
+                        />
                       )}
                       {previewUrl && previewKind === 'video' && (
                         <video
