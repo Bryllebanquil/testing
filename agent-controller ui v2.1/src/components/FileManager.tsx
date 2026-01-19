@@ -546,14 +546,14 @@ export function FileManager({ agentId }: FileManagerProps) {
                       {previewUrl && previewKind === 'image' && (
                         <img
                           src={previewUrl}
-                          className="block w-[50vw] h-[50vh] object-contain mx-auto"
+                          className="block w-[50vmin] h-[50vmin] object-contain mx-auto"
                         />
                       )}
                       {previewUrl && previewKind === 'video' && (
                         <video
                           key={`${previewItems[previewIndex]?.path || ''}:${previewErrorCount}:${previewVideoMode}`}
                           ref={previewVideoRef}
-                          className="w-[50vw] h-[50vh] object-contain mx-auto"
+                          className="w-[50vmin] h-[50vmin] object-contain mx-auto"
                           controls
                           playsInline
                           preload="auto"
@@ -589,7 +589,7 @@ export function FileManager({ agentId }: FileManagerProps) {
                         </video>
                       )}
                       {previewUrl && previewKind === 'pdf' && (
-                        <iframe src={previewUrl} className="w-[50vw] h-[50vh] mx-auto" title="PDF Preview" />
+                        <iframe src={previewUrl} className="w-[50vmin] h-[50vmin] mx-auto" title="PDF Preview" />
                       )}
                       {previewKind === 'ppt' && (
                         <div className="max-w-md w-full flex flex-col items-center gap-2 text-sm text-muted-foreground text-center">
