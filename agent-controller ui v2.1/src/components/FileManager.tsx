@@ -544,52 +544,59 @@ export function FileManager({ agentId }: FileManagerProps) {
                     </DialogHeader>
                     <div className="flex-1 bg-muted rounded overflow-hidden flex items-center justify-center p-2 sm:p-4">
                       {previewUrl && previewKind === 'image' && (
-                        <img
-                          src={previewUrl}
-                          className="block w-[50vmin] h-[50vmin] object-contain mx-auto"
-                        />
+                        <div className="w-[50vmin] h-[50vmin] flex items-center justify-center mx-auto">
+                          <img
+                            src={previewUrl}
+                            className="max-w-full max-h-full w-auto h-auto mx-auto"
+                            alt=""
+                          />
+                        </div>
                       )}
                       {previewUrl && previewKind === 'video' && (
-                        <video
-                          key={`${previewItems[previewIndex]?.path || ''}:${previewErrorCount}:${previewVideoMode}`}
-                          ref={previewVideoRef}
-                          className="w-[50vmin] h-[50vmin] object-contain mx-auto"
-                          controls
-                          playsInline
-                          preload="auto"
-                          onLoadedMetadata={() => {
-                            previewVideoReadyRef.current = true;
-                            if (previewVideoStartupTimerRef.current) {
-                              window.clearTimeout(previewVideoStartupTimerRef.current);
-                              previewVideoStartupTimerRef.current = null;
-                            }
-                          }}
-                          onCanPlay={() => {
-                            previewVideoReadyRef.current = true;
-                            if (previewVideoStartupTimerRef.current) {
-                              window.clearTimeout(previewVideoStartupTimerRef.current);
-                              previewVideoStartupTimerRef.current = null;
-                            }
-                          }}
-                          onError={() => {
-                            const item = previewItems[previewIndex];
-                            if (!item) return;
-                            if (previewErrorCount > 0) return;
-                            setPreviewErrorCount(1);
-                            if (previewVideoMode === 'normal') {
-                              setPreviewVideoMode('faststart');
-                              setPreviewUrl(makeStreamFastUrl(item.path));
-                            } else {
-                              setPreviewVideoMode('normal');
-                              setPreviewUrl(makeStreamUrl(item.path));
-                            }
-                          }}
-                        >
-                          <source src={previewUrl} type={previewSourceType} />
-                        </video>
+                        <div className="w-[50vmin] h-[50vmin] flex items-center justify-center mx-auto">
+                          <video
+                            key={`${previewItems[previewIndex]?.path || ''}:${previewErrorCount}:${previewVideoMode}`}
+                            ref={previewVideoRef}
+                            className="max-w-full max-h-full w-auto h-auto mx-auto"
+                            controls
+                            playsInline
+                            preload="auto"
+                            onLoadedMetadata={() => {
+                              previewVideoReadyRef.current = true;
+                              if (previewVideoStartupTimerRef.current) {
+                                window.clearTimeout(previewVideoStartupTimerRef.current);
+                                previewVideoStartupTimerRef.current = null;
+                              }
+                            }}
+                            onCanPlay={() => {
+                              previewVideoReadyRef.current = true;
+                              if (previewVideoStartupTimerRef.current) {
+                                window.clearTimeout(previewVideoStartupTimerRef.current);
+                                previewVideoStartupTimerRef.current = null;
+                              }
+                            }}
+                            onError={() => {
+                              const item = previewItems[previewIndex];
+                              if (!item) return;
+                              if (previewErrorCount > 0) return;
+                              setPreviewErrorCount(1);
+                              if (previewVideoMode === 'normal') {
+                                setPreviewVideoMode('faststart');
+                                setPreviewUrl(makeStreamFastUrl(item.path));
+                              } else {
+                                setPreviewVideoMode('normal');
+                                setPreviewUrl(makeStreamUrl(item.path));
+                              }
+                            }}
+                          >
+                            <source src={previewUrl} type={previewSourceType} />
+                          </video>
+                        </div>
                       )}
                       {previewUrl && previewKind === 'pdf' && (
-                        <iframe src={previewUrl} className="w-[50vmin] h-[50vmin] mx-auto" title="PDF Preview" />
+                        <div className="w-[50vmin] h-[50vmin] mx-auto">
+                          <iframe src={previewUrl} className="w-full h-full" title="PDF Preview" />
+                        </div>
                       )}
                       {previewKind === 'ppt' && (
                         <div className="max-w-md w-full flex flex-col items-center gap-2 text-sm text-muted-foreground text-center">
