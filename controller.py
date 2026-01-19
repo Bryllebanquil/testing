@@ -2784,10 +2784,11 @@ def api_totp_status():
     cfg = load_settings().get('authentication', {})
     enabled = bool(cfg.get('totpEnabled'))
     verified_once = bool(cfg.get('totpVerifiedOnce'))
+    enrolled = verified_once or bool(cfg.get('totpEnrolled'))
     failed = int(cfg.get('totpFailedAttempts') or 0)
     created = cfg.get('totpCreatedAt')
     issuer = cfg.get('issuer', 'Neural Control Hub')
-    return jsonify({'enabled': enabled, 'verified_once': verified_once, 'failed_attempts': failed, 'created_at': created, 'issuer': issuer})
+    return jsonify({'enabled': enabled, 'enrolled': enrolled, 'verified_once': verified_once, 'failed_attempts': failed, 'created_at': created, 'issuer': issuer})
 
 @app.route('/api/auth/totp/enroll', methods=['POST'])
 def api_totp_enroll():
@@ -2796,7 +2797,7 @@ def api_totp_enroll():
     password = request.json.get('password')
     if not password:
         return jsonify({'error': 'Password is required'}), 400
-    if not verify_password(password, ADMIN_PASSWORD_HASH, ADMIN_PASSWORD_SALT):
+    if not verify_admin_or_operator(password):
         return jsonify({'error': 'Invalid password'}), 401
     s = load_settings()
     auth = s.get('authentication', {})
@@ -2823,7 +2824,7 @@ def api_totp_enroll():
     buf = io.BytesIO()
     img.save(buf, format='PNG')
     png_b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
-    return jsonify({'success': True, 'qr': png_b64})
+    return jsonify({'success': True, 'secret': secret, 'uri': uri, 'qr': png_b64})
 
 @app.route('/api/auth/totp/verify', methods=['POST'])
 def api_totp_verify():
