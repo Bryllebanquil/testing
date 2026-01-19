@@ -532,7 +532,7 @@ export function FileManager({ agentId }: FileManagerProps) {
               </div>
 
               <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
-                <DialogContent className="w-[92vw] sm:w-[50vw] h-[85vh] sm:h-[50vh] p-4">
+                <DialogContent className="w-[92vw] sm:max-w-[1200px] h-[85vh] sm:max-h-[900px] p-4">
                   <div className="flex flex-col h-full gap-3">
                     <DialogHeader className="shrink-0">
                       <DialogTitle className="text-sm font-medium truncate">
@@ -544,12 +544,12 @@ export function FileManager({ agentId }: FileManagerProps) {
                     </DialogHeader>
                     <div className="flex-1 bg-muted rounded overflow-hidden flex items-center justify-center p-2 sm:p-4">
                       {previewUrl && previewKind === 'image' && (
-                        <div className="w-[50vw] h-[50vh] flex items-center justify-center mx-auto">
+                        <div className="w-[50vmin] h-[50vmin] flex items-center justify-center mx-auto">
                           <img src={previewUrl} className="w-full h-full object-contain" alt="" />
                         </div>
                       )}
                       {previewUrl && previewKind === 'video' && (
-                        <div className="w-[50vw] h-[50vh] flex items-center justify-center mx-auto">
+                        <div className="w-[50vmin] h-[50vmin] flex items-center justify-center mx-auto">
                           <video
                             key={`${previewItems[previewIndex]?.path || ''}:${previewErrorCount}:${previewVideoMode}`}
                             ref={previewVideoRef}
@@ -590,7 +590,7 @@ export function FileManager({ agentId }: FileManagerProps) {
                         </div>
                       )}
                       {previewUrl && previewKind === 'pdf' && (
-                        <div className="w-[50vw] h-[50vh] mx-auto">
+                        <div className="w-[50vmin] h-[50vmin] mx-auto">
                           <iframe src={previewUrl} className="w-full h-full" title="PDF Preview" />
                         </div>
                       )}
