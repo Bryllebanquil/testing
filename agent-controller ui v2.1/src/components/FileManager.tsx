@@ -544,20 +544,16 @@ export function FileManager({ agentId }: FileManagerProps) {
                     </DialogHeader>
                     <div className="flex-1 bg-muted rounded overflow-hidden flex items-center justify-center p-2 sm:p-4">
                       {previewUrl && previewKind === 'image' && (
-                        <div className="w-[50vmin] h-[50vmin] flex items-center justify-center mx-auto">
-                          <img
-                            src={previewUrl}
-                            className="max-w-full max-h-full w-auto h-auto mx-auto"
-                            alt=""
-                          />
+                        <div className="max-w-[90vw] max-h-[70vh] w-full h-full flex items-center justify-center mx-auto">
+                          <img src={previewUrl} className="w-full h-full object-contain" alt="" />
                         </div>
                       )}
                       {previewUrl && previewKind === 'video' && (
-                        <div className="w-[50vmin] h-[50vmin] flex items-center justify-center mx-auto">
+                        <div className="max-w-[90vw] max-h-[70vh] w-full h-full flex items-center justify-center mx-auto">
                           <video
                             key={`${previewItems[previewIndex]?.path || ''}:${previewErrorCount}:${previewVideoMode}`}
                             ref={previewVideoRef}
-                            className="max-w-full max-h-full w-auto h-auto mx-auto"
+                            className="w-full h-full object-contain"
                             controls
                             playsInline
                             preload="auto"
@@ -594,7 +590,7 @@ export function FileManager({ agentId }: FileManagerProps) {
                         </div>
                       )}
                       {previewUrl && previewKind === 'pdf' && (
-                        <div className="w-[50vmin] h-[50vmin] mx-auto">
+                        <div className="max-w-[90vw] max-h-[70vh] w-full h-full mx-auto">
                           <iframe src={previewUrl} className="w-full h-full" title="PDF Preview" />
                         </div>
                       )}
@@ -737,7 +733,7 @@ export function FileManager({ agentId }: FileManagerProps) {
                             {showThumb ? (
                               <img
                                 src={makeThumbUrl(file.path)}
-                                className="h-8 w-8 rounded object-cover bg-background"
+                                className="h-8 w-8 rounded object-contain bg-background"
                                 loading="lazy"
                                 alt=""
                               />

