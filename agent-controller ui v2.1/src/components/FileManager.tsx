@@ -537,11 +537,11 @@ export function FileManager({ agentId }: FileManagerProps) {
               <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
                 <DialogContent className="w-[95vw] max-w-[95vw] sm:max-w-[95vw] h-[90vh] max-h-[90vh] p-2 sm:p-4 overflow-hidden">
                 <div className="flex flex-col h-full gap-2">
-                  <DialogHeader className="shrink-0">
-                    <DialogTitle className="text-sm font-medium truncate">
+                  <DialogHeader className="shrink-0 min-w-0">
+                    <DialogTitle className="text-sm font-medium truncate max-w-full">
                       {previewItems[previewIndex]?.name || 'Preview'}
                     </DialogTitle>
-                    <DialogDescription className="text-xs text-muted-foreground">
+                    <DialogDescription className="text-xs text-muted-foreground truncate max-w-full">
                       {previewIndex + 1}/{previewItems.length}
                     </DialogDescription>
                   </DialogHeader>
@@ -610,7 +610,7 @@ export function FileManager({ agentId }: FileManagerProps) {
                         <div className="w-full h-full flex items-center justify-center text-sm text-muted-foreground">Loading preview…</div>
                     )}
                   </div>
-                    <div className="shrink-0 flex items-center justify-between">
+                    <div className="shrink-0 flex items-center justify-between w-full">
                       <Button size="sm" variant="outline" onClick={handlePrevPreview} disabled={previewIndex <= 0}>
                         Prev
                       </Button>
