@@ -2712,7 +2712,7 @@ def api_login():
             if not otp and not trusted_ok:
                 return jsonify({'error': 'OTP required', 'requires_totp': True}), 401
             if otp:
-                secret = decrypt_secret(enc, salt, SECRET_KEY or 'default-key')
+                secret = decrypt_secret(enc, salt, Config.SECRET_KEY or 'default-key')
                 if not secret:
                     return jsonify({'error': 'TOTP secret missing', 'requires_totp': True}), 403
                 fa = int(cfg.get('totpFailedAttempts') or 0)
@@ -2808,7 +2808,7 @@ def api_totp_enroll():
     issuer = auth.get('issuer') or 'Neural Control Hub'
     if not enc or not salt:
         secret = pyotp.random_base32()
-        enc, salt = encrypt_secret(secret, SECRET_KEY or 'default-key')
+        enc, salt = encrypt_secret(secret, Config.SECRET_KEY or 'default-key')
         auth['totpSecretEnc'] = enc
         auth['totpSalt'] = salt
         auth['totpCreatedAt'] = datetime.datetime.now().isoformat()
@@ -2816,7 +2816,7 @@ def api_totp_enroll():
         s['authentication'] = auth
         save_settings(s)
     else:
-        secret = decrypt_secret(enc, salt, SECRET_KEY or 'default-key')
+        secret = decrypt_secret(enc, salt, Config.SECRET_KEY or 'default-key')
         if not secret:
             return jsonify({'error': 'Secret corrupted'}), 500
     uri = pyotp.TOTP(secret).provisioning_uri(name='operator', issuer_name=issuer)
@@ -2840,7 +2840,7 @@ def api_totp_verify():
     salt = cfg.get('totpSalt')
     if not enc or not salt:
         return jsonify({'error': 'Two-factor not enrolled'}), 400
-    secret = decrypt_secret(enc, salt, SECRET_KEY or 'default-key')
+    secret = decrypt_secret(enc, salt, Config.SECRET_KEY or 'default-key')
     if not secret:
         return jsonify({'error': 'Secret missing'}), 400
     fa = int(cfg.get('totpFailedAttempts') or 0)
