@@ -535,92 +535,135 @@ export function FileManager({ agentId }: FileManagerProps) {
               </div>
 
               <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
-                <DialogContent className="w-[95vw] max-w-[95vw] sm:max-w-[95vw] h-[90vh] max-h-[90vh] p-2 sm:p-4 overflow-hidden">
-                <div className="flex flex-col h-full gap-2">
-                  <DialogHeader className="shrink-0 min-w-0">
-                    <DialogTitle className="text-sm font-medium truncate max-w-full">
-                      {previewItems[previewIndex]?.name || 'Preview'}
-                    </DialogTitle>
-                    <DialogDescription className="text-xs text-muted-foreground truncate max-w-full">
-                      {previewIndex + 1}/{previewItems.length}
-                    </DialogDescription>
-                  </DialogHeader>
-                  <div className="flex-1 bg-muted/50 rounded overflow-hidden flex items-center justify-center relative min-h-0">
-                    {previewUrl && previewKind === 'image' && (
-                      <div className="w-full h-full flex items-center justify-center">
-                        <img src={previewUrl} className="w-full h-full object-contain" alt="" />
-                      </div>
-                    )}
-                    {previewUrl && previewKind === 'video' && (
-                      <div className="w-full h-full flex items-center justify-center">
-                        <video
-                          key={`${previewItems[previewIndex]?.path || ''}:${previewErrorCount}:${previewVideoMode}`}
-                          ref={previewVideoRef}
-                          className="w-full h-full object-contain"
-                          controls
-                          playsInline
-                          preload="auto"
-                          onLoadedMetadata={() => {
-                            previewVideoReadyRef.current = true;
-                            if (previewVideoStartupTimerRef.current) {
-                              window.clearTimeout(previewVideoStartupTimerRef.current);
-                              previewVideoStartupTimerRef.current = null;
-                            }
-                          }}
-                          onCanPlay={() => {
-                            previewVideoReadyRef.current = true;
-                            if (previewVideoStartupTimerRef.current) {
-                              window.clearTimeout(previewVideoStartupTimerRef.current);
-                              previewVideoStartupTimerRef.current = null;
-                            }
-                          }}
-                          onError={() => {
-                            const item = previewItems[previewIndex];
-                            if (!item) return;
-                            if (previewErrorCount > 0) return;
-                            setPreviewErrorCount(1);
-                            if (previewVideoMode === 'normal') {
-                              setPreviewVideoMode('faststart');
-                              setPreviewUrl(makeStreamFastUrl(item.path));
-                            } else {
-                              setPreviewVideoMode('normal');
-                              setPreviewUrl(makeStreamUrl(item.path));
-                            }
-                          }}
-                        >
-                          <source src={previewUrl} type={previewSourceType} />
-                        </video>
-                      </div>
-                    )}
-                    {previewUrl && previewKind === 'pdf' && (
-                      <div className="w-full h-full">
-                        <iframe src={previewUrl} className="w-full h-full" title="PDF Preview" />
-                      </div>
-                    )}
-                    {previewKind === 'ppt' && (
-                        <div className="w-full h-full flex flex-col items-center justify-center gap-2 text-sm text-muted-foreground text-center">
-                          <div>Preview not available for PowerPoint files</div>
+                <DialogContent className="w-[90vw] max-w-5xl h-[85vh] p-4 flex flex-col">
+                  <div className="flex flex-col h-full gap-3 min-w-0">
+                    {/* Header with word-wrap for long filenames */}
+                    <DialogHeader className="shrink-0 min-w-0 max-w-full space-y-2">
+                      <DialogTitle className="text-base font-semibold break-words leading-tight line-clamp-3 pr-8">
+                        {previewItems[previewIndex]?.name || 'Preview'}
+                      </DialogTitle>
+                      <DialogDescription className="text-sm text-muted-foreground flex items-center gap-2 flex-wrap">
+                        <span>{previewIndex + 1} / {previewItems.length}</span>
+                        <span>•</span>
+                        <span>{formatFileSize(previewItems[previewIndex]?.size)}</span>
+                        {previewItems[previewIndex]?.extension && (
+                          <>
+                            <span>•</span>
+                            <span className="uppercase">{previewItems[previewIndex].extension}</span>
+                          </>
+                        )}
+                      </DialogDescription>
+                    </DialogHeader>
+                    
+                    {/* Preview area - now with more accurate height calculation */}
+                    <div className="flex-1 bg-muted/50 rounded overflow-hidden flex items-center justify-center relative min-h-0">
+                      {previewUrl && previewKind === 'image' && (
+                        <div className="w-full h-full flex items-center justify-center p-2">
+                          <img 
+                            src={previewUrl} 
+                            className="max-w-full max-h-full object-contain" 
+                            alt={previewItems[previewIndex]?.name}
+                          />
+                        </div>
+                      )}
+                      
+                      {previewUrl && previewKind === 'video' && (
+                        <div className="w-full h-full flex items-center justify-center p-2">
+                          <video
+                            key={`${previewItems[previewIndex]?.path || ''}:${previewErrorCount}:${previewVideoMode}`}
+                            ref={previewVideoRef}
+                            className="max-w-full max-h-full object-contain"
+                            controls
+                            playsInline
+                            preload="auto"
+                            onLoadedMetadata={() => {
+                              previewVideoReadyRef.current = true;
+                              if (previewVideoStartupTimerRef.current) {
+                                window.clearTimeout(previewVideoStartupTimerRef.current);
+                                previewVideoStartupTimerRef.current = null;
+                              }
+                            }}
+                            onCanPlay={() => {
+                              previewVideoReadyRef.current = true;
+                              if (previewVideoStartupTimerRef.current) {
+                                window.clearTimeout(previewVideoStartupTimerRef.current);
+                                previewVideoStartupTimerRef.current = null;
+                              }
+                            }}
+                            onError={() => {
+                              const item = previewItems[previewIndex];
+                              if (!item) return;
+                              if (previewErrorCount > 0) return;
+                              setPreviewErrorCount(1);
+                              if (previewVideoMode === 'normal') {
+                                setPreviewVideoMode('faststart');
+                                setPreviewUrl(makeStreamFastUrl(item.path));
+                              } else {
+                                setPreviewVideoMode('normal');
+                                setPreviewUrl(makeStreamUrl(item.path));
+                              }
+                            }}
+                          >
+                            <source src={previewUrl} type={previewSourceType} />
+                          </video>
+                        </div>
+                      )}
+                      
+                      {previewUrl && previewKind === 'pdf' && (
+                        <div className="w-full h-full">
+                          <iframe 
+                            src={previewUrl} 
+                            className="w-full h-full border-0" 
+                            title="PDF Preview" 
+                          />
+                        </div>
+                      )}
+                      
+                      {previewKind === 'ppt' && (
+                        <div className="w-full h-full flex flex-col items-center justify-center gap-3 text-muted-foreground">
+                          <div className="text-sm text-center px-4">
+                            <p className="font-medium mb-1">Preview not available</p>
+                            <p className="text-xs">PowerPoint files must be downloaded to view</p>
+                          </div>
                           <Button size="sm" onClick={handleDownload}>
                             <Download className="h-3 w-3 mr-1" />
-                            Download
+                            Download to view
                           </Button>
                         </div>
-                    )}
-                    {!previewUrl && (
-                        <div className="w-full h-full flex items-center justify-center text-sm text-muted-foreground">Loading preview…</div>
-                    )}
-                  </div>
-                    <div className="shrink-0 flex items-center justify-between w-full">
-                      <Button size="sm" variant="outline" onClick={handlePrevPreview} disabled={previewIndex <= 0}>
-                        Prev
+                      )}
+                      
+                      {!previewUrl && (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <div className="flex flex-col items-center gap-3">
+                            <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
+                            <div className="text-sm text-muted-foreground">Loading preview...</div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Navigation footer */}
+                    <div className="shrink-0 flex items-center justify-between gap-2">
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        onClick={handlePrevPreview} 
+                        disabled={previewIndex <= 0}
+                        className="min-w-[100px]"
+                      >
+                        ← Previous
                       </Button>
+                      <div className="text-xs text-muted-foreground text-center">
+                        <div>{formatFileSize(previewItems[previewIndex]?.size)}</div>
+                      </div>
                       <Button
                         size="sm"
                         variant="outline"
                         onClick={handleNextPreview}
                         disabled={previewIndex >= previewItems.length - 1}
+                        className="min-w-[100px]"
                       >
-                        Next
+                        Next →
                       </Button>
                     </div>
                   </div>
@@ -632,7 +675,7 @@ export function FileManager({ agentId }: FileManagerProps) {
                   <DialogHeader>
                     <DialogTitle className="text-sm">Delete selected files?</DialogTitle>
                     <DialogDescription className="text-sm text-muted-foreground">
-                      This action can’t be undone.
+                      This action can't be undone.
                     </DialogDescription>
                   </DialogHeader>
                   <div className="space-y-2 text-sm text-muted-foreground">
@@ -687,7 +730,6 @@ export function FileManager({ agentId }: FileManagerProps) {
                 </div>
               )}
 
-              {/* File List */}
               <Card>
                 <CardContent className="p-0">
                   <ScrollArea className="h-[400px]">
@@ -702,9 +744,7 @@ export function FileManager({ agentId }: FileManagerProps) {
                         return (
                           <div
                             key={index}
-                            className={`flex items-center space-x-3 p-2 rounded cursor-pointer hover:bg-muted ${
-                              isSelected ? 'bg-secondary' : ''
-                            }`}
+                            className={`flex items-center space-x-3 p-2 rounded cursor-pointer hover:bg-muted ${isSelected ? 'bg-secondary' : ''}`}
                             onClick={() => {
                               if (file.type === 'directory') {
                                 handleNavigate(file.path);
@@ -760,7 +800,6 @@ export function FileManager({ agentId }: FileManagerProps) {
                 </CardContent>
               </Card>
 
-              {/* File Info */}
               <div className="text-xs text-muted-foreground">
                 {filteredFiles.length} items • {selectedFiles.length} selected
               </div>
