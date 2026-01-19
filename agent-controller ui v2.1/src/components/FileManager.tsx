@@ -544,12 +544,12 @@ export function FileManager({ agentId }: FileManagerProps) {
                     </DialogHeader>
                     <div className="flex-1 bg-muted rounded overflow-hidden flex items-center justify-center p-2 sm:p-4">
                       {previewUrl && previewKind === 'image' && (
-                        <div className="max-w-[90vw] max-h-[70vh] w-full h-full flex items-center justify-center mx-auto">
+                        <div className="w-[50vw] h-[50vh] flex items-center justify-center mx-auto">
                           <img src={previewUrl} className="w-full h-full object-contain" alt="" />
                         </div>
                       )}
                       {previewUrl && previewKind === 'video' && (
-                        <div className="max-w-[90vw] max-h-[70vh] w-full h-full flex items-center justify-center mx-auto">
+                        <div className="w-[50vw] h-[50vh] flex items-center justify-center mx-auto">
                           <video
                             key={`${previewItems[previewIndex]?.path || ''}:${previewErrorCount}:${previewVideoMode}`}
                             ref={previewVideoRef}
@@ -590,7 +590,7 @@ export function FileManager({ agentId }: FileManagerProps) {
                         </div>
                       )}
                       {previewUrl && previewKind === 'pdf' && (
-                        <div className="max-w-[90vw] max-h-[70vh] w-full h-full mx-auto">
+                        <div className="w-[50vw] h-[50vh] mx-auto">
                           <iframe src={previewUrl} className="w-full h-full" title="PDF Preview" />
                         </div>
                       )}
