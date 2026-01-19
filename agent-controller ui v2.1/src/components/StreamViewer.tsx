@@ -71,8 +71,6 @@ export function StreamViewer({ agentId, type, title, defaultCaptureMouse, defaul
   const lastMouseEmitRef = useRef<number>(0);
   const lastKeyEmitRef = useRef<number>(0);
   const [webrtcAudioBridge, setWebrtcAudioBridge] = useState(false);
-  const latestFrameRef = useRef<string | null>(null);
-  const decodingRef = useRef(false);
 
   const getStreamIcon = () => {
     switch (type) {
@@ -519,18 +517,12 @@ export function StreamViewer({ agentId, type, title, defaultCaptureMouse, defaul
         } else {
           const canvas = canvasRef.current;
           if (canvas) {
-            latestFrameRef.current = typeof frame === 'string'
-              ? (frame.startsWith('data:') ? frame.split(',')[1] || '' : frame)
-              : '';
-            if (!decodingRef.current && latestFrameRef.current) {
-              decodingRef.current = true;
-              const decodeAndDraw = () => {
-                const base64 = latestFrameRef.current;
-                latestFrameRef.current = null;
-                if (!base64) {
-                  decodingRef.current = false;
-                  return;
-                }
+            try {
+              let base64 = '';
+              if (typeof frame === 'string') {
+                base64 = frame.startsWith('data:') ? frame.split(',')[1] || '' : frame;
+              }
+              if (base64) {
                 const binary = atob(base64);
                 const bytes = new Uint8Array(binary.length);
                 for (let i = 0; i < binary.length; i++) {
@@ -547,27 +539,20 @@ export function StreamViewer({ agentId, type, title, defaultCaptureMouse, defaul
                   if (ctx) {
                     ctx.drawImage(bitmap, 0, 0);
                   }
-                  try { (bitmap as any).close?.(); } catch {}
-                }).catch(() => {}).finally(() => {
-                  frameCountRef.current++;
-                  setFrameCount((prev: number) => prev + 1);
-                  const now = Date.now();
-                  if (lastFrameTime > 0) {
-                    const timeDiff = now - lastFrameTime;
-                    if (timeDiff > 0) {
-                      const currentFps = 1000 / timeDiff;
-                      setBandwidth(Math.round((currentFps * 50) / 1024));
-                    }
-                  }
-                  setLastFrameTime(now);
-                  if (latestFrameRef.current) {
-                    requestAnimationFrame(decodeAndDraw);
-                  } else {
-                    decodingRef.current = false;
-                  }
-                });
-              };
-              requestAnimationFrame(decodeAndDraw);
+                }).catch(() => {});
+              }
+            } finally {
+              frameCountRef.current++;
+              setFrameCount((prev: number) => prev + 1);
+              const now = Date.now();
+              if (lastFrameTime > 0) {
+                const timeDiff = now - lastFrameTime;
+                if (timeDiff > 0) {
+                  const currentFps = 1000 / timeDiff;
+                  setBandwidth(Math.round((currentFps * 50) / 1024));
+                }
+              }
+              setLastFrameTime(now);
             }
           }
         }
@@ -582,57 +567,6 @@ export function StreamViewer({ agentId, type, title, defaultCaptureMouse, defaul
       window.removeEventListener(eventName, handleFrame);
     };
   }, [isStreaming, agentId, type, lastFrameTime]);
-
-  useEffect(() => {
-    if (!rtcPcRef.current) return;
-    if (!isStreaming || transportMode !== 'auto') return;
-    const t = setInterval(async () => {
-      const pc = rtcPcRef.current;
-      if (!pc) return;
-      try {
-        const stats = await pc.getStats();
-        let selectedPair: any = null;
-        const candidates: Record<string, any> = {};
-        stats.forEach((r: any) => {
-          if (r.type === 'local-candidate' || r.type === 'remote-candidate') {
-            candidates[r.id] = r;
-          }
-          if (r.type === 'candidate-pair' && r.selected) {
-            selectedPair = r;
-          }
-        });
-        if (selectedPair) {
-          const local = candidates[selectedPair.localCandidateId];
-          const remote = candidates[selectedPair.remoteCandidateId];
-          const proto = local?.protocol || remote?.protocol;
-          const ctype = local?.candidateType || remote?.candidateType;
-          const rtt = selectedPair.currentRoundTripTime || 0;
-          if ((proto === 'tcp' || ctype === 'relay') && transportMode === 'auto') {
-            setTransportMode('fallback');
-            setIsWebRTCActive(false);
-            if (socket) {
-              socket.emit('webrtc_viewer_disconnect');
-            }
-            if (agentId) {
-              let cmd = '';
-              if (type === 'screen') cmd = 'start-stream';
-              else if (type === 'camera') cmd = 'start-camera';
-              else cmd = 'start-audio';
-              sendCommand(agentId, cmd);
-            }
-          } else if (quality === 'auto' && socket && agentId) {
-            let q = 'high';
-            if (rtt > 0.45 || fps < 20) q = 'low';
-            else if (rtt > 0.25 || fps < 35) q = 'medium';
-            socket.emit('webrtc_set_quality', { agent_id: agentId, quality: q });
-          }
-        }
-      } catch {}
-    }, 3000);
-    return () => {
-      clearInterval(t);
-    };
-  }, [isStreaming, transportMode, quality, fps, agentId, socket, type]);
 
   useEffect(() => {
     if (!socket || !isStreaming || !agentId) return;
@@ -824,7 +758,7 @@ export function StreamViewer({ agentId, type, title, defaultCaptureMouse, defaul
     setQuality(newQuality);
     
     if (agentId && isStreaming && socket) {
-      const q = newQuality === 'ultra' ? 'high' : newQuality;
+      const q = newQuality === 'ultra' ? 'high' : (newQuality as 'low' | 'medium' | 'high' | 'auto');
       socket.emit('webrtc_set_quality', { agent_id: agentId, quality: q });
     }
     
@@ -1049,7 +983,6 @@ export function StreamViewer({ agentId, type, title, defaultCaptureMouse, defaul
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="auto">Auto</SelectItem>
                 <SelectItem value="poor">Poor</SelectItem>
                 <SelectItem value="low">Low (30 FPS)</SelectItem>
                 <SelectItem value="medium">Med (50 FPS)</SelectItem>
