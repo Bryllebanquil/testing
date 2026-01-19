@@ -532,7 +532,7 @@ export function FileManager({ agentId }: FileManagerProps) {
               </div>
 
               <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
-                <DialogContent className="w-[92vw] sm:max-w-[1200px] h-[85vh] sm:max-h-[900px] p-4">
+                <DialogContent className="w-[92vw] sm:w-[50vw] h-[85vh] sm:h-[50vh] p-4">
                   <div className="flex flex-col h-full gap-3">
                     <DialogHeader className="shrink-0">
                       <DialogTitle className="text-sm font-medium truncate">
