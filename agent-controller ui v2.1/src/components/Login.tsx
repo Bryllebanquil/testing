@@ -58,6 +58,13 @@ export function Login() {
       }
     })();
   }, []);
+  
+  useEffect(() => {
+    // Auto-generate QR once admin enters password and server reports not enrolled
+    if (!enrolling && !qrB64 && password.trim() && totpInfo && !totpInfo.enrolled) {
+      void handleEnroll();
+    }
+  }, [password, totpInfo, enrolling, qrB64]);
 
   const handleEnroll = async () => {
     if (!password.trim()) {
@@ -171,10 +178,10 @@ export function Login() {
               )}
             </Button>
             
-            <div className="mt-4 space-y-2">
+            <div className="space-y-2">
               <div className="text-sm font-medium">Set up Auth-App (Google Authenticator)</div>
               <div className="text-xs text-muted-foreground">
-                Scan the QR and enter OTP to sign in
+                {totpInfo?.enrolled ? 'Two-factor authentication is required' : 'Scan the QR and enter OTP to sign in'}
               </div>
               <div className="flex items-center gap-2">
                 <Button
@@ -182,7 +189,7 @@ export function Login() {
                   variant="secondary"
                   size="sm"
                   onClick={handleEnroll}
-                  disabled={enrolling || !password.trim()}
+                  disabled={enrolling || !password.trim() || Boolean(totpInfo?.enrolled)}
                 >
                   {enrolling ? (
                     <>
