@@ -1239,6 +1239,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       const response = await apiClient.login(password, otp);
       if (response.success) {
         setAuthenticated(true);
+        try { window.location.replace('/dashboard'); } catch {}
         return response;
       }
       setAuthenticated(false);

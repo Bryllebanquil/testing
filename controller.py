@@ -466,7 +466,7 @@ socketio = SocketIO(
     app,
     async_mode=ASYNC_MODE,
     cors_allowed_origins=all_socketio_origins,
-    allow_upgrades=False,
+    allow_upgrades=True,
     max_http_buffer_size=50 * 1024 * 1024,
     ping_interval=25,
     ping_timeout=60,
@@ -1612,6 +1612,47 @@ def login():
                 flash(f'Too many failed attempts. Please wait {Config.LOGIN_TIMEOUT} seconds.', 'error')
     
     return render_template_string(login_template, qr_b64=None, secret=None, require_totp=require_totp, enrolled=enrolled, issuer=issuer)
+
+# Serve React index for dashboard and root paths
+def _serve_react_index():
+    try:
+        base_dir = os.path.dirname(__file__)
+        candidate_builds = [
+            os.path.join(base_dir, 'agent-controller ui v2.1', 'build'),
+        ]
+        index_path = None
+        for b in candidate_builds:
+            p = os.path.join(b, 'index.html')
+            if os.path.exists(p):
+                index_path = p
+                break
+        if index_path:
+            with open(index_path, 'r', encoding='utf-8', errors='replace') as f:
+                index_html = f.read()
+            runtime_overrides = (
+                "<script>"
+                "window.__SOCKET_URL__ = window.location.protocol + '//' + window.location.host;"
+                "window.__API_URL__ = window.__SOCKET_URL__;"
+                "</script>"
+            )
+            if "</head>" in index_html:
+                modified = index_html.replace("</head>", runtime_overrides + "</head>")
+            else:
+                modified = runtime_overrides + index_html
+            return Response(modified, mimetype='text/html')
+        else:
+            return redirect(url_for('login'))
+    except Exception as e:
+        print(f"Failed to serve React index: {e}")
+        return redirect(url_for('login'))
+
+@app.route('/')
+def root():
+    return _serve_react_index()
+
+@app.route('/dashboard')
+def dashboard():
+    return _serve_react_index()
 
 # Logout route
 @app.route('/logout')
