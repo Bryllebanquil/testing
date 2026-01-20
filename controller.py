@@ -2884,13 +2884,13 @@ def api_totp_status():
     verified_once = False
     enrolled = False
     if SUPABASE_URL:
-      s1 = supabase_rpc_user('get_totp_secret_for_login', {}, supa_token)
+      s1 = supabase_rpc_user('get_totp_ciphertext_for_login', {}, supa_token)
       if s1:
         enabled = True
         verified_once = True
         enrolled = True
       else:
-        s2 = supabase_rpc_user('get_totp_setup_secret', {}, supa_token)
+        s2 = supabase_rpc_user('get_totp_setup_ciphertext', {}, supa_token)
         enrolled = False
         verified_once = False
         enabled = False
