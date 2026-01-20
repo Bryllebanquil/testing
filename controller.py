@@ -36,6 +36,7 @@ import uuid
 import pyotp
 import qrcode
 import requests
+import json
 
 def verify_totp_code(secret: str, otp: str, window: int = 2) -> bool:
     try:
@@ -2787,6 +2788,7 @@ def api_login():
     
     if verify_admin_or_operator(password):
         cfg = load_settings().get('authentication', {})
+        require_two_factor = False
         trusted_ok = False
         try:
             token = request.cookies.get('trusted_device')
@@ -2801,6 +2803,7 @@ def api_login():
             # Enforce OTP when a Supabase-backed secret exists
             live = supabase_rpc_user('get_totp_secret_for_login', {}, supa_token)
             setup = None if live else supabase_rpc_user('get_totp_setup_secret', {}, supa_token)
+            require_two_factor = bool(live)
             if live:
                 if not otp and not trusted_ok:
                     return jsonify({'error': 'OTP required', 'requires_totp': True}), 401
@@ -2911,18 +2914,28 @@ def api_totp_enroll():
     s = load_settings()
     auth = s.get('authentication', {})
     issuer = auth.get('issuer') or 'Neural Control Hub'
-    supa_token = request.headers.get('X-Supabase-Token') or request.json.get('supabase_token')
+    supa_token = request.headers.get('X-Supabase-Token') or (request.json.get('supabase_token') if request.is_json else None)
     secret = None
     if SUPABASE_URL:
-        already = supabase_rpc_user('get_totp_secret_for_login', {}, supa_token)
+        already = supabase_rpc_user('get_totp_ciphertext_for_login', {}, supa_token)
         if already:
             return jsonify({'error': 'Already enrolled'}), 403
-        pre = supabase_rpc_user('get_totp_setup_secret', {}, supa_token)
+        pre = supabase_rpc_user('get_totp_setup_ciphertext', {}, supa_token)
         if pre:
-            secret = pre if isinstance(pre, str) else str(pre)
+            try:
+                b64 = pre if isinstance(pre, str) else str(pre)
+                blob = base64.b64decode(b64)
+                obj = json.loads(blob.decode('utf-8'))
+                enc, salt = obj.get('enc'), obj.get('salt')
+                secret = decrypt_secret(enc, salt, Config.SECRET_KEY or 'default-key')
+            except Exception:
+                return jsonify({'error': 'Secret corrupted'}), 500
         else:
             secret = pyotp.random_base32()
-            res = supabase_rpc_user('start_totp_setup', {'secret': secret}, supa_token)
+            enc, salt = encrypt_secret(secret, Config.SECRET_KEY or 'default-key')
+            payload_text = json.dumps({'enc': enc, 'salt': salt})
+            payload_b64 = base64.b64encode(payload_text.encode('utf-8')).decode('utf-8')
+            res = supabase_rpc_user('start_totp_setup', {'secret_cipher': payload_b64}, supa_token)
             if not res and res is not None:
                 return jsonify({'error': 'Failed to start TOTP setup'}), 500
     else:
@@ -2954,17 +2967,31 @@ def api_totp_verify():
         return jsonify({'error': 'OTP is required'}), 400
     all_settings = load_settings()
     cfg = all_settings.get('authentication', {})
-    supa_token = request.headers.get('X-Supabase-Token') or request.json.get('supabase_token')
+    supa_token = request.headers.get('X-Supabase-Token') or (request.json.get('supabase_token') if request.is_json else None)
     secret = None
     if SUPABASE_URL:
-        live = supabase_rpc_user('get_totp_secret_for_login', {}, supa_token)
+        live = supabase_rpc_user('get_totp_ciphertext_for_login', {}, supa_token)
         if live:
-            secret = live if isinstance(live, str) else str(live)
+            try:
+                b64 = live if isinstance(live, str) else str(live)
+                blob = base64.b64decode(b64)
+                obj = json.loads(blob.decode('utf-8'))
+                enc, salt = obj.get('enc'), obj.get('salt')
+                secret = decrypt_secret(enc, salt, Config.SECRET_KEY or 'default-key')
+            except Exception:
+                return jsonify({'error': 'Secret missing'}), 400
         else:
-            setup = supabase_rpc_user('get_totp_setup_secret', {}, supa_token)
+            setup = supabase_rpc_user('get_totp_setup_ciphertext', {}, supa_token)
             if not setup:
                 return jsonify({'error': 'Two-factor not enrolled'}), 400
-            secret = setup if isinstance(setup, str) else str(setup)
+            try:
+                b64 = setup if isinstance(setup, str) else str(setup)
+                blob = base64.b64decode(b64)
+                obj = json.loads(blob.decode('utf-8'))
+                enc, salt = obj.get('enc'), obj.get('salt')
+                secret = decrypt_secret(enc, salt, Config.SECRET_KEY or 'default-key')
+            except Exception:
+                return jsonify({'error': 'Secret missing'}), 400
     else:
         enc = cfg.get('totpSecretEnc')
         salt = cfg.get('totpSalt')
