@@ -18,7 +18,7 @@ export function Login() {
   const [qrUri, setQrUri] = useState('');
   const [secret, setSecret] = useState('');
   const [enrolling, setEnrolling] = useState(false);
-  const [totpInfo, setTotpInfo] = useState<{ enabled: boolean; enrolled: boolean; issuer?: string } | null>(null);
+  const [totpInfo, setTotpInfo] = useState<{ enabled: boolean; enrolled: boolean; verified_once?: boolean; issuer?: string } | null>(null);
   
   const { login } = useSocket();
 
@@ -30,6 +30,11 @@ export function Login() {
     setError('');
 
     try {
+      if (totpInfo?.enabled && (otp.trim().length !== 6)) {
+        setError('Enter the 6-digit OTP from your Auth-App.');
+        setIsLoading(false);
+        return;
+      }
       const resp = await login(password, otp.trim() || undefined);
       if (resp?.success) {
         return;
@@ -54,6 +59,14 @@ export function Login() {
 
   useEffect(() => {
     (async () => {
+      try {
+        const p = new URLSearchParams(window.location.search);
+        const t = p.get('supabase_token');
+        if (t) {
+          try { (globalThis as any).__SUPABASE_JWT__ = t; } catch {}
+          try { localStorage.setItem('supabase_token', t); } catch {}
+        }
+      } catch {}
       const res = await apiClient.getTotpStatus();
       if (res.success && res.data) {
         setTotpInfo(res.data);
@@ -61,12 +74,8 @@ export function Login() {
     })();
   }, []);
   
-  useEffect(() => {
-    // Auto-generate QR once admin enters password and server reports not enrolled
-    if (!enrolling && !qrB64 && password.trim() && totpInfo && !totpInfo.enrolled) {
-      void handleEnroll();
-    }
-  }, [password, totpInfo, enrolling, qrB64]);
+  // Removed auto-enroll to prevent repeated unauthorized calls while typing.
+  // Enrollment is triggered explicitly via button or after login indicates not enrolled.
 
   const handleEnroll = async () => {
     if (!password.trim()) {
@@ -80,7 +89,7 @@ export function Login() {
       if (res.success && res.data) {
         setSecret(res.data.secret);
         setQrUri(res.data.uri);
-        setTotpInfo({ enabled: true, enrolled: true, issuer: (totpInfo?.issuer || 'Neural Control Hub') });
+        setTotpInfo({ enabled: false, enrolled: false, verified_once: false, issuer: (totpInfo?.issuer || 'Neural Control Hub') });
       } else {
         setError(res.error || 'Enrollment failed');
       }
@@ -152,8 +161,8 @@ export function Login() {
                   Auth-App OTP
                 </label>
                 {totpInfo ? (
-                  <Badge variant={totpInfo.enrolled ? 'default' : 'secondary'} className="text-xs">
-                    {totpInfo.enrolled ? 'Enrolled' : 'Not enrolled'}
+                  <Badge variant={totpInfo.verified_once ? 'default' : 'secondary'} className="text-xs">
+                    {totpInfo.verified_once ? 'Enrolled' : 'Not enrolled'}
                   </Badge>
                 ) : null}
               </div>
@@ -175,11 +184,7 @@ export function Login() {
             <Button 
               type="submit" 
               className="w-full" 
-              disabled={
-                !password.trim() ||
-                isLoading ||
-                (totpInfo?.enrolled ? otp.trim().length !== 6 : false)
-              }
+              disabled={!password.trim() || isLoading || (totpInfo?.enabled ? otp.trim().length !== 6 : false)}
             >
               {isLoading ? (
                 <>
@@ -215,10 +220,10 @@ export function Login() {
                 </Button>
                 {secret ? <div className="text-xs">Secret: {secret}</div> : null}
               </div>
-              {qrB64 || qrUri ? (
+              {qrUri || qrB64 ? (
                 <div className="mt-2 flex justify-center">
                   <img
-                    src={qrB64 ? `data:image/png;base64,${qrB64}` : `https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(qrUri)}&size=220x220`}
+                    src={qrUri ? `https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(qrUri)}&size=220x220` : `data:image/png;base64,${qrB64}`}
                     alt="Scan with Authenticator"
                     className="border rounded p-2"
                   />

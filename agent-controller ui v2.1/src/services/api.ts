@@ -175,6 +175,7 @@ class ApiClient {
       credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
+        ...(this.getSupabaseAuthHeader()),
         ...options.headers,
       },
     };
@@ -240,6 +241,15 @@ class ApiClient {
     this.inflight.set(key, p);
     this.controllers.set(key, controller);
     return p;
+  }
+
+  private getSupabaseAuthHeader(): Record<string, string> {
+    try {
+      const t = (globalThis as any).__SUPABASE_JWT__ || localStorage.getItem('supabase_token') || '';
+      return t ? { 'X-Supabase-Token': t } : {};
+    } catch {
+      return {};
+    }
   }
   
   cancelAll(): void {

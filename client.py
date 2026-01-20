@@ -242,7 +242,8 @@ USE_FIXED_SERVER_URL = True
 def _resolve_controller_url():
     v1 = (os.environ.get('FIXED_SERVER_URL', '') or '').strip()
     v2 = (os.environ.get('CONTROLLER_URL', '') or '').strip()
-    for u in (v1, v2, 'https://agent-controller-backend.onrender.com'):
+    # Prefer explicit env, then local dev, then Render default
+    for u in (v1, v2, 'https://agent-controller-backend.onrender.com', 'https://agent-controller-backend.onrender.com'):
         if u and u.lower() not in ('none', 'null'):
             return u
     return 'https://agent-controller-backend.onrender.com'

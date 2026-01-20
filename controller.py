@@ -35,6 +35,7 @@ import io
 import uuid
 import pyotp
 import qrcode
+import requests
 
 def verify_totp_code(secret: str, otp: str, window: int = 2) -> bool:
     try:
@@ -159,6 +160,63 @@ WEBRTC_CONFIG = {
         }
     }
 }
+
+# Supabase Vault integration (optional)
+SUPABASE_URL = os.environ.get('SUPABASE_URL')
+SUPABASE_SERVICE_ROLE_KEY = os.environ.get('SUPABASE_SERVICE_ROLE_KEY')
+ADMIN_USER_ID = os.environ.get('ADMIN_USER_ID', '00000000-0000-0000-0000-000000000001')
+
+def supabase_rpc(fn: str, payload: dict):
+    if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
+        return None
+    try:
+        url = SUPABASE_URL.rstrip('/') + f"/rest/v1/rpc/{fn}"
+        headers = {
+            'apikey': SUPABASE_SERVICE_ROLE_KEY,
+            'Authorization': f'Bearer {SUPABASE_SERVICE_ROLE_KEY}',
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+        }
+        resp = requests.post(url, json=payload, headers=headers, timeout=10)
+        if 200 <= resp.status_code < 300:
+            try:
+                return resp.json()
+            except Exception:
+                return resp.text
+        print(f"Supabase RPC error {resp.status_code}: {resp.text}")
+        return None
+    except Exception as e:
+        print(f"Supabase RPC exception: {e}")
+        return None
+
+def supabase_rpc_user(fn: str, payload: dict, user_jwt: str | None):
+    if not SUPABASE_URL:
+        return None
+    try:
+        url = SUPABASE_URL.rstrip('/') + f"/rest/v1/rpc/{fn}"
+        headers = {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+        }
+        if user_jwt:
+            headers['Authorization'] = f'Bearer {user_jwt}'
+            headers['apikey'] = SUPABASE_SERVICE_ROLE_KEY or ''
+        elif SUPABASE_SERVICE_ROLE_KEY:
+            headers['Authorization'] = f'Bearer {SUPABASE_SERVICE_ROLE_KEY}'
+            headers['apikey'] = SUPABASE_SERVICE_ROLE_KEY
+        else:
+            return None
+        resp = requests.post(url, json=payload, headers=headers, timeout=10)
+        if 200 <= resp.status_code < 300:
+            try:
+                return resp.json()
+            except Exception:
+                return resp.text
+        print(f"Supabase RPC (user) error {resp.status_code}: {resp.text}")
+        return None
+    except Exception as e:
+        print(f"Supabase RPC (user) exception: {e}")
+        return None
 
 # Configuration Management
 class Config:
@@ -2817,12 +2875,28 @@ def api_auth_status():
 @app.route('/api/auth/totp/status', methods=['GET'])
 def api_totp_status():
     cfg = load_settings().get('authentication', {})
-    enabled = bool(cfg.get('totpEnabled'))
-    verified_once = bool(cfg.get('totpVerifiedOnce'))
-    enrolled = verified_once or bool(cfg.get('totpEnrolled'))
+    issuer = cfg.get('issuer', 'Neural Control Hub')
+    supa_token = request.headers.get('X-Supabase-Token') or request.args.get('supabase_token')
+    enabled = False
+    verified_once = False
+    enrolled = False
+    if SUPABASE_URL:
+      s1 = supabase_rpc_user('get_totp_secret_for_login', {}, supa_token)
+      if s1:
+        enabled = True
+        verified_once = True
+        enrolled = True
+      else:
+        s2 = supabase_rpc_user('get_totp_setup_secret', {}, supa_token)
+        enrolled = False
+        verified_once = False
+        enabled = False
+    else:
+      enabled = bool(cfg.get('totpEnabled'))
+      verified_once = bool(cfg.get('totpVerifiedOnce'))
+      enrolled = verified_once or bool(cfg.get('totpEnrolled'))
     failed = int(cfg.get('totpFailedAttempts') or 0)
     created = cfg.get('totpCreatedAt')
-    issuer = cfg.get('issuer', 'Neural Control Hub')
     return jsonify({'enabled': enabled, 'enrolled': enrolled, 'verified_once': verified_once, 'failed_attempts': failed, 'created_at': created, 'issuer': issuer})
 
 @app.route('/api/auth/totp/enroll', methods=['POST'])
@@ -2836,24 +2910,37 @@ def api_totp_enroll():
         return jsonify({'error': 'Invalid password'}), 401
     s = load_settings()
     auth = s.get('authentication', {})
-    if auth.get('totpEnabled') or auth.get('totpVerifiedOnce'):
-        return jsonify({'error': 'Already enrolled'}), 403
-    enc = auth.get('totpSecretEnc')
-    salt = auth.get('totpSalt')
     issuer = auth.get('issuer') or 'Neural Control Hub'
-    if not enc or not salt:
-        secret = pyotp.random_base32()
-        enc, salt = encrypt_secret(secret, Config.SECRET_KEY or 'default-key')
-        auth['totpSecretEnc'] = enc
-        auth['totpSalt'] = salt
-        auth['totpCreatedAt'] = datetime.datetime.now().isoformat()
-        auth['totpFailedAttempts'] = 0
-        s['authentication'] = auth
-        save_settings(s)
+    supa_token = request.headers.get('X-Supabase-Token') or request.json.get('supabase_token')
+    secret = None
+    if SUPABASE_URL:
+        already = supabase_rpc_user('get_totp_secret_for_login', {}, supa_token)
+        if already:
+            return jsonify({'error': 'Already enrolled'}), 403
+        pre = supabase_rpc_user('get_totp_setup_secret', {}, supa_token)
+        if pre:
+            secret = pre if isinstance(pre, str) else str(pre)
+        else:
+            secret = pyotp.random_base32()
+            res = supabase_rpc_user('start_totp_setup', {'secret': secret}, supa_token)
+            if not res and res is not None:
+                return jsonify({'error': 'Failed to start TOTP setup'}), 500
     else:
-        secret = decrypt_secret(enc, salt, Config.SECRET_KEY or 'default-key')
-        if not secret:
-            return jsonify({'error': 'Secret corrupted'}), 500
+        enc = auth.get('totpSecretEnc')
+        salt = auth.get('totpSalt')
+        if not enc or not salt:
+            secret = pyotp.random_base32()
+            enc, salt = encrypt_secret(secret, Config.SECRET_KEY or 'default-key')
+            auth['totpSecretEnc'] = enc
+            auth['totpSalt'] = salt
+            auth['totpCreatedAt'] = datetime.datetime.now().isoformat()
+            auth['totpFailedAttempts'] = 0
+            s['authentication'] = auth
+            save_settings(s)
+        else:
+            secret = decrypt_secret(enc, salt, Config.SECRET_KEY or 'default-key')
+            if not secret:
+                return jsonify({'error': 'Secret corrupted'}), 500
     uri = pyotp.TOTP(secret).provisioning_uri(name='operator', issuer_name=issuer)
     return jsonify({'success': True, 'secret': secret, 'uri': uri})
 
@@ -2867,30 +2954,39 @@ def api_totp_verify():
         return jsonify({'error': 'OTP is required'}), 400
     all_settings = load_settings()
     cfg = all_settings.get('authentication', {})
-    enc = cfg.get('totpSecretEnc')
-    salt = cfg.get('totpSalt')
-    if not enc or not salt:
-        return jsonify({'error': 'Two-factor not enrolled'}), 400
-    secret = decrypt_secret(enc, salt, Config.SECRET_KEY or 'default-key')
-    if not secret:
-        return jsonify({'error': 'Secret missing'}), 400
-    fa = int(cfg.get('totpFailedAttempts') or 0)
-    if fa >= 5:
-        return jsonify({'error': 'Account locked'}, 423)
+    supa_token = request.headers.get('X-Supabase-Token') or request.json.get('supabase_token')
+    secret = None
+    if SUPABASE_URL:
+        live = supabase_rpc_user('get_totp_secret_for_login', {}, supa_token)
+        if live:
+            secret = live if isinstance(live, str) else str(live)
+        else:
+            setup = supabase_rpc_user('get_totp_setup_secret', {}, supa_token)
+            if not setup:
+                return jsonify({'error': 'Two-factor not enrolled'}), 400
+            secret = setup if isinstance(setup, str) else str(setup)
+    else:
+        enc = cfg.get('totpSecretEnc')
+        salt = cfg.get('totpSalt')
+        if not enc or not salt:
+            return jsonify({'error': 'Two-factor not enrolled'}), 400
+        secret = decrypt_secret(enc, salt, Config.SECRET_KEY or 'default-key')
+        if not secret:
+            return jsonify({'error': 'Secret missing'}), 400
     ok = verify_totp_code(secret, str(otp), window=1)
     if not ok:
-        cfg['totpFailedAttempts'] = fa + 1
-        cfg['totpLastAttemptAt'] = datetime.datetime.now().isoformat()
-        all_settings['authentication'] = cfg
-        save_settings(all_settings)
         return jsonify({'error': 'Invalid OTP'}), 401
     session['otp_verified'] = True
-    cfg['totpEnabled'] = True
-    cfg['totpVerifiedOnce'] = True
-    cfg['totpFailedAttempts'] = 0
-    all_settings['authentication'] = cfg
-    save_settings(all_settings)
-    return jsonify({'success': True, 'enabled': True})
+    if SUPABASE_URL:
+        supabase_rpc_user('confirm_totp_setup', {}, supa_token)
+        return jsonify({'success': True, 'enabled': True})
+    else:
+        cfg['totpEnabled'] = True
+        cfg['totpVerifiedOnce'] = True
+        cfg['totpFailedAttempts'] = 0
+        all_settings['authentication'] = cfg
+        save_settings(all_settings)
+        return jsonify({'success': True, 'enabled': True})
 
 @app.route('/api/auth/totp/unlock', methods=['POST'])
 def api_totp_unlock():

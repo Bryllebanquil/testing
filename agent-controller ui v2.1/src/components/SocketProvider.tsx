@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
-import { io, Socket } from 'socket.io-client';
+import { io } from 'socket.io-client';
+type SocketIO = ReturnType<typeof io>;
 import apiClient from '../services/api';
 import { toast } from 'sonner';
 
@@ -30,7 +31,7 @@ interface Notification {
 }
 
 interface SocketContextType {
-  socket: Socket | null;
+  socket: SocketIO | null;
   connected: boolean;
   authenticated: boolean;
   agents: Agent[];
@@ -180,7 +181,7 @@ function coerceFiniteNumber(value: unknown, fallback = 0): number {
 }
 
 export function SocketProvider({ children }: { children: React.ReactNode }) {
-  const [socket, setSocket] = useState<Socket | null>(null);
+  const [socket, setSocket] = useState<SocketIO | null>(null);
   const [connected, setConnected] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -302,7 +303,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     
     console.log('Connecting to Socket.IO server:', socketUrl);
     
-    let socketInstance: Socket;
+    let socketInstance: SocketIO;
     
     try {
       socketInstance = io(socketUrl, {
@@ -328,7 +329,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     }
 
     // Add debug event listener to see all events
-    socketInstance.onAny((eventName, ...args) => {
+    socketInstance.onAny((eventName: string, ...args: any[]) => {
       // Reduce noisy logs for high-frequency streaming events
       if (eventName && /^(screen_frame(_bin)?_chunk|camera_frame(_bin)?_chunk)$/.test(String(eventName))) {
         const payload = args[0] || {};
@@ -366,25 +367,25 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       }, 500);
     });
 
-    socketInstance.on('disconnect', (reason) => {
+    socketInstance.on('disconnect', (reason: string) => {
       setConnected(false);
       console.log('Disconnected from Neural Control Hub:', reason);
       addCommandOutput(`Disconnected: ${reason}`);
       try { apiClient.cancelAll(); } catch {}
     });
 
-    socketInstance.on('connect_error', (error) => {
+    socketInstance.on('connect_error', (error: any) => {
       console.error('Connection error:', error);
       addCommandOutput(`Connection Error: ${error.message || 'Unknown error'}`);
       try { toast.error(`Connection error: ${error?.message || 'Unknown'}`); } catch {}
     });
 
-    socketInstance.on('reconnect', (attemptNumber) => {
+    socketInstance.on('reconnect', (attemptNumber: number) => {
       console.log('Reconnected after', attemptNumber, 'attempts');
       addCommandOutput(`Reconnected after ${attemptNumber} attempts`);
     });
 
-    socketInstance.on('reconnect_error', (error) => {
+    socketInstance.on('reconnect_error', (error: any) => {
       console.error('Reconnection error:', error);
       addCommandOutput(`Reconnection Error: ${error.message || 'Unknown error'}`);
       try { toast.error(`Reconnection error: ${error?.message || 'Unknown'}`); } catch {}
