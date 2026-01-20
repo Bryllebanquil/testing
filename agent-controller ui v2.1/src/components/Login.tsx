@@ -15,6 +15,7 @@ export function Login() {
   const [error, setError] = useState('');
   const [otp, setOtp] = useState('');
   const [qrB64, setQrB64] = useState('');
+  const [qrUri, setQrUri] = useState('');
   const [secret, setSecret] = useState('');
   const [enrolling, setEnrolling] = useState(false);
   const [totpInfo, setTotpInfo] = useState<{ enabled: boolean; enrolled: boolean; issuer?: string } | null>(null);
@@ -78,7 +79,7 @@ export function Login() {
       const res = await apiClient.enrollTotp(password);
       if (res.success && res.data) {
         setSecret(res.data.secret);
-        setQrB64(res.data.qr);
+        setQrUri(res.data.uri);
         setTotpInfo({ enabled: true, enrolled: true, issuer: (totpInfo?.issuer || 'Neural Control Hub') });
       } else {
         setError(res.error || 'Enrollment failed');
@@ -214,10 +215,10 @@ export function Login() {
                 </Button>
                 {secret ? <div className="text-xs">Secret: {secret}</div> : null}
               </div>
-              {qrB64 ? (
+              {qrB64 || qrUri ? (
                 <div className="mt-2 flex justify-center">
                   <img
-                    src={`data:image/png;base64,${qrB64}`}
+                    src={qrB64 ? `data:image/png;base64,${qrB64}` : `https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(qrUri)}&size=220x220`}
                     alt="Scan with Authenticator"
                     className="border rounded p-2"
                   />
