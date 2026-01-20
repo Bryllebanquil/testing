@@ -1,6 +1,6 @@
 create or replace function start_totp_setup(secret_cipher text)
 returns void
-language sql
+language sql stable
 security definer
 set search_path = public
 as $$
@@ -11,7 +11,7 @@ $$;
 
 create or replace function get_totp_setup_ciphertext()
 returns text
-language sql
+language sql stable
 security definer
 set search_path = public
 as $$
@@ -23,7 +23,7 @@ $$;
 
 create or replace function confirm_totp_setup()
 returns void
-language sql
+language sql stable
 security definer
 set search_path = public
 as $$
@@ -34,7 +34,7 @@ $$;
 
 create or replace function get_totp_ciphertext_for_login()
 returns text
-language sql
+language sql stable
 security definer
 set search_path = public
 as $$
