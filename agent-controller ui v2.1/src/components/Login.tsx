@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Alert, AlertDescription } from './ui/alert';
+import { Badge } from './ui/badge';
 import { Shield, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { useSocket } from './SocketProvider';
 import apiClient from '../services/api';
@@ -145,9 +146,16 @@ export function Login() {
             </div>
             
             <div className="space-y-2">
-              <label htmlFor="otp" className="text-sm font-medium">
-                Auth-App OTP
-              </label>
+              <div className="flex items-center justify-between">
+                <label htmlFor="otp" className="text-sm font-medium">
+                  Auth-App OTP
+                </label>
+                {totpInfo ? (
+                  <Badge variant={totpInfo.enrolled ? 'default' : 'secondary'} className="text-xs">
+                    {totpInfo.enrolled ? 'Enrolled' : 'Not enrolled'}
+                  </Badge>
+                ) : null}
+              </div>
               <Input
                 id="otp"
                 type="text"
@@ -166,7 +174,11 @@ export function Login() {
             <Button 
               type="submit" 
               className="w-full" 
-              disabled={!password.trim() || isLoading}
+              disabled={
+                !password.trim() ||
+                isLoading ||
+                (totpInfo?.enrolled ? otp.trim().length !== 6 : false)
+              }
             >
               {isLoading ? (
                 <>

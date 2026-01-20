@@ -2696,45 +2696,56 @@ def api_login():
         cfg = load_settings().get('authentication', {})
         enc = cfg.get('totpSecretEnc')
         salt = cfg.get('totpSalt')
-        # Always require two-factor; show enroll if no stored secret
-        if not enc or not salt:
-            return jsonify({'error': 'Two-factor not enrolled', 'requires_totp': True}), 403
-        if not otp:
-            return jsonify({'error': 'OTP required', 'requires_totp': True}), 401
-        secret = decrypt_secret(enc, salt, Config.SECRET_KEY or 'default-key')
-        if not secret:
-            return jsonify({'error': 'TOTP secret missing', 'requires_totp': True}), 403
-        fa = int(cfg.get('totpFailedAttempts') or 0)
-        last_ts = cfg.get('totpLastAttemptAt')
-        if fa >= 5:
-            return jsonify({'error': 'Account locked due to TOTP failures', 'requires_totp': True}), 423
-        if last_ts:
-            try:
-                dt = datetime.datetime.fromisoformat(str(last_ts))
-                if (datetime.datetime.now() - dt).total_seconds() < 2:
-                    return jsonify({'error': 'Rate limited', 'requires_totp': True}), 429
-            except Exception:
-                pass
-        ok = verify_totp_code(secret, str(otp), window=1)
-        all_settings = load_settings()
-        auth_all = all_settings.get('authentication', {})
-        auth_all['totpLastAttemptAt'] = datetime.datetime.now().isoformat()
-        if not ok:
-            auth_all['totpFailedAttempts'] = fa + 1
-            all_settings['authentication'] = auth_all
-            save_settings(all_settings)
-            record_failed_login(client_ip)
-            return jsonify({'error': 'Invalid OTP', 'requires_totp': True}), 401
-        auth_all['totpFailedAttempts'] = 0
-        all_settings['authentication'] = auth_all
-        save_settings(all_settings)
+        require_two_factor = bool(cfg.get('totpEnabled') or cfg.get('requireTwoFactor'))
+        trusted_ok = False
+        try:
+            token = request.cookies.get('trusted_device')
+            if token:
+                h = hashlib.sha256(token.encode()).hexdigest()
+                lst = cfg.get('trustedDevices') or []
+                trusted_ok = h in lst
+        except Exception:
+            trusted_ok = False
+        if require_two_factor:
+            if not enc or not salt:
+                return jsonify({'error': 'Two-factor not enrolled', 'requires_totp': True}), 403
+            if not otp and not trusted_ok:
+                return jsonify({'error': 'OTP required', 'requires_totp': True}), 401
+            if otp:
+                secret = decrypt_secret(enc, salt, SECRET_KEY or 'default-key')
+                if not secret:
+                    return jsonify({'error': 'TOTP secret missing', 'requires_totp': True}), 403
+                fa = int(cfg.get('totpFailedAttempts') or 0)
+                last_ts = cfg.get('totpLastAttemptAt')
+                if fa >= 5:
+                    return jsonify({'error': 'Account locked due to TOTP failures', 'requires_totp': True}), 423
+                if last_ts:
+                    try:
+                        dt = datetime.datetime.fromisoformat(str(last_ts))
+                        if (datetime.datetime.now() - dt).total_seconds() < 2:
+                            return jsonify({'error': 'Rate limited', 'requires_totp': True}), 429
+                    except Exception:
+                        pass
+                ok = verify_totp_code(secret, str(otp), window=1)
+                all_settings = load_settings()
+                auth_all = all_settings.get('authentication', {})
+                auth_all['totpLastAttemptAt'] = datetime.datetime.now().isoformat()
+                if not ok:
+                    auth_all['totpFailedAttempts'] = fa + 1
+                    all_settings['authentication'] = auth_all
+                    save_settings(all_settings)
+                    record_failed_login(client_ip)
+                    return jsonify({'error': 'Invalid OTP', 'requires_totp': True}), 401
+                auth_all['totpFailedAttempts'] = 0
+                all_settings['authentication'] = auth_all
+                save_settings(all_settings)
         # Clear failed attempts on successful login
         clear_login_attempts(client_ip)
         
         # Set session
         session.permanent = True
         session['authenticated'] = True
-        session['otp_verified'] = True
+        session['otp_verified'] = True if (require_two_factor and (otp or trusted_ok)) else False        
         session['login_time'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
         session['ip'] = client_ip
         
@@ -2790,14 +2801,14 @@ def api_totp_enroll():
         return jsonify({'error': 'Invalid password'}), 401
     s = load_settings()
     auth = s.get('authentication', {})
-    if auth.get('totpSecretEnc') and auth.get('totpSalt'):
+    if auth.get('totpEnabled') or auth.get('totpVerifiedOnce'):
         return jsonify({'error': 'Already enrolled'}), 403
     enc = auth.get('totpSecretEnc')
     salt = auth.get('totpSalt')
     issuer = auth.get('issuer') or 'Neural Control Hub'
     if not enc or not salt:
         secret = pyotp.random_base32()
-        enc, salt = encrypt_secret(secret, Config.SECRET_KEY or 'default-key')
+        enc, salt = encrypt_secret(secret, SECRET_KEY or 'default-key')
         auth['totpSecretEnc'] = enc
         auth['totpSalt'] = salt
         auth['totpCreatedAt'] = datetime.datetime.now().isoformat()
@@ -2805,7 +2816,7 @@ def api_totp_enroll():
         s['authentication'] = auth
         save_settings(s)
     else:
-        secret = decrypt_secret(enc, salt, Config.SECRET_KEY or 'default-key')
+        secret = decrypt_secret(enc, salt, SECRET_KEY or 'default-key')
         if not secret:
             return jsonify({'error': 'Secret corrupted'}), 500
     uri = pyotp.TOTP(secret).provisioning_uri(name='operator', issuer_name=issuer)
@@ -2829,7 +2840,7 @@ def api_totp_verify():
     salt = cfg.get('totpSalt')
     if not enc or not salt:
         return jsonify({'error': 'Two-factor not enrolled'}), 400
-    secret = decrypt_secret(enc, salt, Config.SECRET_KEY or 'default-key')
+    secret = decrypt_secret(enc, salt, SECRET_KEY or 'default-key')
     if not secret:
         return jsonify({'error': 'Secret missing'}), 400
     fa = int(cfg.get('totpFailedAttempts') or 0)
@@ -2849,6 +2860,40 @@ def api_totp_verify():
     all_settings['authentication'] = cfg
     save_settings(all_settings)
     return jsonify({'success': True, 'enabled': True})
+
+@app.route('/api/auth/totp/unlock', methods=['POST'])
+def api_totp_unlock():
+    if not request.is_json:
+        return jsonify({'error': 'JSON payload required'}), 400
+    password = request.json.get('password')
+    if not password or not verify_admin_or_operator(password):
+        return jsonify({'error': 'Invalid password'}), 401
+    all_settings = load_settings()
+    cfg = all_settings.get('authentication', {})
+    cfg['totpFailedAttempts'] = 0
+    cfg['totpLastAttemptAt'] = None
+    all_settings['authentication'] = cfg
+    save_settings(all_settings)
+    return jsonify({'success': True})
+
+@app.route('/api/auth/totp/reset', methods=['POST'])
+def api_totp_reset():
+    if not request.is_json:
+        return jsonify({'error': 'JSON payload required'}), 400
+    password = request.json.get('password')
+    if not password or not verify_admin_or_operator(password):
+        return jsonify({'error': 'Invalid password'}), 401
+    all_settings = load_settings()
+    cfg = all_settings.get('authentication', {})
+    cfg.pop('totpSecretEnc', None)
+    cfg.pop('totpSalt', None)
+    cfg['totpEnabled'] = False
+    cfg['totpVerifiedOnce'] = False
+    cfg['totpFailedAttempts'] = 0
+    cfg['totpCreatedAt'] = None
+    all_settings['authentication'] = cfg
+    save_settings(all_settings)
+    return jsonify({'success': True})
 
 @app.route('/api/auth/device/trust-status', methods=['GET'])
 @require_auth
