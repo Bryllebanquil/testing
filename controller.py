@@ -1646,13 +1646,7 @@ def _serve_react_index():
         print(f"Failed to serve React index: {e}")
         return redirect(url_for('login'))
 
-@app.route('/')
-def root():
-    return _serve_react_index()
-
-@app.route('/dashboard')
-def dashboard():
-    return _serve_react_index()
+# Legacy root/dashboard serving handled by index() and dashboard() below
 
 # Logout route
 @app.route('/logout')
