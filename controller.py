@@ -2787,9 +2787,6 @@ def api_login():
     
     if verify_admin_or_operator(password):
         cfg = load_settings().get('authentication', {})
-        enc = cfg.get('totpSecretEnc')
-        salt = cfg.get('totpSalt')
-        require_two_factor = bool(cfg.get('totpEnabled') or cfg.get('requireTwoFactor'))
         trusted_ok = False
         try:
             token = request.cookies.get('trusted_device')
@@ -2799,39 +2796,42 @@ def api_login():
                 trusted_ok = h in lst
         except Exception:
             trusted_ok = False
-        if require_two_factor:
-            if not enc or not salt:
+        supa_token = request.headers.get('X-Supabase-Token') or request.json.get('supabase_token')
+        if SUPABASE_URL:
+            # Enforce OTP when a Supabase-backed secret exists
+            live = supabase_rpc_user('get_totp_secret_for_login', {}, supa_token)
+            setup = None if live else supabase_rpc_user('get_totp_setup_secret', {}, supa_token)
+            if live:
+                if not otp and not trusted_ok:
+                    return jsonify({'error': 'OTP required', 'requires_totp': True}), 401
+                if otp:
+                    secret = live if isinstance(live, str) else str(live)
+                    ok = verify_totp_code(secret, str(otp), window=1)
+                    if not ok:
+                        record_failed_login(client_ip)
+                        return jsonify({'error': 'Invalid OTP', 'requires_totp': True}), 401
+            elif setup:
+                # Secret exists but setup not confirmed; deny login and instruct to enroll
                 return jsonify({'error': 'Two-factor not enrolled', 'requires_totp': True}), 403
-            if not otp and not trusted_ok:
-                return jsonify({'error': 'OTP required', 'requires_totp': True}), 401
-            if otp:
-                secret = decrypt_secret(enc, salt, SECRET_KEY or 'default-key')
-                if not secret:
-                    return jsonify({'error': 'TOTP secret missing', 'requires_totp': True}), 403
-                fa = int(cfg.get('totpFailedAttempts') or 0)
-                last_ts = cfg.get('totpLastAttemptAt')
-                if fa >= 5:
-                    return jsonify({'error': 'Account locked due to TOTP failures', 'requires_totp': True}), 423
-                if last_ts:
-                    try:
-                        dt = datetime.datetime.fromisoformat(str(last_ts))
-                        if (datetime.datetime.now() - dt).total_seconds() < 2:
-                            return jsonify({'error': 'Rate limited', 'requires_totp': True}), 429
-                    except Exception:
-                        pass
-                ok = verify_totp_code(secret, str(otp), window=1)
-                all_settings = load_settings()
-                auth_all = all_settings.get('authentication', {})
-                auth_all['totpLastAttemptAt'] = datetime.datetime.now().isoformat()
-                if not ok:
-                    auth_all['totpFailedAttempts'] = fa + 1
-                    all_settings['authentication'] = auth_all
-                    save_settings(all_settings)
-                    record_failed_login(client_ip)
-                    return jsonify({'error': 'Invalid OTP', 'requires_totp': True}), 401
-                auth_all['totpFailedAttempts'] = 0
-                all_settings['authentication'] = auth_all
-                save_settings(all_settings)
+            # else: no secret at all → allow password-only login (initial state)
+        else:
+            # Local encrypted secret path
+            enc = cfg.get('totpSecretEnc')
+            salt = cfg.get('totpSalt')
+            require_two_factor = bool(cfg.get('totpEnabled') or cfg.get('requireTwoFactor'))
+            if require_two_factor:
+                if not enc or not salt:
+                    return jsonify({'error': 'Two-factor not enrolled', 'requires_totp': True}), 403
+                if not otp and not trusted_ok:
+                    return jsonify({'error': 'OTP required', 'requires_totp': True}), 401
+                if otp:
+                    secret = decrypt_secret(enc, salt, Config.SECRET_KEY or 'default-key')
+                    if not secret:
+                        return jsonify({'error': 'TOTP secret missing', 'requires_totp': True}), 403
+                    ok = verify_totp_code(secret, str(otp), window=1)
+                    if not ok:
+                        record_failed_login(client_ip)
+                        return jsonify({'error': 'Invalid OTP', 'requires_totp': True}), 401
         # Clear failed attempts on successful login
         clear_login_attempts(client_ip)
         
