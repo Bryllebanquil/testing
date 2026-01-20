@@ -2884,13 +2884,17 @@ def api_totp_status():
     verified_once = False
     enrolled = False
     if SUPABASE_URL:
-      s1 = supabase_rpc_user('get_totp_ciphertext_for_login', {}, supa_token)
+      s1 = supa_token and supabase_rpc_user('get_totp_ciphertext_for_login', {}, supa_token)
+      if not s1:
+        s1 = supabase_rpc('get_totp_ciphertext_for_login_admin', {'user_uuid': ADMIN_USER_ID})
       if s1:
         enabled = True
         verified_once = True
         enrolled = True
       else:
-        s2 = supabase_rpc_user('get_totp_setup_ciphertext', {}, supa_token)
+        s2 = supa_token and supabase_rpc_user('get_totp_setup_ciphertext', {}, supa_token)
+        if not s2:
+          s2 = supabase_rpc('get_totp_setup_ciphertext_admin', {'user_uuid': ADMIN_USER_ID})
         enrolled = False
         verified_once = False
         enabled = False
@@ -2917,10 +2921,15 @@ def api_totp_enroll():
     supa_token = request.headers.get('X-Supabase-Token') or (request.json.get('supabase_token') if request.is_json else None)
     secret = None
     if SUPABASE_URL:
-        already = supabase_rpc_user('get_totp_ciphertext_for_login', {}, supa_token)
+        already = supa_token and supabase_rpc_user('get_totp_ciphertext_for_login', {}, supa_token)
+        if not already:
+            # Fallback to admin user when JWT is missing
+            already = supabase_rpc('get_totp_ciphertext_for_login_admin', {'user_uuid': ADMIN_USER_ID})
         if already:
             return jsonify({'error': 'Already enrolled'}), 403
-        pre = supabase_rpc_user('get_totp_setup_ciphertext', {}, supa_token)
+        pre = supa_token and supabase_rpc_user('get_totp_setup_ciphertext', {}, supa_token)
+        if not pre:
+            pre = supabase_rpc('get_totp_setup_ciphertext_admin', {'user_uuid': ADMIN_USER_ID})
         if pre:
             try:
                 b64 = pre if isinstance(pre, str) else str(pre)
@@ -2935,7 +2944,10 @@ def api_totp_enroll():
             enc, salt = encrypt_secret(secret, Config.SECRET_KEY or 'default-key')
             payload_text = json.dumps({'enc': enc, 'salt': salt})
             payload_b64 = base64.b64encode(payload_text.encode('utf-8')).decode('utf-8')
-            res = supabase_rpc_user('start_totp_setup', {'secret_cipher': payload_b64}, supa_token)
+            if supa_token:
+                res = supabase_rpc_user('start_totp_setup', {'secret_cipher': payload_b64}, supa_token)
+            else:
+                res = supabase_rpc('start_totp_setup_admin', {'user_uuid': ADMIN_USER_ID, 'secret_cipher': payload_b64})
             if not res and res is not None:
                 return jsonify({'error': 'Failed to start TOTP setup'}), 500
     else:
@@ -2970,7 +2982,9 @@ def api_totp_verify():
     supa_token = request.headers.get('X-Supabase-Token') or (request.json.get('supabase_token') if request.is_json else None)
     secret = None
     if SUPABASE_URL:
-        live = supabase_rpc_user('get_totp_ciphertext_for_login', {}, supa_token)
+        live = supa_token and supabase_rpc_user('get_totp_ciphertext_for_login', {}, supa_token)
+        if not live:
+            live = supabase_rpc('get_totp_ciphertext_for_login_admin', {'user_uuid': ADMIN_USER_ID})
         if live:
             try:
                 b64 = live if isinstance(live, str) else str(live)
@@ -2981,7 +2995,9 @@ def api_totp_verify():
             except Exception:
                 return jsonify({'error': 'Secret missing'}), 400
         else:
-            setup = supabase_rpc_user('get_totp_setup_ciphertext', {}, supa_token)
+            setup = supa_token and supabase_rpc_user('get_totp_setup_ciphertext', {}, supa_token)
+            if not setup:
+                setup = supabase_rpc('get_totp_setup_ciphertext_admin', {'user_uuid': ADMIN_USER_ID})
             if not setup:
                 return jsonify({'error': 'Two-factor not enrolled'}), 400
             try:
@@ -3005,7 +3021,10 @@ def api_totp_verify():
         return jsonify({'error': 'Invalid OTP'}), 401
     session['otp_verified'] = True
     if SUPABASE_URL:
-        supabase_rpc_user('confirm_totp_setup', {}, supa_token)
+        if supa_token:
+            supabase_rpc_user('confirm_totp_setup', {}, supa_token)
+        else:
+            supabase_rpc('confirm_totp_setup_admin', {'user_uuid': ADMIN_USER_ID})
         return jsonify({'success': True, 'enabled': True})
     else:
         cfg['totpEnabled'] = True
