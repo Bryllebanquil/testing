@@ -7,7 +7,7 @@ services:
       cd "agent-controller ui v2.1"
       npm ci
       npm run build
-    startCommand: gunicorn -k gthread -w 1 --threads 8 controller:app --bind 0.0.0.0:$PORT
+    startCommand: python controller.py
     autoDeploy: true
     plan: starter
     envVars:
