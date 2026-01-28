@@ -1,6 +1,11 @@
 #final controller
 # Use standard threading (avoids eventlet/gevent requirements on Render)
+import eventlet
+eventlet.monkey_patch()
 
+from flask import Flask
+from flask_socketio import SocketIO
+# rest of imports...
 from flask import Flask, request, jsonify, redirect, url_for, Response, send_file, send_from_directory, session, flash, render_template_string, render_template, stream_with_context
 from flask_socketio import SocketIO, emit, join_room, leave_room
 from flask_cors import CORS
