@@ -1,7 +1,14 @@
 #final controller
-# Use standard threading (avoids eventlet/gevent requirements on Render)
-import eventlet
-eventlet.monkey_patch()
+# Optional eventlet monkey patching controlled by env (default off)
+import os
+_EVENTLET_PATCH = os.environ.get('EVENTLET_MONKEY_PATCH', '0').lower() in ('1', 'true', 'yes')
+if _EVENTLET_PATCH:
+    try:
+        import eventlet
+        eventlet.monkey_patch()
+        print("Eventlet monkey patch enabled via EVENTLET_MONKEY_PATCH")
+    except Exception as _e:
+        print(f"Failed to apply eventlet monkey patch: {_e}")
 
 from flask import Flask
 from flask_socketio import SocketIO
@@ -245,16 +252,15 @@ class Config:
     
     # Admin Authentication
     ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD')
-    if not ADMIN_PASSWORD:
-        raise ValueError("ADMIN_PASSWORD environment variable is required. Please set a secure password.")
     
     # Validate password strength
-    if len(ADMIN_PASSWORD) < 8:
-        raise ValueError("ADMIN_PASSWORD must be at least 8 characters long.")
-    if not any(c.isupper() for c in ADMIN_PASSWORD):
-        print("Warning: ADMIN_PASSWORD should contain uppercase letters for better security.")
-    if not any(c.isdigit() for c in ADMIN_PASSWORD):
-        print("Warning: ADMIN_PASSWORD should contain digits for better security.")
+    if ADMIN_PASSWORD:
+        if len(ADMIN_PASSWORD) < 8:
+            raise ValueError("ADMIN_PASSWORD must be at least 8 characters long.")
+        if not any(c.isupper() for c in ADMIN_PASSWORD):
+            print("Warning: ADMIN_PASSWORD should contain uppercase letters for better security.")
+        if not any(c.isdigit() for c in ADMIN_PASSWORD):
+            print("Warning: ADMIN_PASSWORD should contain digits for better security.")
     
     # Flask Configuration
     SECRET_KEY = os.environ.get('SECRET_KEY', None)
@@ -540,7 +546,10 @@ for subdomain in ["www", "app", "dashboard", "frontend", "backend"]:
     render_origins.append(f"https://neural-control-hub-{subdomain}.onrender.com")
 
 all_socketio_origins = allowed_origins + render_origins
-ASYNC_MODE = 'threading'
+# Allow overriding async mode via env, default to threading to avoid eventlet/gevent issues on some platforms
+ASYNC_MODE = os.environ.get('SOCKET_ASYNC_MODE', 'threading').strip().lower()
+if ASYNC_MODE not in ('threading', 'eventlet', 'gevent', 'gevent_uwsgi', 'asgi'):
+    ASYNC_MODE = 'threading'
 socketio = SocketIO(
     app,
     async_mode=ASYNC_MODE,
@@ -794,7 +803,7 @@ def create_secure_password_hash(password):
     return hash_password(password)
 
 def verify_admin_or_operator(password: str) -> bool:
-    if verify_password(password, ADMIN_PASSWORD_HASH, ADMIN_PASSWORD_SALT):
+    if ADMIN_PASSWORD_HASH and ADMIN_PASSWORD_SALT and verify_password(password, ADMIN_PASSWORD_HASH, ADMIN_PASSWORD_SALT):
         return True
     try:
         s = load_settings()
@@ -805,12 +814,17 @@ def verify_admin_or_operator(password: str) -> bool:
     except Exception:
         return False
 
-# Generate secure hash for admin password (with error handling)
+ADMIN_PASSWORD_HASH = None
+ADMIN_PASSWORD_SALT = None
 try:
-    ADMIN_PASSWORD_HASH, ADMIN_PASSWORD_SALT = create_secure_password_hash(Config.ADMIN_PASSWORD)
+    if Config.ADMIN_PASSWORD:
+        ADMIN_PASSWORD_HASH, ADMIN_PASSWORD_SALT = create_secure_password_hash(Config.ADMIN_PASSWORD)
+    else:
+        print("ADMIN_PASSWORD not set; operatorPassword from settings.json will be used if configured")
 except Exception as e:
     print(f"Error creating admin password hash: {e}")
-    raise ValueError("Failed to create secure password hash. Please check your ADMIN_PASSWORD.")
+    ADMIN_PASSWORD_HASH = None
+    ADMIN_PASSWORD_SALT = None
 
 # WebRTC Utility Functions
 def create_webrtc_peer_connection(agent_id):
@@ -1854,7 +1868,7 @@ def config_status():
     s = load_settings().get('security', {})
     return jsonify({
         'admin_password_set': bool(Config.ADMIN_PASSWORD),
-        'admin_password_length': len(Config.ADMIN_PASSWORD),
+        'admin_password_length': len(Config.ADMIN_PASSWORD or ''),
         'secret_key_set': bool(Config.SECRET_KEY),
         'host': Config.HOST,
         'port': Config.PORT,
@@ -6951,7 +6965,6 @@ cleanup_disconnected_agents()
 
 if __name__ == "__main__":
     print("Starting Neural Control Hub with Socket.IO + WebRTC support...")
-    print(f"Admin password: {Config.ADMIN_PASSWORD}")
     print(f"Server will be available at: http://{Config.HOST}:{Config.PORT}")
     print(f"Session timeout: {Config.SESSION_TIMEOUT} seconds")
     print(f"Max login attempts: {Config.MAX_LOGIN_ATTEMPTS}")
