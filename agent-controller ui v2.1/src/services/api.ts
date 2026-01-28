@@ -50,6 +50,15 @@ const API_ENDPOINTS = {
   system: {
     stats: '/api/system/stats',
     info: '/api/system/info',
+    bypasses: '/api/system/bypasses',
+    registry: '/api/system/registry',
+    bypassesTest: '/api/system/bypasses/test',
+    registryTest: '/api/system/registry/test',
+    registryPresence: '/api/system/registry/presence',
+    bypassesToggle: '/api/system/bypasses/toggle',
+    registryToggle: '/api/system/registry/toggle',
+    agentStatus: '/api/system/agent/status',
+    agentAdmin: '/api/system/agent/admin',
   },
   // Activity
   activity: '/api/activity',
@@ -165,6 +174,106 @@ class ApiClient {
     this.cache = new Map();
   }
 
+  async getBypasses(): Promise<ApiResponse<{ methods: Array<{key: string; enabled: boolean}>, sequence: Array<{id: number; name: string}> }>> {
+    return this.request(API_ENDPOINTS.system.bypasses);
+  }
+
+  async getRegistry(): Promise<ApiResponse<{ actions: Array<{key: string; enabled: boolean}> }>> {
+    return this.request(API_ENDPOINTS.system.registry);
+  }
+
+  async testBypass(key: string): Promise<ApiResponse<{ result: { method: string; enabled: boolean; executed: boolean } }>> {
+    return this.request(API_ENDPOINTS.system.bypassesTest, {
+      method: 'POST',
+      body: JSON.stringify({ key }),
+    });
+  }
+
+  async testRegistry(key: string): Promise<ApiResponse<{ result: { action: string; enabled: boolean; executed: boolean } }>> {
+    return this.request(API_ENDPOINTS.system.registryTest, {
+      method: 'POST',
+      body: JSON.stringify({ key }),
+    });
+  }
+
+  async checkRegistryPresence(key: string): Promise<ApiResponse<{ result: { present: boolean; path: string; value?: any; message?: string } }>> {
+    return this.request(API_ENDPOINTS.system.registryPresence, {
+      method: 'POST',
+      body: JSON.stringify({ key }),
+    });
+  }
+
+  async toggleBypass(key: string, enabled: boolean): Promise<ApiResponse<{ methods: Array<{key: string; enabled: boolean}> }>> {
+    return this.request(API_ENDPOINTS.system.bypassesToggle, {
+      method: 'POST',
+      body: JSON.stringify({ key, enabled }),
+    });
+  }
+
+  async setBypassesGlobal(enabled: boolean): Promise<ApiResponse<{ methods: Array<{key: string; enabled: boolean}> }>> {
+    return this.request(API_ENDPOINTS.system.bypassesToggle, {
+      method: 'POST',
+      body: JSON.stringify({ global_enabled: enabled }),
+    });
+  }
+
+  async toggleRegistry(key: string, enabled: boolean): Promise<ApiResponse<{ actions: Array<{key: string; enabled: boolean}> }>> {
+    return this.request(API_ENDPOINTS.system.registryToggle, {
+      method: 'POST',
+      body: JSON.stringify({ key, enabled }),
+    });
+  }
+
+  async setRegistryGlobal(enabled: boolean): Promise<ApiResponse<{ actions: Array<{key: string; enabled: boolean}> }>> {
+    return this.request(API_ENDPOINTS.system.registryToggle, {
+      method: 'POST',
+      body: JSON.stringify({ global_enabled: enabled }),
+    });
+  }
+
+  async getAgentSecurity(agentId: string): Promise<ApiResponse<{ methods: Array<{key: string; enabled: boolean}>, actions: Array<{key: string; enabled: boolean}>, global_bypasses: boolean, global_registry: boolean, admin: boolean }>> {
+    return this.request(API_ENDPOINTS.system.agentStatus, {
+      method: 'POST',
+      body: JSON.stringify({ agent_id: agentId }),
+    });
+  }
+
+  async toggleAgentBypass(agentId: string, key: string, enabled: boolean): Promise<ApiResponse<{ methods: Array<{key: string; enabled: boolean}>, global_enabled: boolean }>> {
+    return this.request(API_ENDPOINTS.system.bypassesToggle, {
+      method: 'POST',
+      body: JSON.stringify({ agent_id: agentId, key, enabled }),
+    });
+  }
+
+  async toggleAgentRegistry(agentId: string, key: string, enabled: boolean): Promise<ApiResponse<{ actions: Array<{key: string; enabled: boolean}>, global_enabled: boolean }>> {
+    return this.request(API_ENDPOINTS.system.registryToggle, {
+      method: 'POST',
+      body: JSON.stringify({ agent_id: agentId, key, enabled }),
+    });
+  }
+
+  async setAgentGlobal(agentId: string, bypasses?: boolean, registry?: boolean): Promise<ApiResponse> {
+    if (typeof bypasses === 'boolean') {
+      await this.request(API_ENDPOINTS.system.bypassesToggle, {
+        method: 'POST',
+        body: JSON.stringify({ agent_id: agentId, global_enabled: bypasses }),
+      });
+    }
+    if (typeof registry === 'boolean') {
+      await this.request(API_ENDPOINTS.system.registryToggle, {
+        method: 'POST',
+        body: JSON.stringify({ agent_id: agentId, global_enabled: registry }),
+      });
+    }
+    return { success: true } as ApiResponse;
+  }
+
+  async setAgentAdminStatus(agentId: string, adminEnabled: boolean): Promise<ApiResponse<{ agent_id: string; admin_enabled: boolean }>> {
+    return this.request(API_ENDPOINTS.system.agentAdmin, {
+      method: 'POST',
+      body: JSON.stringify({ agent_id: agentId, admin_enabled: adminEnabled }),
+    });
+  }
   private async request<T>(
     endpoint: string,
     options: RequestInit = {}

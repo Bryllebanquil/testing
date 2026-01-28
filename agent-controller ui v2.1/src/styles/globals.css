@@ -52,13 +52,15 @@
   --primary-foreground: oklch(0.205 0 0);
   --secondary: oklch(0.269 0 0);
   --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
+  /* Increased contrast for muted surfaces and text to meet WCAG */
+  --muted: oklch(0.245 0 0);
+  --muted-foreground: oklch(0.90 0 0);
   --accent: oklch(0.269 0 0);
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.396 0.141 25.723);
   --destructive-foreground: oklch(0.637 0.237 25.331);
-  --border: oklch(0.269 0 0);
+  /* Slightly brighter borders for clearer separations */
+  --border: oklch(0.35 0 0);
   --input: oklch(0.269 0 0);
   --ring: oklch(0.439 0 0);
   --font-weight-medium: 500;
@@ -128,6 +130,24 @@
     @apply bg-background text-foreground;
   }
 
+  /* Improve keyboard focus visibility across components */
+  :where(button, a, [tabindex], input, select, textarea):focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+  }
+
+  /* Ensure toasts and overlays stack above content */
+  .toaster,
+  [data-slot="dialog-overlay"],
+  [data-slot="dialog-content"],
+  [data-slot="alert-dialog-overlay"],
+  [data-slot="alert-dialog-content"],
+  [data-slot="sheet-overlay"],
+  [data-slot="sheet-content"],
+  [data-slot="menubar-content"] {
+    z-index: 60;
+  }
+
   /* Smooth theme transitions */
   html {
     transition: color-scheme 0.3s ease;
@@ -165,6 +185,7 @@
   .line-clamp-2 {
     display: -webkit-box;
     -webkit-line-clamp: 2;
+    line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
   }

@@ -609,10 +609,7 @@ export function Settings() {
             <SettingsIcon className="h-4 w-4" />
             <span className="text-xs">Advanced</span>
           </TabsTrigger>
-          <TabsTrigger value="bypasses" className="flex flex-col items-center gap-1 py-3">
-            <Lock className="h-4 w-4" />
-            <span className="text-xs">Bypasses</span>
-          </TabsTrigger>
+          {/* Bypasses moved to main tablist; removed from settings */}
         </TabsList>
 
         {/* Server Configuration */}
@@ -1435,53 +1432,7 @@ export function Settings() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="bypasses" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Lock className="h-5 w-5" />
-                Bypasses
-              </CardTitle>
-              <CardDescription>
-                Bypass-related options are locked off to keep agents running as normal users.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <Alert>
-                <Info className="h-4 w-4" />
-                <AlertDescription>
-                  This build forces all bypass and registry-action settings to disabled.
-                </AlertDescription>
-              </Alert>
-
-              <div className="space-y-4">
-                <h4 className="font-medium">UAC Methods</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {Object.entries(settings.bypasses?.methods || {}).map(([key, value]) => (
-                    <div key={key} className="flex items-center justify-between">
-                      <Label htmlFor={`bypass-${key}`}>{key}</Label>
-                      <Switch id={`bypass-${key}`} checked={Boolean(value)} disabled />
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <Separator />
-
-              <div className="space-y-4">
-                <h4 className="font-medium">Registry Actions</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {Object.entries(settings.registry?.actions || {}).map(([key, value]) => (
-                    <div key={key} className="flex items-center justify-between">
-                      <Label htmlFor={`reg-${key}`}>{key}</Label>
-                      <Switch id={`reg-${key}`} checked={Boolean(value)} disabled />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
+        {/* Bypasses content removed from settings; now available under main tablist */}
       </Tabs>
     </div>
   );

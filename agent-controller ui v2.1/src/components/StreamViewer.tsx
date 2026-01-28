@@ -16,7 +16,8 @@ import {
   Camera,
   Mic,
   AlertCircle,
-  Keyboard
+  Keyboard,
+  Camera as CameraIcon
 } from 'lucide-react';
 import { cn } from './ui/utils';
 import { toast } from 'sonner';
@@ -29,9 +30,11 @@ interface StreamViewerProps {
   title: string;
   defaultCaptureMouse?: boolean;
   defaultCaptureKeyboard?: boolean;
+  autoResume?: boolean;
+  hideCursor?: boolean;
 }
 
-export function StreamViewer({ agentId, type, title, defaultCaptureMouse, defaultCaptureKeyboard }: StreamViewerProps) {
+export function StreamViewer({ agentId, type, title, defaultCaptureMouse, defaultCaptureKeyboard, autoResume = true, hideCursor = false }: StreamViewerProps) {
   const { sendCommand, socket, setLastActivity } = useSocket();
   const [isStreaming, setIsStreaming] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
@@ -82,6 +85,72 @@ export function StreamViewer({ agentId, type, title, defaultCaptureMouse, defaul
   };
 
   const StreamIcon = getStreamIcon();
+
+  // Screenshot capture function
+  const handleScreenshot = async () => {
+    if (!isStreaming) {
+      toast.error('Stream must be active to capture screenshot');
+      return;
+    }
+
+    try {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      
+      if (type === 'audio') {
+        toast.error('Cannot capture screenshot from audio stream');
+        return;
+      }
+
+      let source: HTMLVideoElement | HTMLImageElement | null = null;
+      
+      if (type === 'screen' || type === 'camera') {
+        if (videoRef.current && videoRef.current.videoWidth > 0) {
+          source = videoRef.current;
+        } else if (imgRef.current && imgRef.current.naturalWidth > 0) {
+          source = imgRef.current;
+        }
+      }
+
+      if (!source) {
+        toast.error('No active video source found');
+        return;
+      }
+
+      if (source instanceof HTMLVideoElement) {
+        canvas.width = source.videoWidth;
+        canvas.height = source.videoHeight;
+      } else {
+        canvas.width = source.naturalWidth;
+        canvas.height = source.naturalHeight;
+      }
+      
+      ctx?.drawImage(source, 0, 0, canvas.width, canvas.height);
+      
+      // Convert to blob and download
+      canvas.toBlob((blob) => {
+        if (!blob) {
+          toast.error('Failed to create screenshot');
+          return;
+        }
+        
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `screenshot-${agentId}-${type}-${Date.now()}.png`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        toast.success('Screenshot captured successfully');
+      }, 'image/png');
+      
+    } catch (error) {
+      console.error('Screenshot capture error:', error);
+      toast.error('Failed to capture screenshot');
+    }
+  };
 
   // Initialize Audio Context
   const initAudioContext = () => {
@@ -908,6 +977,7 @@ export function StreamViewer({ agentId, type, title, defaultCaptureMouse, defaul
   
   useEffect(() => {
     if (!agentId) return;
+    if (!autoResume) return;
     try {
       const raw = localStorage.getItem(`stream:last:${agentId}`);
       const saved = raw ? JSON.parse(raw) : {};
@@ -1136,6 +1206,17 @@ export function StreamViewer({ agentId, type, title, defaultCaptureMouse, defaul
             >
               {isMuted ? <VolumeX className="h-3 w-3" /> : <Volume2 className="h-3 w-3" />}
             </Button>
+            
+            {/* Screenshot Button */}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleScreenshot}
+              disabled={!isStreaming || type === 'audio'}
+              title="Capture Screenshot"
+            >
+              <CameraIcon className="h-3 w-3" />
+            </Button>
           </div>
           
           <div className="flex items-center space-x-2 text-xs text-muted-foreground">
@@ -1165,7 +1246,10 @@ export function StreamViewer({ agentId, type, title, defaultCaptureMouse, defaul
           onMouseUp={(e) => emitMouseClick('up', e)}
           onKeyDown={(e) => emitKey('down', e)}
           onKeyUp={(e) => emitKey('up', e)}
-          className="aspect-video bg-black rounded-lg flex items-center justify-center relative overflow-hidden outline-none"
+          className={cn(
+            "aspect-video bg-black rounded-lg flex items-center justify-center relative overflow-hidden outline-none",
+            isStreaming && (captureMouse || hideCursor) ? "cursor-none" : ""
+          )}
         >
           {!agentId ? (
             <div className="text-center text-muted-foreground">
